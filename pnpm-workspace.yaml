@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@google/genai': true
+  "@parcel/watcher": false
+  bcrypt: false
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: true
+  unrs-resolver: true
+  workerd: false

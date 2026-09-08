@@ -1,0 +1,652 @@
+// use prisma-next
+
+types {
+  Embedding1536 = pgvector.Vector(1536)
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserStatus {
+@@type("pg/text@1")
+
+ACTIVE    = "ACTIVE"
+SUSPENDED = "SUSPENDED"
+DELETED   = "DELETED"
+}
+
+enum AuthProvider {
+@@type("pg/text@1")
+
+EMAIL  = "EMAIL"
+GOOGLE = "GOOGLE"
+APPLE  = "APPLE"
+}
+
+enum CompanionGender {
+@@type("pg/text@1")
+
+FEMALE = "FEMALE"
+MALE   = "MALE"
+OTHER  = "OTHER"
+}
+
+enum CompanionStatus {
+@@type("pg/text@1")
+
+ACTIVE   = "ACTIVE"
+ARCHIVED = "ARCHIVED"
+}
+
+enum MessageRole {
+@@type("pg/text@1")
+
+USER      = "USER"
+ASSISTANT = "ASSISTANT"
+SYSTEM    = "SYSTEM"
+}
+
+enum MessageType {
+@@type("pg/text@1")
+
+TEXT   = "TEXT"
+AUDIO  = "AUDIO"
+IMAGE  = "IMAGE"
+SYSTEM = "SYSTEM"
+}
+
+enum MemoryType {
+@@type("pg/text@1")
+
+PROFILE      = "PROFILE"
+PREFERENCE   = "PREFERENCE"
+RELATIONSHIP = "RELATIONSHIP"
+CONVERSATION = "CONVERSATION"
+FACT         = "FACT"
+}
+
+enum MemoryStatus {
+@@type("pg/text@1")
+
+ACTIVE   = "ACTIVE"
+ARCHIVED = "ARCHIVED"
+DELETED  = "DELETED"
+}
+
+enum MemorySource {
+@@type("pg/text@1")
+
+USER_MESSAGE      = "USER_MESSAGE"
+ASSISTANT_MESSAGE = "ASSISTANT_MESSAGE"
+AI_EXTRACTION     = "AI_EXTRACTION"
+USER_INPUT        = "USER_INPUT"
+}
+
+enum EmbeddingStatus {
+  @@type("pg/text@1")
+
+  PENDING = "PENDING"
+  READY   = "READY"
+  FAILED  = "FAILED"
+}
+
+enum ImageGenerationStatus {
+@@type("pg/text@1")
+
+PENDING    = "PENDING"
+PROCESSING = "PROCESSING"
+COMPLETED  = "COMPLETED"
+FAILED     = "FAILED"
+}
+
+enum ImageGenerationType {
+@@type("pg/text@1")
+
+COMPANION_AVATAR = "COMPANION_AVATAR"
+COMPANION_IMAGE  = "COMPANION_IMAGE"
+USER_REQUEST     = "USER_REQUEST"
+}
+
+enum CallType {
+@@type("pg/text@1")
+
+AUDIO = "AUDIO"
+VIDEO = "VIDEO"
+}
+
+enum CallStatus {
+@@type("pg/text@1")
+
+PENDING    = "PENDING"
+CONNECTING = "CONNECTING"
+ACTIVE     = "ACTIVE"
+ENDED      = "ENDED"
+FAILED     = "FAILED"
+CANCELLED  = "CANCELLED"
+}
+
+
+
+
+// ============================================================
+// USER
+// ============================================================
+
+model User {
+id           Int                 @id @default(autoincrement())
+email        String              @unique
+passwordHash String?
+displayName  String?
+avatarUrl    String?
+
+status       UserStatus          @default(ACTIVE)
+
+createdAt    TimestamptzString   @default(now())
+updatedAt    temporal.updatedAtString()
+deletedAt    TimestamptzString?
+
+accounts     Account[]
+sessions     Session[]
+companions   Companion[]
+conversations Conversation[]
+memories      Memory[]
+imageGenerations ImageGeneration[]
+calls Call[]
+
+@@index([status])
+@@index([createdAt])
+}
+
+// ============================================================
+// AUTHENTICATION ACCOUNTS
+// ============================================================
+
+model Account {
+id                Int                 @id @default(autoincrement())
+userId            Int
+
+provider          AuthProvider
+providerAccountId String
+
+providerData      Json?
+
+createdAt         TimestamptzString   @default(now())
+updatedAt         temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([provider, providerAccountId])
+@@index([userId])
+}
+
+// ============================================================
+// USER SESSIONS
+// ============================================================
+
+model Session {
+id           Int                 @id @default(autoincrement())
+userId       Int
+
+refreshToken String              @unique
+expiresAt    TimestamptzString
+
+metadata     Json?
+
+createdAt    TimestamptzString   @default(now())
+updatedAt    temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([userId])
+@@index([expiresAt])
+}
+
+// ============================================================
+// AI COMPANION
+// ============================================================
+
+model Companion {
+id           Int                 @id @default(autoincrement())
+userId       Int
+
+name         String
+gender       CompanionGender     @default(FEMALE)
+status       CompanionStatus     @default(ACTIVE)
+
+systemPrompt String?
+greeting     String?
+
+createdAt    TimestamptzString   @default(now())
+updatedAt    temporal.updatedAtString()
+archivedAt   TimestamptzString?
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+appearance    CompanionAppearance?
+personality   CompanionPersonality?
+voice         CompanionVoice?
+conversations Conversation[]
+memories      Memory[]
+imageGenerations ImageGeneration[]
+calls Call[]
+
+@@index([userId])
+@@index([userId, status])
+}
+
+// ============================================================
+// COMPANION APPEARANCE
+// ============================================================
+
+model CompanionAppearance {
+id            Int                 @id @default(autoincrement())
+companionId   Int                 @unique
+
+age           Int?
+ethnicity     String?
+skinTone      String?
+
+hairColor     String?
+hairStyle     String?
+eyeColor      String?
+
+bodyType      String?
+height        String?
+
+clothingStyle String?
+
+avatarUrl     String?
+imagePrompt   String?
+
+metadata      Json?
+
+createdAt     TimestamptzString   @default(now())
+updatedAt     temporal.updatedAtString()
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+}
+
+// ============================================================
+// COMPANION PERSONALITY
+// ============================================================
+
+model CompanionPersonality {
+id                 Int                 @id @default(autoincrement())
+companionId        Int                 @unique
+
+// Flexible AI personality configuration
+traits             Json
+interests          Json
+likes              Json?
+dislikes           Json?
+
+humorLevel         Int                 @default(5)
+flirtLevel         Int                 @default(5)
+empathyLevel       Int                 @default(7)
+romanceLevel       Int                 @default(5)
+
+communicationStyle String?
+
+metadata           Json?
+
+createdAt          TimestamptzString   @default(now())
+updatedAt          temporal.updatedAtString()
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+}
+
+// ============================================================
+// COMPANION VOICE
+// ============================================================
+
+model CompanionVoice {
+id          Int                 @id @default(autoincrement())
+companionId Int                 @unique
+
+provider    String
+voiceId     String
+
+language    String              @default("en")
+speed       Float               @default(1.0)
+pitch       Float               @default(1.0)
+
+settings    Json?
+
+createdAt   TimestamptzString   @default(now())
+updatedAt   temporal.updatedAtString()
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+}
+
+// ============================================================
+// CONVERSATIONS
+// ============================================================
+
+model Conversation {
+id            Int                 @id @default(autoincrement())
+
+userId        Int
+companionId   Int
+
+title         String?
+lastMessageAt TimestamptzString?
+
+metadata      Json?
+
+createdAt     TimestamptzString   @default(now())
+updatedAt     temporal.updatedAtString()
+deletedAt     TimestamptzString?
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+
+messages Message[]
+memories Memory[]
+imageGenerations ImageGeneration[]
+calls Call[]
+
+@@index([userId])
+@@index([companionId])
+@@index([userId, lastMessageAt])
+}
+
+// ============================================================
+// MESSAGES
+// ============================================================
+
+model Message {
+id             Int                 @id @default(autoincrement())
+conversationId Int
+
+role           MessageRole
+type           MessageType         @default(TEXT)
+
+content        String?
+
+// Flexible data such as AI model info, tokens,
+// generation parameters, etc.
+metadata       Json?
+
+audioUrl       String?
+imageUrl       String?
+
+createdAt      TimestamptzString   @default(now())
+updatedAt      temporal.updatedAtString()
+deletedAt      TimestamptzString?
+
+imageGeneration ImageGeneration?
+
+conversation Conversation @relation(
+fields: [conversationId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([conversationId, createdAt])
+@@index([createdAt])
+}
+
+// ============================================================
+// MEMORY
+// ============================================================
+
+model Memory {
+id             Int              @id @default(autoincrement())
+
+userId         Int
+companionId    Int?
+conversationId Int?
+
+type           MemoryType
+status         MemoryStatus     @default(ACTIVE)
+source         MemorySource
+
+// Human-readable memory used directly in AI context.
+content        String
+
+// Structured information extracted from the memory.
+metadata       Json?
+
+// 1-10 importance score.
+importance     Int              @default(5)
+
+// 0.0-1.0 confidence from the extraction process.
+confidence     Float            @default(1.0)
+
+// Number of times this memory has been retrieved.
+accessCount    Int              @default(0)
+
+lastAccessedAt TimestamptzString?
+
+// Optional expiration for temporary memories.
+expiresAt      TimestamptzString?
+
+createdAt      TimestamptzString @default(now())
+updatedAt      temporal.updatedAtString()
+deletedAt      TimestamptzString?
+
+embedding MemoryEmbedding?
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+companion Companion? @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+
+conversation Conversation? @relation(
+fields: [conversationId],
+references: [id],
+onDelete: SetNull
+)
+
+@@index([userId, status])
+@@index([userId, type])
+@@index([companionId, status])
+@@index([conversationId])
+@@index([importance])
+@@index([expiresAt])
+}
+
+
+// ============================================================
+// MEMORY Embedding
+// ============================================================
+
+
+model MemoryEmbedding {
+  id          Int              @id @default(autoincrement())
+  memoryId    Int              @unique
+
+  provider    String
+  model       String
+  dimensions  Int              @default(1536)
+
+  status      EmbeddingStatus  @default(PENDING)
+
+  embedding   Embedding1536?
+
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  memory Memory @relation(
+    fields: [memoryId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([status])
+  @@index([provider, model])
+}
+
+
+// ============================================================
+// Image Generation
+// ============================================================
+
+model ImageGeneration {
+id             Int                   @id @default(autoincrement())
+
+userId         Int
+companionId    Int
+conversationId Int?
+messageId      Int?                  @unique
+
+type           ImageGenerationType
+status         ImageGenerationStatus @default(PENDING)
+
+provider       String
+model          String?
+
+// The user's original request.
+prompt         String
+
+// Prompt after AI processing/enrichment.
+enhancedPrompt String?
+
+// Generated image location.
+imageUrl       String?
+
+// Optional storage/provider identifier.
+providerImageId String?
+
+// Image properties and provider-specific parameters.
+metadata       Json?
+
+errorCode      String?
+errorMessage   String?
+
+createdAt      TimestamptzString     @default(now())
+updatedAt      temporal.updatedAtString()
+completedAt    TimestamptzString?
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+
+conversation Conversation? @relation(
+fields: [conversationId],
+references: [id],
+onDelete: SetNull
+)
+
+message Message? @relation(
+fields: [messageId],
+references: [id],
+onDelete: SetNull
+)
+
+@@index([userId, status])
+@@index([companionId, status])
+@@index([conversationId])
+@@index([createdAt])
+}
+
+// ============================================================
+// Call
+// ============================================================
+
+model Call {
+id             Int              @id @default(autoincrement())
+
+userId         Int
+companionId    Int
+conversationId Int?
+
+type           CallType
+status         CallStatus       @default(PENDING)
+
+// Real-time communication provider.
+provider       String
+
+// Provider-specific room/session identifier.
+roomId         String?
+
+// Provider-specific call/session identifier.
+providerCallId String?
+
+// Flexible provider configuration.
+metadata       Json?
+
+// Failure information.
+errorCode      String?
+errorMessage   String?
+
+createdAt      TimestamptzString @default(now())
+updatedAt      temporal.updatedAtString()
+
+startedAt      TimestamptzString?
+endedAt        TimestamptzString?
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+companion Companion @relation(
+fields: [companionId],
+references: [id],
+onDelete: Cascade
+)
+
+conversation Conversation? @relation(
+fields: [conversationId],
+references: [id],
+onDelete: SetNull
+)
+
+@@index([userId, status])
+@@index([companionId, status])
+@@index([conversationId])
+@@index([status])
+@@index([createdAt])
+@@index([startedAt])
+}

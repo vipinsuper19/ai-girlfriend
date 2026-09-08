@@ -1,0 +1,2185 @@
+[
+  {
+    "id": "schema.public",
+    "label": "Create schema \"public\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres"
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "Create schema \"public\"",
+        "sql": "CREATE SCHEMA IF NOT EXISTS \"public\"",
+        "params": []
+      }
+    ],
+    "postcheck": []
+  },
+  {
+    "id": "table.account",
+    "label": "Create table \"account\"",
+    "summary": "Creates table \"account\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "account"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"account\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"account\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"account\"",
+        "sql": "CREATE TABLE \"public\".\"account\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"provider\" text NOT NULL,\n  \"providerAccountId\" text NOT NULL,\n  \"providerData\" json,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"account_provider_check_54adbe83\" CHECK (\"provider\" IN ('EMAIL', 'GOOGLE', 'APPLE'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"account\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"account\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.companion",
+    "label": "Create table \"companion\"",
+    "summary": "Creates table \"companion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "companion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"companion\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"companion\"",
+        "sql": "CREATE TABLE \"public\".\"companion\" (\n  \"archivedAt\" timestamptz,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"gender\" text DEFAULT 'FEMALE' NOT NULL,\n  \"greeting\" text,\n  \"id\" SERIAL NOT NULL,\n  \"name\" text NOT NULL,\n  \"status\" text DEFAULT 'ACTIVE' NOT NULL,\n  \"systemPrompt\" text,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"companion_gender_check_5dd8b08f\" CHECK (\"gender\" IN ('FEMALE', 'MALE', 'OTHER')),\n  CONSTRAINT \"companion_status_check_aef30f3b\" CHECK (\"status\" IN ('ACTIVE', 'ARCHIVED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"companion\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.companionAppearance",
+    "label": "Create table \"companionAppearance\"",
+    "summary": "Creates table \"companionAppearance\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "companionAppearance"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"companionAppearance\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"companionAppearance\"",
+        "sql": "CREATE TABLE \"public\".\"companionAppearance\" (\n  \"age\" int4,\n  \"avatarUrl\" text,\n  \"bodyType\" text,\n  \"clothingStyle\" text,\n  \"companionId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"ethnicity\" text,\n  \"eyeColor\" text,\n  \"hairColor\" text,\n  \"hairStyle\" text,\n  \"height\" text,\n  \"id\" SERIAL NOT NULL,\n  \"imagePrompt\" text,\n  \"metadata\" json,\n  \"skinTone\" text,\n  \"updatedAt\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"companionAppearance\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.companionPersonality",
+    "label": "Create table \"companionPersonality\"",
+    "summary": "Creates table \"companionPersonality\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "companionPersonality"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"companionPersonality\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"companionPersonality\"",
+        "sql": "CREATE TABLE \"public\".\"companionPersonality\" (\n  \"communicationStyle\" text,\n  \"companionId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"dislikes\" json,\n  \"empathyLevel\" int4 DEFAULT 7 NOT NULL,\n  \"flirtLevel\" int4 DEFAULT 5 NOT NULL,\n  \"humorLevel\" int4 DEFAULT 5 NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"interests\" json NOT NULL,\n  \"likes\" json,\n  \"metadata\" json,\n  \"romanceLevel\" int4 DEFAULT 5 NOT NULL,\n  \"traits\" json NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"companionPersonality\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.companionVoice",
+    "label": "Create table \"companionVoice\"",
+    "summary": "Creates table \"companionVoice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "companionVoice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"companionVoice\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"companionVoice\"",
+        "sql": "CREATE TABLE \"public\".\"companionVoice\" (\n  \"companionId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"language\" text DEFAULT 'en' NOT NULL,\n  \"pitch\" float8 DEFAULT 1 NOT NULL,\n  \"provider\" text NOT NULL,\n  \"settings\" json,\n  \"speed\" float8 DEFAULT 1 NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"voiceId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"companionVoice\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.conversation",
+    "label": "Create table \"conversation\"",
+    "summary": "Creates table \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"conversation\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"conversation\"",
+        "sql": "CREATE TABLE \"public\".\"conversation\" (\n  \"companionId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"deletedAt\" timestamptz,\n  \"id\" SERIAL NOT NULL,\n  \"lastMessageAt\" timestamptz,\n  \"metadata\" json,\n  \"title\" text,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"conversation\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.memory",
+    "label": "Create table \"memory\"",
+    "summary": "Creates table \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"memory\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"memory\"",
+        "sql": "CREATE TABLE \"public\".\"memory\" (\n  \"accessCount\" int4 DEFAULT 0 NOT NULL,\n  \"companionId\" int4,\n  \"confidence\" float8 DEFAULT 1 NOT NULL,\n  \"content\" text NOT NULL,\n  \"conversationId\" int4,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"deletedAt\" timestamptz,\n  \"expiresAt\" timestamptz,\n  \"id\" SERIAL NOT NULL,\n  \"importance\" int4 DEFAULT 5 NOT NULL,\n  \"lastAccessedAt\" timestamptz,\n  \"metadata\" json,\n  \"source\" text NOT NULL,\n  \"status\" text DEFAULT 'ACTIVE' NOT NULL,\n  \"type\" text NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"memory_source_check_8ebab798\" CHECK (\"source\" IN ('USER_MESSAGE', 'ASSISTANT_MESSAGE', 'AI_EXTRACTION', 'USER_INPUT')),\n  CONSTRAINT \"memory_status_check_b7c57345\" CHECK (\"status\" IN ('ACTIVE', 'ARCHIVED', 'DELETED')),\n  CONSTRAINT \"memory_type_check_b6c8f863\" CHECK (\"type\" IN ('PROFILE', 'PREFERENCE', 'RELATIONSHIP', 'CONVERSATION', 'FACT'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"memory\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.memoryEmbedding",
+    "label": "Create table \"memoryEmbedding\"",
+    "summary": "Creates table \"memoryEmbedding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "memoryEmbedding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"memoryEmbedding\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"memoryEmbedding\"",
+        "sql": "CREATE TABLE \"public\".\"memoryEmbedding\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"dimensions\" int4 DEFAULT 1536 NOT NULL,\n  \"embedding\" vector(1536),\n  \"id\" SERIAL NOT NULL,\n  \"memoryId\" int4 NOT NULL,\n  \"model\" text NOT NULL,\n  \"provider\" text NOT NULL,\n  \"status\" text DEFAULT 'PENDING' NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"memoryEmbedding_status_check_2b20bc37\" CHECK (\"status\" IN ('PENDING', 'READY', 'FAILED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"memoryEmbedding\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.message",
+    "label": "Create table \"message\"",
+    "summary": "Creates table \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"message\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"message\"",
+        "sql": "CREATE TABLE \"public\".\"message\" (\n  \"audioUrl\" text,\n  \"content\" text,\n  \"conversationId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"deletedAt\" timestamptz,\n  \"id\" SERIAL NOT NULL,\n  \"imageUrl\" text,\n  \"metadata\" json,\n  \"role\" text NOT NULL,\n  \"type\" text DEFAULT 'TEXT' NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"message_role_check_ca7958fc\" CHECK (\"role\" IN ('USER', 'ASSISTANT', 'SYSTEM')),\n  CONSTRAINT \"message_type_check_38ffbfe0\" CHECK (\"type\" IN ('TEXT', 'AUDIO', 'IMAGE', 'SYSTEM'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"message\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.session",
+    "label": "Create table \"session\"",
+    "summary": "Creates table \"session\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "session"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"session\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"session\"",
+        "sql": "CREATE TABLE \"public\".\"session\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"expiresAt\" timestamptz NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"metadata\" json,\n  \"refreshToken\" text NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"session\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.user",
+    "label": "Create table \"user\"",
+    "summary": "Creates table \"user\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"user\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"user\"",
+        "sql": "CREATE TABLE \"public\".\"user\" (\n  \"avatarUrl\" text,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"deletedAt\" timestamptz,\n  \"displayName\" text,\n  \"email\" text NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"passwordHash\" text,\n  \"status\" text DEFAULT 'ACTIVE' NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"user_status_check_3a7c0f48\" CHECK (\"status\" IN ('ACTIVE', 'SUSPENDED', 'DELETED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"user\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.account.account_provider_providerAccountId_key",
+    "label": "Add unique constraint on \"account\" (provider, providerAccountId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "account_provider_providerAccountId_key",
+        "table": "account"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"account_provider_providerAccountId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "account_provider_providerAccountId_key",
+          "public",
+          "\"public\".\"account\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"account_provider_providerAccountId_key\"",
+        "sql": "ALTER TABLE \"public\".\"account\" ADD CONSTRAINT \"account_provider_providerAccountId_key\" UNIQUE (\"provider\", \"providerAccountId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"account_provider_providerAccountId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "account_provider_providerAccountId_key",
+          "public",
+          "\"public\".\"account\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.companionAppearance.companionAppearance_companionId_key",
+    "label": "Add unique constraint on \"companionAppearance\" (companionId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "companionAppearance_companionId_key",
+        "table": "companionAppearance"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"companionAppearance_companionId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionAppearance_companionId_key",
+          "public",
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"companionAppearance_companionId_key\"",
+        "sql": "ALTER TABLE \"public\".\"companionAppearance\" ADD CONSTRAINT \"companionAppearance_companionId_key\" UNIQUE (\"companionId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"companionAppearance_companionId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionAppearance_companionId_key",
+          "public",
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.companionPersonality.companionPersonality_companionId_key",
+    "label": "Add unique constraint on \"companionPersonality\" (companionId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "companionPersonality_companionId_key",
+        "table": "companionPersonality"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"companionPersonality_companionId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionPersonality_companionId_key",
+          "public",
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"companionPersonality_companionId_key\"",
+        "sql": "ALTER TABLE \"public\".\"companionPersonality\" ADD CONSTRAINT \"companionPersonality_companionId_key\" UNIQUE (\"companionId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"companionPersonality_companionId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionPersonality_companionId_key",
+          "public",
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.companionVoice.companionVoice_companionId_key",
+    "label": "Add unique constraint on \"companionVoice\" (companionId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "companionVoice_companionId_key",
+        "table": "companionVoice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"companionVoice_companionId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionVoice_companionId_key",
+          "public",
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"companionVoice_companionId_key\"",
+        "sql": "ALTER TABLE \"public\".\"companionVoice\" ADD CONSTRAINT \"companionVoice_companionId_key\" UNIQUE (\"companionId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"companionVoice_companionId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionVoice_companionId_key",
+          "public",
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.memoryEmbedding.memoryEmbedding_memoryId_key",
+    "label": "Add unique constraint on \"memoryEmbedding\" (memoryId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "memoryEmbedding_memoryId_key",
+        "table": "memoryEmbedding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"memoryEmbedding_memoryId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memoryEmbedding_memoryId_key",
+          "public",
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"memoryEmbedding_memoryId_key\"",
+        "sql": "ALTER TABLE \"public\".\"memoryEmbedding\" ADD CONSTRAINT \"memoryEmbedding_memoryId_key\" UNIQUE (\"memoryId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"memoryEmbedding_memoryId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memoryEmbedding_memoryId_key",
+          "public",
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.session.session_refreshToken_key",
+    "label": "Add unique constraint on \"session\" (refreshToken)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "session_refreshToken_key",
+        "table": "session"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"session_refreshToken_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "session_refreshToken_key",
+          "public",
+          "\"public\".\"session\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"session_refreshToken_key\"",
+        "sql": "ALTER TABLE \"public\".\"session\" ADD CONSTRAINT \"session_refreshToken_key\" UNIQUE (\"refreshToken\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"session_refreshToken_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "session_refreshToken_key",
+          "public",
+          "\"public\".\"session\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.user.user_email_key",
+    "label": "Add unique constraint on \"user\" (email)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "user_email_key",
+        "table": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"user_email_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_email_key",
+          "public",
+          "\"public\".\"user\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"user_email_key\"",
+        "sql": "ALTER TABLE \"public\".\"user\" ADD CONSTRAINT \"user_email_key\" UNIQUE (\"email\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"user_email_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_email_key",
+          "public",
+          "\"public\".\"user\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.account.account_userId_idx_a489d58a",
+    "label": "Create index \"account_userId_idx_a489d58a\" on \"account\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "account_userId_idx_a489d58a",
+        "table": "account"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"account_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"account_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"account_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"account_userId_idx_a489d58a\" ON \"public\".\"account\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"account_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"account_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.companion.companion_userId_idx_a489d58a",
+    "label": "Create index \"companion_userId_idx_a489d58a\" on \"companion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "companion_userId_idx_a489d58a",
+        "table": "companion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"companion_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"companion_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"companion_userId_idx_a489d58a\" ON \"public\".\"companion\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"companion_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.companion.companion_userId_status_idx_e4a128ba",
+    "label": "Create index \"companion_userId_status_idx_e4a128ba\" on \"companion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "companion_userId_status_idx_e4a128ba",
+        "table": "companion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"companion_userId_status_idx_e4a128ba\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion_userId_status_idx_e4a128ba\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"companion_userId_status_idx_e4a128ba\"",
+        "sql": "CREATE INDEX \"companion_userId_status_idx_e4a128ba\" ON \"public\".\"companion\" (\"userId\", \"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"companion_userId_status_idx_e4a128ba\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"companion_userId_status_idx_e4a128ba\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.conversation.conversation_companionId_idx_c35162c2",
+    "label": "Create index \"conversation_companionId_idx_c35162c2\" on \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "conversation_companionId_idx_c35162c2",
+        "table": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"conversation_companionId_idx_c35162c2\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_companionId_idx_c35162c2\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"conversation_companionId_idx_c35162c2\"",
+        "sql": "CREATE INDEX \"conversation_companionId_idx_c35162c2\" ON \"public\".\"conversation\" (\"companionId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"conversation_companionId_idx_c35162c2\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_companionId_idx_c35162c2\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.conversation.conversation_userId_idx_a489d58a",
+    "label": "Create index \"conversation_userId_idx_a489d58a\" on \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "conversation_userId_idx_a489d58a",
+        "table": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"conversation_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"conversation_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"conversation_userId_idx_a489d58a\" ON \"public\".\"conversation\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"conversation_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.conversation.conversation_userId_lastMessageAt_idx_678b62d4",
+    "label": "Create index \"conversation_userId_lastMessageAt_idx_678b62d4\" on \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "conversation_userId_lastMessageAt_idx_678b62d4",
+        "table": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"conversation_userId_lastMessageAt_idx_678b62d4\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_userId_lastMessageAt_idx_678b62d4\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"conversation_userId_lastMessageAt_idx_678b62d4\"",
+        "sql": "CREATE INDEX \"conversation_userId_lastMessageAt_idx_678b62d4\" ON \"public\".\"conversation\" (\"userId\", \"lastMessageAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"conversation_userId_lastMessageAt_idx_678b62d4\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"conversation_userId_lastMessageAt_idx_678b62d4\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_companionId_idx_c35162c2",
+    "label": "Create index \"memory_companionId_idx_c35162c2\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_companionId_idx_c35162c2",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_companionId_idx_c35162c2\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_companionId_idx_c35162c2\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_companionId_idx_c35162c2\"",
+        "sql": "CREATE INDEX \"memory_companionId_idx_c35162c2\" ON \"public\".\"memory\" (\"companionId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_companionId_idx_c35162c2\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_companionId_idx_c35162c2\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_companionId_status_idx_065ded14",
+    "label": "Create index \"memory_companionId_status_idx_065ded14\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_companionId_status_idx_065ded14",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_companionId_status_idx_065ded14\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_companionId_status_idx_065ded14\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_companionId_status_idx_065ded14\"",
+        "sql": "CREATE INDEX \"memory_companionId_status_idx_065ded14\" ON \"public\".\"memory\" (\"companionId\", \"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_companionId_status_idx_065ded14\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_companionId_status_idx_065ded14\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_conversationId_idx_669215a6",
+    "label": "Create index \"memory_conversationId_idx_669215a6\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_conversationId_idx_669215a6",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_conversationId_idx_669215a6\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_conversationId_idx_669215a6\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_conversationId_idx_669215a6\"",
+        "sql": "CREATE INDEX \"memory_conversationId_idx_669215a6\" ON \"public\".\"memory\" (\"conversationId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_conversationId_idx_669215a6\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_conversationId_idx_669215a6\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_expiresAt_idx_6b6b8c10",
+    "label": "Create index \"memory_expiresAt_idx_6b6b8c10\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_expiresAt_idx_6b6b8c10",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_expiresAt_idx_6b6b8c10\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_expiresAt_idx_6b6b8c10\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_expiresAt_idx_6b6b8c10\"",
+        "sql": "CREATE INDEX \"memory_expiresAt_idx_6b6b8c10\" ON \"public\".\"memory\" (\"expiresAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_expiresAt_idx_6b6b8c10\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_expiresAt_idx_6b6b8c10\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_importance_idx_d8c1c450",
+    "label": "Create index \"memory_importance_idx_d8c1c450\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_importance_idx_d8c1c450",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_importance_idx_d8c1c450\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_importance_idx_d8c1c450\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_importance_idx_d8c1c450\"",
+        "sql": "CREATE INDEX \"memory_importance_idx_d8c1c450\" ON \"public\".\"memory\" (\"importance\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_importance_idx_d8c1c450\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_importance_idx_d8c1c450\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_userId_idx_a489d58a",
+    "label": "Create index \"memory_userId_idx_a489d58a\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_userId_idx_a489d58a",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"memory_userId_idx_a489d58a\" ON \"public\".\"memory\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_userId_status_idx_e4a128ba",
+    "label": "Create index \"memory_userId_status_idx_e4a128ba\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_userId_status_idx_e4a128ba",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_userId_status_idx_e4a128ba\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_status_idx_e4a128ba\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_userId_status_idx_e4a128ba\"",
+        "sql": "CREATE INDEX \"memory_userId_status_idx_e4a128ba\" ON \"public\".\"memory\" (\"userId\", \"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_userId_status_idx_e4a128ba\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_status_idx_e4a128ba\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memory.memory_userId_type_idx_59b0b5ce",
+    "label": "Create index \"memory_userId_type_idx_59b0b5ce\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memory_userId_type_idx_59b0b5ce",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memory_userId_type_idx_59b0b5ce\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_type_idx_59b0b5ce\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memory_userId_type_idx_59b0b5ce\"",
+        "sql": "CREATE INDEX \"memory_userId_type_idx_59b0b5ce\" ON \"public\".\"memory\" (\"userId\", \"type\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memory_userId_type_idx_59b0b5ce\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memory_userId_type_idx_59b0b5ce\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memoryEmbedding.memoryEmbedding_provider_model_idx_657c9a94",
+    "label": "Create index \"memoryEmbedding_provider_model_idx_657c9a94\" on \"memoryEmbedding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memoryEmbedding_provider_model_idx_657c9a94",
+        "table": "memoryEmbedding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memoryEmbedding_provider_model_idx_657c9a94\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding_provider_model_idx_657c9a94\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memoryEmbedding_provider_model_idx_657c9a94\"",
+        "sql": "CREATE INDEX \"memoryEmbedding_provider_model_idx_657c9a94\" ON \"public\".\"memoryEmbedding\" (\"provider\", \"model\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memoryEmbedding_provider_model_idx_657c9a94\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding_provider_model_idx_657c9a94\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.memoryEmbedding.memoryEmbedding_status_idx_e98638ab",
+    "label": "Create index \"memoryEmbedding_status_idx_e98638ab\" on \"memoryEmbedding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "memoryEmbedding_status_idx_e98638ab",
+        "table": "memoryEmbedding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"memoryEmbedding_status_idx_e98638ab\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding_status_idx_e98638ab\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"memoryEmbedding_status_idx_e98638ab\"",
+        "sql": "CREATE INDEX \"memoryEmbedding_status_idx_e98638ab\" ON \"public\".\"memoryEmbedding\" (\"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"memoryEmbedding_status_idx_e98638ab\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"memoryEmbedding_status_idx_e98638ab\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.message.message_conversationId_createdAt_idx_44d4ac61",
+    "label": "Create index \"message_conversationId_createdAt_idx_44d4ac61\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "message_conversationId_createdAt_idx_44d4ac61",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"message_conversationId_createdAt_idx_44d4ac61\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_conversationId_createdAt_idx_44d4ac61\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"message_conversationId_createdAt_idx_44d4ac61\"",
+        "sql": "CREATE INDEX \"message_conversationId_createdAt_idx_44d4ac61\" ON \"public\".\"message\" (\"conversationId\", \"createdAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"message_conversationId_createdAt_idx_44d4ac61\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_conversationId_createdAt_idx_44d4ac61\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.message.message_conversationId_idx_669215a6",
+    "label": "Create index \"message_conversationId_idx_669215a6\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "message_conversationId_idx_669215a6",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"message_conversationId_idx_669215a6\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_conversationId_idx_669215a6\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"message_conversationId_idx_669215a6\"",
+        "sql": "CREATE INDEX \"message_conversationId_idx_669215a6\" ON \"public\".\"message\" (\"conversationId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"message_conversationId_idx_669215a6\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_conversationId_idx_669215a6\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.message.message_createdAt_idx_9575dbd7",
+    "label": "Create index \"message_createdAt_idx_9575dbd7\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "message_createdAt_idx_9575dbd7",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"message_createdAt_idx_9575dbd7\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_createdAt_idx_9575dbd7\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"message_createdAt_idx_9575dbd7\"",
+        "sql": "CREATE INDEX \"message_createdAt_idx_9575dbd7\" ON \"public\".\"message\" (\"createdAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"message_createdAt_idx_9575dbd7\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_createdAt_idx_9575dbd7\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.session.session_expiresAt_idx_6b6b8c10",
+    "label": "Create index \"session_expiresAt_idx_6b6b8c10\" on \"session\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "session_expiresAt_idx_6b6b8c10",
+        "table": "session"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"session_expiresAt_idx_6b6b8c10\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session_expiresAt_idx_6b6b8c10\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"session_expiresAt_idx_6b6b8c10\"",
+        "sql": "CREATE INDEX \"session_expiresAt_idx_6b6b8c10\" ON \"public\".\"session\" (\"expiresAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"session_expiresAt_idx_6b6b8c10\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session_expiresAt_idx_6b6b8c10\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.session.session_userId_idx_a489d58a",
+    "label": "Create index \"session_userId_idx_a489d58a\" on \"session\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "session_userId_idx_a489d58a",
+        "table": "session"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"session_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"session_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"session_userId_idx_a489d58a\" ON \"public\".\"session\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"session_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"session_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.user.user_createdAt_idx_9575dbd7",
+    "label": "Create index \"user_createdAt_idx_9575dbd7\" on \"user\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "user_createdAt_idx_9575dbd7",
+        "table": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"user_createdAt_idx_9575dbd7\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_createdAt_idx_9575dbd7\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"user_createdAt_idx_9575dbd7\"",
+        "sql": "CREATE INDEX \"user_createdAt_idx_9575dbd7\" ON \"public\".\"user\" (\"createdAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"user_createdAt_idx_9575dbd7\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_createdAt_idx_9575dbd7\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.user.user_status_idx_e98638ab",
+    "label": "Create index \"user_status_idx_e98638ab\" on \"user\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "user_status_idx_e98638ab",
+        "table": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"user_status_idx_e98638ab\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_status_idx_e98638ab\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"user_status_idx_e98638ab\"",
+        "sql": "CREATE INDEX \"user_status_idx_e98638ab\" ON \"public\".\"user\" (\"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"user_status_idx_e98638ab\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_status_idx_e98638ab\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.account.account_userId_fkey",
+    "label": "Add foreign key \"account_userId_fkey\" on \"account\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "account_userId_fkey",
+        "table": "account"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"account_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "account_userId_fkey",
+          "public",
+          "\"public\".\"account\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"account_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"account\"\nADD CONSTRAINT \"account_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"account_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "account_userId_fkey",
+          "public",
+          "\"public\".\"account\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.companion.companion_userId_fkey",
+    "label": "Add foreign key \"companion_userId_fkey\" on \"companion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "companion_userId_fkey",
+        "table": "companion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"companion_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companion_userId_fkey",
+          "public",
+          "\"public\".\"companion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"companion_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"companion\"\nADD CONSTRAINT \"companion_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"companion_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companion_userId_fkey",
+          "public",
+          "\"public\".\"companion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.companionAppearance.companionAppearance_companionId_fkey",
+    "label": "Add foreign key \"companionAppearance_companionId_fkey\" on \"companionAppearance\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "companionAppearance_companionId_fkey",
+        "table": "companionAppearance"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"companionAppearance_companionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionAppearance_companionId_fkey",
+          "public",
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"companionAppearance_companionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"companionAppearance\"\nADD CONSTRAINT \"companionAppearance_companionId_fkey\"\nFOREIGN KEY (\"companionId\")\nREFERENCES \"public\".\"companion\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"companionAppearance_companionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionAppearance_companionId_fkey",
+          "public",
+          "\"public\".\"companionAppearance\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.companionPersonality.companionPersonality_companionId_fkey",
+    "label": "Add foreign key \"companionPersonality_companionId_fkey\" on \"companionPersonality\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "companionPersonality_companionId_fkey",
+        "table": "companionPersonality"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"companionPersonality_companionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionPersonality_companionId_fkey",
+          "public",
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"companionPersonality_companionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"companionPersonality\"\nADD CONSTRAINT \"companionPersonality_companionId_fkey\"\nFOREIGN KEY (\"companionId\")\nREFERENCES \"public\".\"companion\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"companionPersonality_companionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionPersonality_companionId_fkey",
+          "public",
+          "\"public\".\"companionPersonality\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.companionVoice.companionVoice_companionId_fkey",
+    "label": "Add foreign key \"companionVoice_companionId_fkey\" on \"companionVoice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "companionVoice_companionId_fkey",
+        "table": "companionVoice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"companionVoice_companionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionVoice_companionId_fkey",
+          "public",
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"companionVoice_companionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"companionVoice\"\nADD CONSTRAINT \"companionVoice_companionId_fkey\"\nFOREIGN KEY (\"companionId\")\nREFERENCES \"public\".\"companion\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"companionVoice_companionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "companionVoice_companionId_fkey",
+          "public",
+          "\"public\".\"companionVoice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.conversation.conversation_userId_fkey",
+    "label": "Add foreign key \"conversation_userId_fkey\" on \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "conversation_userId_fkey",
+        "table": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"conversation_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "conversation_userId_fkey",
+          "public",
+          "\"public\".\"conversation\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"conversation_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"conversation\"\nADD CONSTRAINT \"conversation_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"conversation_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "conversation_userId_fkey",
+          "public",
+          "\"public\".\"conversation\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.conversation.conversation_companionId_fkey",
+    "label": "Add foreign key \"conversation_companionId_fkey\" on \"conversation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "conversation_companionId_fkey",
+        "table": "conversation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"conversation_companionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "conversation_companionId_fkey",
+          "public",
+          "\"public\".\"conversation\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"conversation_companionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"conversation\"\nADD CONSTRAINT \"conversation_companionId_fkey\"\nFOREIGN KEY (\"companionId\")\nREFERENCES \"public\".\"companion\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"conversation_companionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "conversation_companionId_fkey",
+          "public",
+          "\"public\".\"conversation\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.memory.memory_userId_fkey",
+    "label": "Add foreign key \"memory_userId_fkey\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "memory_userId_fkey",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"memory_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_userId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"memory_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"memory\"\nADD CONSTRAINT \"memory_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"memory_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_userId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.memory.memory_companionId_fkey",
+    "label": "Add foreign key \"memory_companionId_fkey\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "memory_companionId_fkey",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"memory_companionId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_companionId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"memory_companionId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"memory\"\nADD CONSTRAINT \"memory_companionId_fkey\"\nFOREIGN KEY (\"companionId\")\nREFERENCES \"public\".\"companion\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"memory_companionId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_companionId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.memory.memory_conversationId_fkey",
+    "label": "Add foreign key \"memory_conversationId_fkey\" on \"memory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "memory_conversationId_fkey",
+        "table": "memory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"memory_conversationId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_conversationId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"memory_conversationId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"memory\"\nADD CONSTRAINT \"memory_conversationId_fkey\"\nFOREIGN KEY (\"conversationId\")\nREFERENCES \"public\".\"conversation\" (\"id\")\nON DELETE SET NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"memory_conversationId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memory_conversationId_fkey",
+          "public",
+          "\"public\".\"memory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.memoryEmbedding.memoryEmbedding_memoryId_fkey",
+    "label": "Add foreign key \"memoryEmbedding_memoryId_fkey\" on \"memoryEmbedding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "memoryEmbedding_memoryId_fkey",
+        "table": "memoryEmbedding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"memoryEmbedding_memoryId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memoryEmbedding_memoryId_fkey",
+          "public",
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"memoryEmbedding_memoryId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"memoryEmbedding\"\nADD CONSTRAINT \"memoryEmbedding_memoryId_fkey\"\nFOREIGN KEY (\"memoryId\")\nREFERENCES \"public\".\"memory\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"memoryEmbedding_memoryId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "memoryEmbedding_memoryId_fkey",
+          "public",
+          "\"public\".\"memoryEmbedding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.message.message_conversationId_fkey",
+    "label": "Add foreign key \"message_conversationId_fkey\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "message_conversationId_fkey",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"message_conversationId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_conversationId_fkey",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"message_conversationId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"message\"\nADD CONSTRAINT \"message_conversationId_fkey\"\nFOREIGN KEY (\"conversationId\")\nREFERENCES \"public\".\"conversation\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"message_conversationId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_conversationId_fkey",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.session.session_userId_fkey",
+    "label": "Add foreign key \"session_userId_fkey\" on \"session\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "session_userId_fkey",
+        "table": "session"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"session_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "session_userId_fkey",
+          "public",
+          "\"public\".\"session\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"session_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"session\"\nADD CONSTRAINT \"session_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"session_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "session_userId_fkey",
+          "public",
+          "\"public\".\"session\""
+        ]
+      }
+    ]
+  }
+]

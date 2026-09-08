@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# PNPM
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.example
+.env.development
+.env.production
+ apps/*/.env
+ apps/*/.env.example
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Android
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+
+# Android keystore
+*.jks
+*.keystore
+
+# Prisma
+*.db
+*.db-journal
+
+# Sentry
+.sentryclirc
