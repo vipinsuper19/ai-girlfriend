@@ -32,6 +32,9 @@ export class AiService {
     async generateResponse(
         userId: string | number,
         conversationId: string | number,
+        options: {
+            persistMessage?: boolean;
+        } = {},
     ) {
         const numericUserId = Number(userId);
         const numericConversationId =
@@ -197,6 +200,15 @@ export class AiService {
          * 9. Persist assistant response
          * ------------------------------------------------------
          */
+        const shouldPersistMessage =
+            options.persistMessage ?? true;
+
+        if (!shouldPersistMessage) {
+            return {
+                content: responseText,
+            };
+        }
+
         const now =
             new Date().toISOString();
 

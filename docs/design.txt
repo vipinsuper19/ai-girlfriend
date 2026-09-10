@@ -1,0 +1,589 @@
+Design the complete Android mobile application UI/UX for an AI Girlfriend / AI Companion platform.
+
+The design must be production-ready, modern, emotionally engaging, premium, and technically realistic for implementation using **Kotlin + Jetpack Compose + MVVM**.
+
+## PRODUCT
+
+The application is an AI companion platform where users can create and interact with a personalized AI girlfriend.
+
+The experience should feel:
+
+* Warm
+* Personal
+* Premium
+* Modern
+* Emotionally engaging
+* Trustworthy
+* Private
+* Simple to use
+
+Avoid making the application look like a generic chatbot, dating app, or social-media clone.
+
+The AI companion should feel like a persistent personal relationship rather than just an AI chat interface.
+
+---
+
+# ANDROID DESIGN REQUIREMENTS
+
+Design specifically for Android phones.
+
+Primary design target:
+
+* 360–430dp width
+* Modern Android phones
+* Portrait orientation
+* Material 3 principles
+* Edge-to-edge layouts
+* Accessible touch targets
+* Responsive Compose-friendly layouts
+* Light and dark themes
+
+Use Android-native interaction patterns wherever appropriate.
+
+Do not create desktop layouts.
+
+---
+
+# DESIGN SYSTEM
+
+Create a complete reusable design system before designing individual screens.
+
+Define:
+
+### Colors
+
+Create a sophisticated romantic/premium palette.
+
+Use:
+
+* Primary brand color
+* Secondary/accent color
+* Background
+* Surface
+* Elevated surface
+* Primary text
+* Secondary text
+* Divider
+* Success
+* Warning
+* Error
+
+The visual identity should communicate intimacy and warmth without becoming overly childish, flashy, or stereotypically romantic.
+
+### Typography
+
+Define:
+
+* Display typography
+* Large heading
+* Heading
+* Body
+* Small/body secondary
+* Caption
+* Button text
+
+Use a clean modern Android-compatible typeface.
+
+### Components
+
+Create reusable components for:
+
+* Primary button
+* Secondary button
+* Text button
+* Outlined button
+* Text field
+* Password field
+* Search field
+* OTP input
+* Top app bar
+* Bottom navigation
+* Cards
+* Avatar
+* Companion avatar
+* Chat bubble
+* Message composer
+* Chips
+* Tabs
+* Bottom sheets
+* Dialogs
+* Snackbar
+* Loading indicator
+* Empty states
+* Error states
+* Skeleton loaders
+* Toggle
+* Slider
+* Image cards
+* Audio controls
+* Subscription cards
+
+Components should be designed so they can later be implemented as reusable Jetpack Compose components.
+
+---
+
+# NAVIGATION STRUCTURE
+
+Design the navigation architecture visually.
+
+Initial navigation:
+
+Splash
+→ Welcome
+→ Login / Signup
+→ Forgot Password / Reset Password
+→ Onboarding
+→ Home / Companion
+
+After authentication, the main application should support:
+
+Home
+Chat
+Companion
+Memory
+Profile / Settings
+
+Future modules should be visually compatible with:
+
+* AI companion customization
+* Chat
+* Memory
+* AI-generated images
+* Voice interaction
+* Subscription
+* Settings
+
+Voice and video calling are NOT part of the initial MVP UI. Keep the design architecture extensible for future phases.
+
+---
+
+# MODULE 1 — AUTHENTICATION
+
+Design these screens:
+
+## 1. Splash Screen
+
+Include:
+
+* Brand logo
+* Brand name
+* Minimal premium animation concept
+* Clean background
+* Loading state if required
+
+The screen should feel emotionally warm and premium.
+
+---
+
+## 2. Welcome Screen
+
+Purpose:
+Introduce the AI companion experience.
+
+Include:
+
+* Beautiful companion visual/avatar
+* Brand headline
+* Short emotional value proposition
+* Primary CTA: Get Started
+* Secondary CTA: Log In
+* Terms/privacy acknowledgement where appropriate
+
+Keep the screen visually simple.
+
+---
+
+## 3. Login Screen
+
+Include:
+
+* Email
+* Password
+* Show/hide password
+* Forgot password
+* Login CTA
+* Signup navigation
+* Appropriate loading/error states
+
+Design validation and error states.
+
+---
+
+## 4. Signup Screen
+
+Include:
+
+* Name
+* Email
+* Password
+* Confirm password if required
+* Terms acceptance
+* Create Account CTA
+* Login navigation
+
+Show password validation clearly but unobtrusively.
+
+---
+
+## 5. Forgot Password
+
+Include:
+
+* Email field
+* Explanation
+* Send reset link CTA
+* Back to login
+
+Include:
+
+* Invalid email state
+* Loading state
+* Success state
+* Error state
+
+---
+
+## 6. Reset Password
+
+Include:
+
+* New password
+* Confirm password
+* Password requirements
+* Reset password CTA
+* Success confirmation
+
+---
+
+# ONBOARDING
+
+After authentication, design a short onboarding experience.
+
+The purpose is to introduce personalization without overwhelming the user.
+
+Possible screens:
+
+### Onboarding Welcome
+
+Explain that the user can create a companion that matches their personality and preferences.
+
+### Companion Personality
+
+Allow selection/customization of personality characteristics.
+
+Examples:
+
+* Caring
+* Playful
+* Romantic
+* Confident
+* Calm
+* Intelligent
+* Funny
+
+Use attractive selectable cards/chips.
+
+### Companion Appearance
+
+Create a visual selection/customization experience for the companion.
+
+The UI should feel premium and respectful.
+
+### Relationship Preferences
+
+Allow the user to define the kind of companion relationship they want.
+
+### Finalization
+
+Show a companion preview and CTA:
+
+"Meet Your Companion"
+
+Transition into the main application.
+
+---
+
+# MAIN HOME SCREEN
+
+Design the primary authenticated home experience.
+
+The home screen should immediately communicate:
+
+"This is your personal AI companion."
+
+Include:
+
+* Companion avatar
+* Companion name
+* Short personalized greeting
+* Current status
+* Primary "Chat" CTA
+* Recent conversation preview
+* Memory highlights where appropriate
+* Quick actions
+* Subscription status if relevant
+
+Avoid excessive dashboard-style UI.
+
+The companion should remain the visual focus.
+
+---
+
+# CHAT SCREEN
+
+Design a premium AI companion chat experience.
+
+Include:
+
+* Companion avatar
+* Companion name
+* Online/active status
+* Message history
+* User messages
+* AI messages
+* Timestamps where useful
+* Typing indicator
+* Message composer
+* Send button
+* Attachment/image action
+* Voice interaction entry point for future compatibility
+
+The interface should feel conversational and intimate.
+
+Do not make it look like a developer-oriented AI chatbot.
+
+Design:
+
+* Empty chat
+* Loading
+* Sending
+* Failed message
+* Retry
+* Long messages
+* Image messages
+* System states
+
+---
+
+# COMPANION PROFILE
+
+Design a companion profile/customization screen.
+
+Include:
+
+* Large companion avatar
+* Name
+* Personality
+* About
+* Relationship information
+* Personality customization
+* Appearance customization
+* Preferences
+* Edit companion CTA
+
+Make this feel like the profile of a persistent character rather than a normal user profile.
+
+---
+
+# MEMORY
+
+Design a memory experience where users can understand and manage what the AI companion remembers.
+
+Include:
+
+* Memory categories
+* Important memories
+* Preferences
+* Personal facts
+* Conversation-derived memories
+* Add memory
+* Edit memory
+* Delete memory
+* Privacy controls
+
+The user must clearly understand that they control the companion's memories.
+
+---
+
+# SETTINGS
+
+Design settings with clear grouping:
+
+Account
+
+* Profile
+* Email
+* Password
+
+Companion
+
+* Companion settings
+* Personality
+* Appearance
+
+Privacy
+
+* Memory controls
+* Data/privacy settings
+* Delete account
+
+Subscription
+
+* Current plan
+* Upgrade
+* Manage subscription
+
+App
+
+* Notifications
+* Theme
+* Language
+* Help
+* About
+* Logout
+
+---
+
+# STATES
+
+Every important screen must include designs for:
+
+1. Normal
+2. Loading
+3. Empty
+4. Error
+5. Validation error
+6. Success
+7. Disabled
+8. Offline/network failure
+
+Do not design only the happy path.
+
+---
+
+# UX PRINCIPLES
+
+Follow these principles:
+
+1. One primary action per screen.
+2. Minimize cognitive load.
+3. Keep onboarding short.
+4. Make the AI companion the emotional center of the product.
+5. Use progressive disclosure for advanced settings.
+6. Avoid clutter.
+7. Use subtle animations and transitions.
+8. Make privacy and memory controls easy to understand.
+9. Maintain consistent navigation.
+10. Make every interaction feel responsive.
+
+---
+
+# ACCESSIBILITY
+
+Design for:
+
+* Minimum accessible touch targets
+* Sufficient text contrast
+* Dynamic text considerations
+* Screen-reader-friendly hierarchy
+* Clear focus states
+* Avoiding color-only communication
+* Accessible form validation
+
+---
+
+# ANDROID / COMPOSE IMPLEMENTATION AWARENESS
+
+The final design must be practical to implement using:
+
+Kotlin
+Jetpack Compose
+Material 3
+MVVM
+Navigation Compose
+Hilt
+Coroutines + Flow
+Retrofit / OkHttp
+Room
+DataStore
+Coil
+
+Design reusable components rather than unique visual elements for every screen.
+
+The design should naturally map to:
+
+UI
+→ ViewModel
+→ Use Case
+→ Repository
+→ Remote / Local Data Source
+
+Do not introduce UI patterns that require an unusual or unrealistic Android architecture.
+
+---
+
+# DESIGN DELIVERABLE
+
+Create a complete Android design specification containing:
+
+1. Design system
+2. Color tokens
+3. Typography tokens
+4. Spacing system
+5. Component library
+6. Navigation structure
+7. Screen inventory
+8. Wireframes
+9. High-fidelity screen designs
+10. User flows
+11. Loading states
+12. Empty states
+13. Error states
+14. Form validation states
+15. Dark mode
+16. Accessibility considerations
+17. Responsive behavior
+
+For every screen specify:
+
+* Screen purpose
+* Layout hierarchy
+* Components
+* User actions
+* Navigation destination
+* Important states
+* Interaction behavior
+
+---
+
+# VISUAL DIRECTION
+
+Use a premium, modern, emotionally warm visual language.
+
+Prefer:
+
+* Soft depth
+* Refined gradients used sparingly
+* Beautiful companion imagery
+* Rounded cards
+* Elegant typography
+* Subtle micro-interactions
+* Generous spacing
+* High-quality avatars
+* Sophisticated surfaces
+
+Avoid:
+
+* Excessive pink
+* Cartoonish UI
+* Cheap dating-app aesthetics
+* Excessive glassmorphism
+* Excessive gradients
+* Clutter
+* Generic AI robot imagery
+* Generic chatbot UI
+* Excessive decorative hearts
+
+The final result should look like a **serious premium consumer technology product with an emotionally personal experience**.
+
+Design the system so that additional features can be added later without redesigning the entire application.
