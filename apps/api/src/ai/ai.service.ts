@@ -2,6 +2,7 @@ import {
     Inject,
     Injectable,
     NotFoundException,
+    forwardRef,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -21,6 +22,7 @@ export class AiService {
         @Inject(CHAT_PROVIDER)
         private readonly chatProvider: ChatProvider,
 
+        @Inject(forwardRef(() => MemoryContextService))
         private readonly memoryContextService:
             MemoryContextService,
     ) { }

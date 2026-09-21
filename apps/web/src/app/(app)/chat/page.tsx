@@ -1,12 +1,22 @@
 import { redirect } from "next/navigation";
 
+import { NoCompanion } from "@/components/shared/no-companion";
 import { serverApi } from "@/lib/server/api";
 import type { Companion, Conversation } from "@/types/api";
 
 export default async function ChatIndexPage() {
   const companions = await serverApi<Companion[]>("/avatars").catch(() => []);
   const companion = companions[0];
-  if (!companion) redirect("/onboarding");
+  if (!companion) {
+    return (
+      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5 py-8">
+        <NoCompanion
+          title="No one to talk to yet"
+          description="Create a companion first — then this tab opens the latest conversation."
+        />
+      </div>
+    );
+  }
 
   const conversations = await serverApi<Conversation[]>("/conversations").catch(
     () => [],

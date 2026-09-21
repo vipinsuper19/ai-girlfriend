@@ -1,9 +1,11 @@
 # Design Task 2 — Module 1: Authentication
 
-Six screens: Splash, Welcome, Login, Signup, Forgot Password, Reset Password.
+Seven screens: Splash, Welcome, Google sign-in, Email sign-in, Signup, Forgot Password, Reset
+Password.
 
 Built from the tokens in [`01-foundation.md`](./01-foundation.md). Visual reference with every
-screen and state rendered in both themes: `canvases/android-auth-screens.canvas.tsx`.
+screen and state rendered in both themes: `canvases/android-auth-screens.canvas.tsx`. The two login
+screens: `canvases/android-login-google-email.canvas.tsx`.
 
 Endpoint behaviour below is quoted from `apps/api/src/auth/auth.service.ts` and the DTOs in
 `apps/api/src/dto/`, not from the PRD.
@@ -16,10 +18,10 @@ Endpoint behaviour below is quoted from `apps/api/src/auth/auth.service.ts` and 
 **no forgot-password endpoint, no reset-password endpoint, and no mail transport anywhere in the
 repo**.
 
-Screens 5 and 6 are fully specified and drawn so they are ready the day the backend lands, but they
-cannot function in a shipping build. **The "Forgot password?" link on Login must sit behind a feature
-flag that is off by default.** A link into a dead end is worse than no link — it teaches users the
-app is broken at the exact moment they are already locked out and frustrated.
+Forgot and Reset are fully specified and drawn so they are ready the day the backend lands, but they
+cannot function in a shipping build. **The "Forgot password?" link on Email sign-in must sit behind a
+feature flag that is off by default.** A link into a dead end is worse than no link — it teaches
+users the app is broken at the exact moment they are already locked out and frustrated.
 
 What the backend needs before these two screens can be enabled:
 
@@ -31,8 +33,24 @@ What the backend needs before these two screens can be enabled:
 - Mail transport, plus a deep link registered for `aicompanion://reset-password?token=…`.
 - Rate limiting on both — these are the two endpoints most worth abusing.
 
-Google sign-in is deferred (decision recorded in `ANDROID_PLAN.md` §9), so Welcome has no provider
-buttons. The layout reserves vertical space for a provider row so adding it later is not a redesign.
+Google and email are **separate screens**. Welcome stays a brand screen — Get started / I already
+have an account — and lands on Google sign-in. Email is reached from that screen, not stacked under
+the Google button. Visual reference: `canvases/android-login-google-email.canvas.tsx`.
+
+`POST /auth/google` does not exist yet. The schema already has `AuthProvider.GOOGLE` and an
+`Account` table; the leftover Android `AuthRepoImpl` talks to Firebase, which is the wrong backend.
+The Google button is specified and drawn, but it must not ship as a dead control. What the backend
+needs:
+
+- `POST /auth/google` taking `{ idToken }`, verifying it against Google, returning the same
+  `{ user, accessToken, refreshToken }` envelope as email login.
+- Create-or-login: a new Google identity creates the user with `passwordHash = null` and an
+  `Account(GOOGLE)` row.
+- **Do not auto-link.** If that email already has a password account and no Google `Account` row,
+  return a distinct error (not a generic 409) so the client can ask for the password.
+- A distinct error when a Google-only user (`passwordHash` null) posts to `/auth/login`.
+- Forward a machine-readable `code` — `GOOGLE_UNLINKED_EMAIL` and `GOOGLE_ONLY_ACCOUNT` — because
+  `HttpExceptionFilter` currently drops codes and these two 409s would otherwise be indistinguishable.
 
 ---
 
@@ -98,17 +116,69 @@ gradient permitted anywhere in the design system, and it is functional rather th
 **States.** Normal; image loading (a `surfaceContainerHigh` block, never a spinner); image failed
 (`primaryContainer` with the monogram — the screen must still work).
 
-**Navigation.** Get started → Signup. Log in → Login. Terms and Privacy open a Custom Tab.
+**Navigation.** Get started → Signup. I already have an account → Google sign-in (`Login`). If Play
+Services is missing, skip Google and open Email sign-in (`LoginEmail`) directly. Terms and Privacy
+open a Custom Tab.
 
 ---
 
-### 2.3 Login
+### 2.3 Google sign-in (`Login`)
 
-**Purpose.** Authenticate an existing user in as few taps as possible.
+**Purpose.** The login entry. One job: continue with Google, or leave for email.
 
-**Layout.** Back arrow. `headlineMedium` "Welcome back" with a one-line subtitle. Email field.
-Password field with visibility toggle. Right-aligned "Forgot password?" `TextButton`.
-`PrimaryButton` "Log in". Centred footer: "New here? Create an account".
+**Layout.** Back arrow. Centred monogram. `headlineMedium` "Welcome back". One supporting line.
+Outlined `GoogleButton` "Continue with Google". `TextButton` **"Sign in with email"** underneath —
+that is the only email affordance on this screen. Footer: "New here? Create an account".
+
+No email field. No password field. No *or* divider. Facebook, Twitter, and Apple are not on this
+product.
+
+**Components.** `GoogleButton`, `TextButton`, `Banner`.
+
+**Google is sign-in-or-register.** A new Google identity creates the user with `passwordHash = null`
+and routes to Onboarding. A returning one goes to Home or Onboarding depending on companion.
+
+**Credential Manager is system UI.** We do not design the account picker. While it is up, the button
+shows "Connecting…" and "Sign in with email" is disabled so the two paths cannot race. Dismissing
+the sheet is not an error — return to rest with no banner.
+
+**Client wiring.** Credential Manager `GetGoogleIdOption` → ID token → `POST /auth/google`. Do not
+send the token to Firebase. The leftover `AuthRepoImpl.signInWithGoogle` in the MyBase scaffold is
+the wrong stack.
+
+**If Play Services is missing, do not show this screen.** Welcome opens Email sign-in directly. A
+Google screen whose only working control is "Sign in with email" is a wasted step.
+
+**States.**
+
+| State | Treatment |
+|---|---|
+| Rest | Google enabled, "Sign in with email" enabled |
+| Submitting | Google shows "Connecting…", email option disabled, back blocked |
+| Google cancelled | Rest, no banner |
+| Google failed | Error banner: *"Google sign-in didn't go through. Try again, or sign in with email."* |
+| Unlinked email (password account already exists) | Warning banner + action that **pushes Email sign-in** with the address pre-filled. Do not auto-link |
+| Offline | Warning banner, Google disabled, email option still works (it will fail on submit if still offline) |
+| Timeout (20s) | Banner: "That took too long." with Retry |
+| Success | Onboarding or Home; auth graph popped |
+
+**Navigation.** Back → Welcome. Sign in with email → `LoginEmail`. Create an account → Signup.
+Unlinked-email 409 → `LoginEmail(email=…)`.
+
+---
+
+### 2.3b Email sign-in (`LoginEmail`)
+
+**Purpose.** Authenticate with email and password. Reached only from Google sign-in (or from Welcome
+when Google is unavailable).
+
+**Layout.** Back arrow. `headlineMedium` "Sign in with email" with a one-line subtitle. Email field.
+Password field with visibility toggle. Right-aligned "Forgot password?" `TextButton` (feature-flagged,
+see §1). Filled `PrimaryButton` "Log in". Footer: "Prefer Google? Go back" — omitted when this
+screen was opened because Play Services is missing.
+
+**No Google button on this screen.** Back (and the footer) return to Google. Putting the provider
+on both screens recreates the stacked layout we just split.
 
 **Components.** `CompanionTextField`, `PasswordField`, `TextButton`, `PrimaryButton`, `Banner`.
 
@@ -118,21 +188,28 @@ correct: distinguishing them hands an attacker an account-enumeration oracle. Si
 genuinely cannot know which field is wrong, marking either one red would be a lie. The banner reads
 *"Email or password is incorrect."* On failure the password clears and the email is kept.
 
+**A Google-only account on this form is sent back.** If `passwordHash` is null, a warning banner
+reads *"This email uses Google to sign in. There is no password on the account."* The action
+**pops to Google sign-in and starts Credential Manager**. Do not keep them on a form that cannot
+work.
+
 **States.**
 
 | State | Treatment |
 |---|---|
 | Rest | Empty fields, CTA enabled |
+| Pre-filled from Google | Email filled from the token, password focused |
 | Validation error | Inline field errors, focus moves to the first, TalkBack announces it |
 | Submitting | Fields disabled, button shows a spinner and keeps its width, back blocked |
-| Credentials rejected (401) | Error banner above the form, password cleared |
+| Credentials rejected (401) | Error banner, password cleared |
+| Google-only account (409) | Warning banner; action pops to `Login` and starts Google |
 | Server fault (5xx) | Banner with Retry, all input preserved |
 | Offline | Persistent warning banner, CTA disabled, auto-retry on reconnect |
 | Timeout (20s) | Banner: "That took too long." with Retry |
-| Success | Navigate; no success toast — arriving is the confirmation |
+| Success | Onboarding or Home; auth graph popped |
 
-**Navigation.** Success routes to Onboarding if the account has no companion, otherwise Home. The
-auth graph is popped entirely, so back does not return to Login.
+**Navigation.** Back → Google sign-in (`Login`), unless this screen was the entry because Play
+Services is missing, in which case Back → Welcome. Forgot password → Forgot (when flagged on).
 
 ---
 
@@ -140,9 +217,16 @@ auth graph is popped entirely, so back does not return to Login.
 
 **Purpose.** Create an account with the minimum fields the API actually requires.
 
-**Layout.** Back arrow. `headlineMedium` "Create your account". Name, Email, Password. Strength meter
-plus a short requirement list. Terms checkbox, unchecked by default. `PrimaryButton` "Create
-account". Footer: "Already have an account? Log in".
+**Layout.** Back arrow. `headlineMedium` "Create your account". The same outlined `GoogleButton`
+as Login, then the *or* divider, then Name, Email, Password. Strength meter plus a short requirement
+list. Terms checkbox, unchecked by default. `PrimaryButton` "Create account". Footer: "Already have
+an account? Log in".
+
+Google on Signup is the same sign-in-or-register path as Login — a returning Google user who landed
+here by mistake is signed in, not told the email is taken. Terms still apply: the first Google tap
+on a new identity must not create the account until Terms are checked. If they tap Google with Terms
+unchecked, show the same "Please accept the Terms to continue" error under the checkbox and do not
+open Credential Manager.
 
 **No confirm-password field.** The visibility toggle solves the typo problem that confirm fields
 exist for, at half the friction, and the backend has no `confirmPassword` in `RegisterDto` anyway.
@@ -182,8 +266,8 @@ the backend too: it must return 202 in both cases, and in the same amount of tim
 **States.** Rest; invalid email; submitting; **sent** (a terminal success screen with a mail icon, the
 address echoed back, and a resend button on a 60-second cooldown); offline; server fault.
 
-**Navigation.** Back to log in → Login. Success stays on the terminal state rather than auto-routing —
-the user's next action is in their email client, not in the app.
+**Navigation.** Back to log in → Email sign-in (`LoginEmail`). Success stays on the terminal state
+rather than auto-routing — the user's next action is in their email client, not in the app.
 
 ---
 
@@ -206,7 +290,7 @@ whether a confirm field exists.
 with a clock icon, an explanation, and a "Request a new link" CTA — never a form); rest; mismatch;
 too short; submitting; success; server fault.
 
-**On success**, route to Login with a snackbar reading "Password updated. Log in with your new
+**On success**, route to Email sign-in with a snackbar reading "Password updated. Log in with your new
 password." Do **not** auto-login: the reset endpoint does not return tokens, and inventing a
 session here would mean a second silent request that can fail after we have already claimed success.
 
@@ -250,7 +334,11 @@ Every failure the client can receive, and the copy it becomes.
 
 | Trigger | HTTP | Server message | UI |
 |---|---|---|---|
-| Wrong password / unknown email | 401 | `Invalid email or password` | Banner: "Email or password is incorrect." Password cleared. |
+| Wrong password / unknown email | 401 | `Invalid email or password` | Email screen banner: "Email or password is incorrect." Password cleared. |
+| Google-only account used password | 409 | `GOOGLE_ONLY_ACCOUNT` | Email screen warning; action pops to Google sign-in and starts Credential Manager |
+| Google tap on an existing email account | 409 | `GOOGLE_UNLINKED_EMAIL` | Google screen warning; action **pushes Email sign-in** with the address pre-filled. Do not auto-link. |
+| Google ID token rejected | 401 | (new endpoint) | Google screen banner: "Google sign-in didn't go through." + Try Google again |
+| User cancelled Credential Manager | — | — | Silent. Google screen rest. No banner. |
 | Email already registered | 409 | `Email is already registered` | Field error on email + "Log in instead" |
 | DTO validation failed | 400 | `string[]` | Should be unreachable. Fallback: banner with the first message. |
 | Refresh invalid/expired | 401 | `Invalid or expired refresh token` | Silent at Splash — clear store, route to Welcome |
@@ -264,10 +352,10 @@ everything else returns a scalar. The response model must accept both or the fir
 crashes deserialization.
 
 **The error envelope drops the machine-readable code.** `HttpExceptionFilter` forwards only `message`
-and `error`, so the client branches on HTTP status and an English sentence. For this module that is
-survivable — on these endpoints 401 and 409 each mean exactly one thing. It stops being survivable as
-soon as a second failure mode shares a status, which is why forwarding `code` is on the backend fix
-list in `ANDROID_PLAN.md` §3. Do not build a habit of matching on message text.
+and `error`, so the client branches on HTTP status and an English sentence. That was survivable when
+401 and 409 each meant one thing. Google adds a second 409 (`GOOGLE_UNLINKED_EMAIL` vs
+`GOOGLE_ONLY_ACCOUNT` vs email-taken on signup), which is why forwarding `code` is now a blocker for
+this screen, not a nice-to-have. Do not build a habit of matching on message text.
 
 ---
 
@@ -326,8 +414,8 @@ already persist. A checkbox implying the user has a choice they do not have is w
 **Edge-to-edge.** All six screens draw behind the system bars with transparent bars and
 `safeDrawingPadding()` on content.
 
-**`FLAG_SECURE`** is set on Signup, Login, and Reset so passwords do not appear in the recents
-thumbnail.
+**`FLAG_SECURE`** is set on Signup, Email sign-in, and Reset so passwords do not appear in the recents
+thumbnail. Google sign-in has no password field and does not need it.
 
 ---
 
@@ -358,7 +446,13 @@ it has the most vertical content — and it must scroll rather than clip.
 
 Settled here: no confirm-password on Signup but yes on Reset; password rules match the backend
 exactly; submit stays enabled while invalid; 401 renders as a banner rather than a field error; no
-"keep me signed in".
+"keep me signed in"; **Google and email are separate screens**, Google first, email reached from
+"Sign in with email", no auto-link, skip Google when Play Services is missing. The earlier same-screen
+layout is withdrawn.
+
+Open: linking Google from Settings after a password login (needs `POST /auth/google/link`). Without
+it, the "link afterwards" copy in the unlinked-email banner is a promise the app cannot keep —
+until that endpoint exists, drop the second sentence and stop at "Log in with your password."
 
 Open:
 

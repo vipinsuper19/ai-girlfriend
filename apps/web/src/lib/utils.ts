@@ -33,11 +33,22 @@ export function weeksTogether(createdAt: string | Date | null | undefined): stri
   return `${weeks} weeks together`;
 }
 
+const AUTH_PAGES = ["/login", "/signup", "/forgot-password", "/reset-password"];
+
 export function safeNextPath(value: string | null | undefined): string | null {
   if (!value) return null;
   if (!value.startsWith("/") || value.startsWith("//")) return null;
   if (value.includes("://")) return null;
   return value;
+}
+
+export function safeAppPath(value: string | null | undefined): string {
+  const next = safeNextPath(value);
+  if (!next) return "/home";
+  const pathOnly = next.split("?")[0] ?? next;
+  if (pathOnly.startsWith("/api")) return "/home";
+  if (AUTH_PAGES.includes(pathOnly)) return "/home";
+  return next;
 }
 
 export function errorMessage(payload: unknown, fallback = "Something went wrong"): string {

@@ -2,7 +2,7 @@ import { jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { ACCESS_COOKIE, SESSION_COOKIE } from "@/lib/server/cookies";
-import { safeNextPath } from "@/lib/utils";
+import { safeAppPath, safeNextPath } from "@/lib/utils";
 
 const PUBLIC_PREFIXES = [
   "/",
@@ -13,6 +13,7 @@ const PUBLIC_PREFIXES = [
 ];
 
 const AUTH_ONLY = ["/login", "/signup", "/forgot-password", "/reset-password"];
+const REFRESH_PATH = "/api/bff/auth/refresh";
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PREFIXES.includes(pathname)) return true;
@@ -42,16 +43,34 @@ export async function middleware(request: NextRequest) {
     accessValid = true;
   }
 
-  const signedIn = accessValid || Boolean(session);
+  const hasSession = Boolean(session);
+  const isRefresh = pathname === REFRESH_PATH;
 
-  if (!signedIn && !isPublic(pathname)) {
+  if (
+    !accessValid &&
+    hasSession &&
+    !isRefresh &&
+    request.method === "GET" &&
+    (!isPublic(pathname) || AUTH_ONLY.includes(pathname))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = REFRESH_PATH;
+    const next = AUTH_ONLY.includes(pathname)
+      ? safeAppPath(request.nextUrl.searchParams.get("next"))
+      : safeAppPath(`${pathname}${search}`);
+    url.search = "";
+    url.searchParams.set("next", next);
+    return NextResponse.redirect(url);
+  }
+
+  if (!accessValid && !hasSession && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(url);
   }
 
-  if (signedIn && AUTH_ONLY.includes(pathname)) {
+  if (accessValid && AUTH_ONLY.includes(pathname)) {
     const next = safeNextPath(request.nextUrl.searchParams.get("next"));
     const url = request.nextUrl.clone();
     url.pathname = next ?? "/home";
