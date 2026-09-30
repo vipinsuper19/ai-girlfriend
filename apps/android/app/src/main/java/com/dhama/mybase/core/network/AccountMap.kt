@@ -90,6 +90,12 @@ fun relativeChatTime(epochMs: Long, nowMs: Long): String {
 }
 
 @Serializable
+data class PostedMessages(
+    val userMessage: RemoteMessage? = null,
+    val assistantMessage: RemoteMessage? = null,
+)
+
+@Serializable
 data class RemoteMessage(
     val id: Int,
     val role: String = "USER",

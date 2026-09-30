@@ -100,3 +100,24 @@ fun personalityUpdatedLine(name: String): String {
     val who = name.trim()
     return if (who.isEmpty()) "Her personality was updated" else "$who's personality was updated"
 }
+
+enum class StreamRecovery {
+    Finished,
+    Fallback,
+    Failed,
+}
+
+/**
+ * A normal POST is safe only when the stream never accepted the user's line.
+ * After that, another POST would store the same message twice.
+ */
+fun streamRecovery(userAccepted: Boolean, replyStarted: Boolean, finished: Boolean): StreamRecovery {
+    if (finished) return StreamRecovery.Finished
+    if (!userAccepted && !replyStarted) return StreamRecovery.Fallback
+    return StreamRecovery.Failed
+}
+
+/** Shown once, under a reply that arrived from the non-streaming route. */
+fun droppedStreamLine(): String {
+    return "The live connection dropped, so this reply arrived all at once."
+}

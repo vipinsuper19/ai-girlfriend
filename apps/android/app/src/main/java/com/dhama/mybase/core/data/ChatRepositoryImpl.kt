@@ -1,14 +1,18 @@
 package com.dhama.mybase.core.data
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.StreamRecovery
 import com.dhama.mybase.core.chat.chunkReply
+import com.dhama.mybase.core.chat.droppedStreamLine
 import com.dhama.mybase.core.chat.localReply
+import com.dhama.mybase.core.chat.streamRecovery
 import com.dhama.mybase.core.db.dao.ChatMessageDao
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.serverRecordId
+import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.voice.resolveVoiceUrl
 import com.dhama.mybase.core.voice.speakBlockReason
 import kotlinx.coroutines.delay
@@ -137,9 +141,10 @@ class ChatRepositoryImpl(
 
     private suspend fun sendRemote(text: String, conversationId: Int) {
         val now = System.currentTimeMillis()
+        val userLocalId = UUID.randomUUID().toString()
         dao.upsert(
             ChatMessageEntity(
-                id = UUID.randomUUID().toString(),
+                id = userLocalId,
                 role = ROLE_USER,
                 text = text,
                 createdAtEpochMs = now,
@@ -148,6 +153,7 @@ class ChatRepositoryImpl(
         )
         val assistantId = UUID.randomUUID().toString()
         val built = StringBuilder()
+        var userAccepted = false
         var finished = false
         try {
             dao.upsert(
@@ -162,6 +168,7 @@ class ChatRepositoryImpl(
             api.streamMessage(conversationId, text) { event ->
                 when (event) {
                     is ChatStreamEvent.Delta -> {
+                        userAccepted = true
                         built.append(event.content)
                         dao.upsert(
                             ChatMessageEntity(
@@ -189,34 +196,94 @@ class ChatRepositoryImpl(
                         )
                     }
                     is ChatStreamEvent.Error -> throw ApiStatusException(0, event.message, null)
-                    is ChatStreamEvent.UserMessage -> Unit
+                    is ChatStreamEvent.UserMessage -> userAccepted = true
                 }
             }
-            if (!finished) {
-                dao.upsert(
-                    ChatMessageEntity(
-                        id = assistantId,
-                        role = ROLE_ASSISTANT,
-                        text = built.toString().ifBlank { "Something went wrong." },
-                        createdAtEpochMs = now + 1,
-                        delivery = DELIVERY_FAILED,
-                    ),
-                )
+            when (streamRecovery(userAccepted, built.isNotEmpty(), finished)) {
+                StreamRecovery.Finished -> Unit
+                StreamRecovery.Fallback -> deliverBlocking(conversationId, text, userLocalId, assistantId, now)
+                StreamRecovery.Failed -> markReplyFailed(assistantId, built.toString(), now, "Something went wrong.")
             }
         } catch (error: CancellationException) {
             dao.delete(assistantId)
             throw error
         } catch (error: Exception) {
-            dao.upsert(
-                ChatMessageEntity(
-                    id = assistantId,
-                    role = ROLE_ASSISTANT,
-                    text = built.toString().ifBlank { error.message ?: "Something went wrong." },
-                    createdAtEpochMs = now + 1,
-                    delivery = DELIVERY_FAILED,
-                ),
-            )
+            if (streamRecovery(userAccepted, built.isNotEmpty(), finished) == StreamRecovery.Fallback) {
+                try {
+                    deliverBlocking(conversationId, text, userLocalId, assistantId, now)
+                } catch (cancelled: CancellationException) {
+                    dao.delete(assistantId)
+                    throw cancelled
+                } catch (fallback: Exception) {
+                    markReplyFailed(assistantId, "", now, fallback.message ?: "Something went wrong.")
+                }
+            } else {
+                markReplyFailed(assistantId, built.toString(), now, error.message ?: "Something went wrong.")
+            }
         }
+    }
+
+    private suspend fun deliverBlocking(
+        conversationId: Int,
+        text: String,
+        userLocalId: String,
+        assistantId: String,
+        now: Long,
+    ) {
+        val posted = api.postMessage(conversationId, text)
+        val user = posted.userMessage?.toRestored(api.origin())
+        val assistant = posted.assistantMessage?.toRestored(api.origin())
+        if (user == null || assistant == null || assistant.text.isBlank()) {
+            throw ApiStatusException(0, "Couldn't send that.", null)
+        }
+        val userAt = user.createdAtEpochMs.takeIf { it > 0L } ?: now
+        val assistantAt = assistant.createdAtEpochMs.takeIf { it > userAt } ?: userAt + 1
+        dao.delete(userLocalId)
+        dao.delete(assistantId)
+        dao.upsert(
+            ChatMessageEntity(
+                id = user.id,
+                role = user.role,
+                text = user.text.ifBlank { text },
+                createdAtEpochMs = userAt,
+                delivery = DELIVERY_SENT,
+                kind = user.kind,
+                audioPath = user.audioPath,
+            ),
+        )
+        dao.upsert(
+            ChatMessageEntity(
+                id = assistant.id,
+                role = assistant.role,
+                text = assistant.text,
+                createdAtEpochMs = assistantAt,
+                delivery = DELIVERY_SENT,
+                kind = assistant.kind,
+                audioPath = assistant.audioPath,
+            ),
+        )
+        dao.upsert(
+            ChatMessageEntity(
+                id = UUID.randomUUID().toString(),
+                role = ROLE_SYSTEM,
+                text = droppedStreamLine(),
+                createdAtEpochMs = assistantAt + 1,
+                delivery = DELIVERY_SENT,
+                kind = ChatMessageEntity.KIND_SYSTEM,
+            ),
+        )
+    }
+
+    private suspend fun markReplyFailed(assistantId: String, text: String, now: Long, fallback: String) {
+        dao.upsert(
+            ChatMessageEntity(
+                id = assistantId,
+                role = ROLE_ASSISTANT,
+                text = text.ifBlank { fallback },
+                createdAtEpochMs = now + 1,
+                delivery = DELIVERY_FAILED,
+            ),
+        )
     }
 
     private suspend fun sendVoiceRemote(path: String, durationMs: Long, conversationId: Int) {

@@ -213,6 +213,16 @@ class ApiClient(
         }
     }
 
+    suspend fun postMessage(conversationId: Int, content: String): PostedMessages {
+        return withAuth { access ->
+            val payload = json.encodeToString(MessageBody(content))
+            unwrapData(
+                execute(authed("POST", "conversations/$conversationId/messages", payload, access)),
+                json,
+            )
+        }
+    }
+
     suspend fun synthesize(companionId: Int, text: String): String {
         return withAuth { access ->
             val payload = json.encodeToString(SynthesizeBody(companionId, text))

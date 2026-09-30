@@ -1,10 +1,13 @@
 package com.dhama.mybase
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
-import com.dhama.mybase.core.chat.personalityUpdatedLine
+import com.dhama.mybase.core.chat.StreamRecovery
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.consumeSse
+import com.dhama.mybase.core.chat.droppedStreamLine
 import com.dhama.mybase.core.chat.localReply
+import com.dhama.mybase.core.chat.personalityUpdatedLine
+import com.dhama.mybase.core.chat.streamRecovery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -57,6 +60,18 @@ class ChatStreamTest {
         assertEquals(reply, chunks.joinToString(""))
         assertTrue(reply.contains("Aria"))
         assertTrue(reply.contains("The demo went well"))
+    }
+
+    @Test
+    fun aDroppedStreamFallsBackOnlyBeforeTheServerAcceptsTheLine() {
+        assertEquals(StreamRecovery.Finished, streamRecovery(userAccepted = true, replyStarted = true, finished = true))
+        assertEquals(StreamRecovery.Fallback, streamRecovery(userAccepted = false, replyStarted = false, finished = false))
+        assertEquals(StreamRecovery.Failed, streamRecovery(userAccepted = true, replyStarted = false, finished = false))
+        assertEquals(StreamRecovery.Failed, streamRecovery(userAccepted = true, replyStarted = true, finished = false))
+        assertEquals(
+            "The live connection dropped, so this reply arrived all at once.",
+            droppedStreamLine(),
+        )
     }
 
     @Test
