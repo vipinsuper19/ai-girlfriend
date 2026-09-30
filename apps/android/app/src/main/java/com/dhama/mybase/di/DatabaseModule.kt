@@ -16,6 +16,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import javax.inject.Singleton
 import kotlin.jvm.java
 
@@ -48,7 +49,10 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideChatRepository(dao: ChatMessageDao): ChatRepository = ChatRepositoryImpl(dao)
+    fun provideChatRepository(
+        dao: ChatMessageDao,
+        @ApplicationContext context: Context,
+    ): ChatRepository = ChatRepositoryImpl(dao, File(context.filesDir, "voice-notes"))
 
     @Provides
     @Singleton

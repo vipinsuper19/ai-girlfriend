@@ -10,4 +10,14 @@ data class ChatMessageEntity(
     val text: String,
     val createdAtEpochMs: Long,
     val delivery: String,
-)
+    val kind: String = KIND_TEXT,
+    val audioPath: String = "",
+    val durationMs: Long = 0,
+) {
+    companion object {
+        const val KIND_TEXT = "TEXT"
+        const val KIND_AUDIO = "AUDIO"
+        const val KIND_IMAGE = "IMAGE"
+        const val KIND_SYSTEM = "SYSTEM"
+    }
+}

@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.firebase.database)
     implementation(libs.firebase.messaging)
     implementation(libs.androidx.datastore)
+    implementation(libs.media3.exoplayer)
 
     implementation(libs.hilt.android)
     implementation(libs.hilt.android.compose)

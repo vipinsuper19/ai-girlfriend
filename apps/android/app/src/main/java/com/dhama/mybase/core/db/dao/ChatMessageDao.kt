@@ -15,6 +15,9 @@ interface ChatMessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(message: ChatMessageEntity)
 
+    @Query("SELECT * FROM chat_messages WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): ChatMessageEntity?
+
     @Query("DELETE FROM chat_messages WHERE id = :id")
     suspend fun delete(id: String)
 

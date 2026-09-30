@@ -13,7 +13,7 @@ import com.dhama.mybase.core.db.entity.User
 
 @Database(
     entities = [User::class, Notes::class, ChatMessageEntity::class, MemoryEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

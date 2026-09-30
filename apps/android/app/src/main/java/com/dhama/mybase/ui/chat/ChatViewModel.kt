@@ -56,6 +56,13 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun sendVoice(path: String, durationMs: Long) {
+        if (path.isBlank() || sendJob?.isActive == true) return
+        viewModelScope.launch {
+            chatRepository.sendVoice(path, durationMs)
+        }
+    }
+
     fun stop() {
         sendJob?.cancel()
         sendJob = null

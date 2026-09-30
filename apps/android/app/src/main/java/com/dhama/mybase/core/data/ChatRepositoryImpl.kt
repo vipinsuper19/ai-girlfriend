@@ -8,12 +8,14 @@ import com.dhama.mybase.core.domain.ChatRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
 
 class ChatRepositoryImpl(
     private val dao: ChatMessageDao,
+    private val voiceDir: File,
 ) : ChatRepository {
 
     override fun observe(): Flow<List<ChatMessageEntity>> = dao.observe()
@@ -101,12 +103,35 @@ class ChatRepositoryImpl(
         }
     }
 
+    override suspend fun sendVoice(path: String, durationMs: Long) {
+        if (path.isBlank()) return
+        dao.upsert(
+            ChatMessageEntity(
+                id = UUID.randomUUID().toString(),
+                role = ROLE_USER,
+                text = "",
+                createdAtEpochMs = System.currentTimeMillis(),
+                delivery = DELIVERY_SENT,
+                kind = ChatMessageEntity.KIND_AUDIO,
+                audioPath = path,
+                durationMs = durationMs.coerceAtLeast(0),
+            ),
+        )
+    }
+
     override suspend fun delete(id: String) {
+        dao.find(id)?.let { deleteAudio(it.audioPath) }
         dao.delete(id)
     }
 
     override suspend fun clear() {
+        voiceDir.listFiles()?.forEach { it.delete() }
         dao.clear()
+    }
+
+    private fun deleteAudio(path: String) {
+        if (path.isBlank()) return
+        File(path).delete()
     }
 
     companion object {
