@@ -55,6 +55,9 @@ class SettingsViewModel @Inject constructor(
     val messages = chatRepository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val planLabel = dataStoreRepo.getString(PreferencesKeys.SUBSCRIPTION_PLAN, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
     private val _archived = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val archived = _archived.asSharedFlow()
 
@@ -72,6 +75,18 @@ class SettingsViewModel @Inject constructor(
 
     private val _photoMessage = MutableStateFlow<String?>(null)
     val photoMessage = _photoMessage.asStateFlow()
+
+    fun refreshPlan() {
+        viewModelScope.launch {
+            try {
+                accountSync.refreshPlan()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // The last saved plan stays on screen.
+            }
+        }
+    }
 
     fun setThemeMode(mode: String) {
         viewModelScope.launch { dataStoreRepo.saveString(PreferencesKeys.THEME_MODE, mode) }
@@ -157,6 +172,7 @@ class SettingsViewModel @Inject constructor(
             authRepository.logout()
             dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
             dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, "")
+            dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
             companionRepository.clear()
             chatRepository.clear()
             memoryRepository.clear()

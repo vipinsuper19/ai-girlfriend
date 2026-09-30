@@ -36,4 +36,5 @@ object PreferencesKeys {
     val IS_GOAL_SET = booleanPreferencesKey("is_goal_set")
     val SCREEN_PRIVACY = booleanPreferencesKey("screen_privacy")
     val USAGE_WARNING_PERIOD = stringPreferencesKey("usage_warning_period")
+    val SUBSCRIPTION_PLAN = stringPreferencesKey("subscription_plan")
 }

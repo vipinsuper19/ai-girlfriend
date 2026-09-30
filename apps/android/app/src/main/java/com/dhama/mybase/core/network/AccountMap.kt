@@ -141,6 +141,24 @@ data class RemoteUser(
     val displayName: String? = null,
 )
 
+@Serializable
+data class RemoteSubscription(
+    val plan: String = "FREE",
+    val status: String = "",
+)
+
+fun planLabel(plan: String): String = when (plan.trim().uppercase()) {
+    "PREMIUM" -> "Premium"
+    "PREMIUM_PLUS" -> "Premium Plus"
+    "FREE", "" -> "Free"
+    else -> plan.trim()
+}
+
+fun planCardStatus(cardTitle: String, currentLabel: String): String {
+    val current = currentLabel.ifBlank { "Free" }
+    return if (cardTitle == current) "Current plan" else "Read only"
+}
+
 fun epochMillis(value: String?): Long {
     if (value.isNullOrBlank()) return 0L
     return runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)

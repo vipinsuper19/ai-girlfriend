@@ -36,6 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -62,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.dhama.mybase.core.memory.togetherLine
 import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
 import com.dhama.mybase.core.network.avatarPhotoError
+import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
@@ -87,6 +89,7 @@ fun YouSettingsScreen(
     viewModel: SettingsViewModel = rememberSettingsViewModel(),
 ) {
     val displayName by viewModel.displayName.collectAsState()
+    val plan by viewModel.planLabel.collectAsState()
     val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
     val privacy by viewModel.screenPrivacy.collectAsState()
@@ -149,7 +152,7 @@ fun YouSettingsScreen(
         DisabledRow("Email", email.ifBlank { "No email-change endpoint" })
         DisabledRow("Change password", "No endpoint yet")
         SectionLabel("Subscription")
-        SettingsRow("Plan", "Free", onClick = onPlans)
+        SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
         SectionLabel("App")
         Text("Theme", style = MaterialTheme.typography.bodyLarge)
         ThemePicker(selected = theme.ifBlank { "system" }, onSelect = viewModel::setThemeMode)
@@ -419,6 +422,8 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
 fun SubscriptionScreen(onBack: () -> Unit) {
     val viewModel = rememberSettingsViewModel()
     val messages by viewModel.messages.collectAsState()
+    val plan by viewModel.planLabel.collectAsState()
+    LaunchedEffect(Unit) { viewModel.refreshPlan() }
     val companion by viewModel.companion.collectAsState()
     val usage = monthUsage(
         messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
@@ -448,11 +453,11 @@ fun SubscriptionScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         PaywallCard(name = name, resetLabel = resetLabel(usage.resetEpochMs))
         Spacer(Modifier.height(16.dp))
-        PlanCard("Free", "Current plan", listOf("100 messages", "10 voice minutes", "5 images"))
-        PlanCard("Premium", "Read only", listOf("Unlimited messages", "300 voice minutes", "100 images", "1,200 audio call minutes"))
+        PlanCard("Free", planCardStatus("Free", plan), listOf("100 messages", "10 voice minutes", "5 images"))
+        PlanCard("Premium", planCardStatus("Premium", plan), listOf("Unlimited messages", "300 voice minutes", "100 images", "1,200 audio call minutes"))
         PlanCard(
             "Premium Plus",
-            "Read only",
+            planCardStatus("Premium Plus", plan),
             listOf(
                 "Unlimited messages",
                 "1,000 voice minutes",

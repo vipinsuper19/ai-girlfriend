@@ -101,6 +101,7 @@ fun MainShell(
     val lastReply by viewModel.lastReply.collectAsState()
     val usage by viewModel.usage.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
+    val planLabel by viewModel.planLabel.collectAsState()
     val settings = rememberSettingsViewModel()
     val memoryViewModel: MemoryViewModel = hiltViewModel()
     val pendingDelete by memoryViewModel.pendingDelete.collectAsState()
@@ -167,6 +168,7 @@ fun MainShell(
                         lastReply = lastReply,
                         usage = usage,
                         warningDismissed = warningDismissed,
+                        planLabel = planLabel,
                         onDismissWarning = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
                         onTalk = { tab = MainTab.Chat.ordinal },
                         onMemories = { tab = MainTab.Memory.ordinal },
@@ -202,6 +204,7 @@ private fun HomeTab(
     lastReply: String?,
     usage: MonthUsage,
     warningDismissed: String,
+    planLabel: String,
     onDismissWarning: () -> Unit,
     onTalk: () -> Unit,
     onMemories: () -> Unit,
@@ -229,6 +232,13 @@ private fun HomeTab(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (planLabel.isNotBlank()) {
+                Text(
+                    planLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             IconButton(onClick = onSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }

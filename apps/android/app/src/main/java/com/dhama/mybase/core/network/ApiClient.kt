@@ -192,6 +192,12 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
     }
 
+    suspend fun currentSubscription(): RemoteSubscription {
+        return withAuth { access ->
+            unwrapData(execute(authed("GET", "subscriptions/current", null, access)))
+        }
+    }
+
     suspend fun getMe(): RemoteUser {
         return withAuth { access -> unwrapData(execute(authed("GET", "users/me", null, access))) }
     }

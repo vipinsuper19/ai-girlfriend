@@ -10,11 +10,14 @@ import com.dhama.mybase.core.network.RemoteAvatarSummary
 import com.dhama.mybase.core.network.RemoteMemory
 import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemotePersonality
+import com.dhama.mybase.core.network.RemoteSubscription
 import com.dhama.mybase.core.network.RemoteUser
 import com.dhama.mybase.core.network.decodeDataList
 import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.memoryForgetAction
+import com.dhama.mybase.core.network.planCardStatus
+import com.dhama.mybase.core.network.planLabel
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
@@ -149,5 +152,19 @@ class AccountMapTest {
             appearance = RemoteAppearance(avatarUrl = "/uploads/companions/4.jpg"),
         ).toSaved(conversationId = 9, nowEpochMs = 1L, origin = "http://10.0.2.2:3001")
         assertEquals("http://10.0.2.2:3001/uploads/companions/4.jpg", saved.avatarUrl)
+    }
+
+    @Test
+    fun planLabelAndCurrentCard() {
+        assertEquals("Free", planLabel("FREE"))
+        assertEquals("Premium", planLabel("premium"))
+        assertEquals("Premium Plus", planLabel("PREMIUM_PLUS"))
+        assertEquals("Current plan", planCardStatus("Free", ""))
+        assertEquals("Read only", planCardStatus("Premium", ""))
+        assertEquals("Current plan", planCardStatus("Premium Plus", "Premium Plus"))
+        val subscription = unwrapData<RemoteSubscription>(
+            """{"data":{"id":1,"plan":"PREMIUM","status":"ACTIVE","userId":3}}""",
+        )
+        assertEquals("Premium", planLabel(subscription.plan))
     }
 }

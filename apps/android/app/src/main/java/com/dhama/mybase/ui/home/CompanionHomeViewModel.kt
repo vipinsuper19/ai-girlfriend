@@ -68,6 +68,9 @@ class CompanionHomeViewModel @Inject constructor(
     val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
+    val planLabel = dataStoreRepo.getString(PreferencesKeys.SUBSCRIPTION_PLAN, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
     private val _loggedOut = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val loggedOut = _loggedOut.asSharedFlow()
 
@@ -84,6 +87,7 @@ class CompanionHomeViewModel @Inject constructor(
             repository.clear()
             chatRepository.clear()
             memoryRepository.clear()
+            dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
             _loggedOut.emit(Unit)
         }
     }
