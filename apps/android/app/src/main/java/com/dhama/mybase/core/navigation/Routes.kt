@@ -21,3 +21,9 @@ data object Login
 // Top-level tabs
 @Serializable
 data object Home
+
+@Serializable
+data object Onboarding
+
+@Serializable
+data object Main

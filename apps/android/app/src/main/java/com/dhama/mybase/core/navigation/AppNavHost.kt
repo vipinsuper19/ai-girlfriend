@@ -1,15 +1,16 @@
 package com.dhama.mybase.core.navigation
 
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.dhama.mybase.ui.screen.HomeScreen
+import com.dhama.mybase.ui.home.MainShell
+import com.dhama.mybase.ui.home.PostAuthDestination
+import com.dhama.mybase.ui.home.PostAuthViewModel
+import com.dhama.mybase.ui.onboarding.CompanionWizardScreen
 import com.dhama.mybase.ui.screen.LoginScreen
 import com.dhama.mybase.ui.screen.SignUpScreen
 import com.dhama.mybase.ui.screen.SplashScreen
@@ -30,24 +31,16 @@ fun AppNavHost(
             })
         }
 
-        // Gate → Onboarding or Main
         composable<Gate> {
-            // Replace with real checks (first run / auth)
-            val viewModel: OnBoardingViewModel = hiltViewModel() // Injected ViewModel
-            val isLoggedIn = viewModel.getLoggedInStatus().collectAsState(initial = false).value
-            val isGoalSet = viewModel.getGoalStatus().collectAsState(initial = false).value
-            Log.d("TAG", "AppNavHost: isLoggedIn $isLoggedIn isGoalSet $isGoalSet")
+            val viewModel: PostAuthViewModel = hiltViewModel()
             LaunchedEffect(Unit) {
-                when {
-                    !isLoggedIn -> navController.navigate(Welcome) {
-                        popUpTo(Gate) { inclusive = true }
-                    }
-                    !isGoalSet -> navController.navigate(Home) {
-                        popUpTo(Gate) { inclusive = true }
-                    }
-                    else -> navController.navigate(Home) {
-                        popUpTo(Gate) { inclusive = true }
-                    }
+                val destination = when (viewModel.destination()) {
+                    PostAuthDestination.Welcome -> Welcome
+                    PostAuthDestination.Onboarding -> Onboarding
+                    PostAuthDestination.Home -> Main
+                }
+                navController.navigate(destination) {
+                    popUpTo(Gate) { inclusive = true }
                 }
             }
         }
@@ -57,7 +50,7 @@ fun AppNavHost(
             WelcomeScreen(
                 onGetStarted = { navController.navigate(SignUp) },
                 onSkip = {
-                    navController.navigate(Home) { popUpTo(Welcome) { inclusive = true } }
+                    navController.navigate(Onboarding)
                 },
                 onLogin = { navController.navigate(Login) }
             )
@@ -68,8 +61,8 @@ fun AppNavHost(
             SignUpScreen(
                 onBack = { navController.popBackStack() },
                 onSignUp = {
-                    navController.navigate(Home) {
-                        popUpTo(SignUp) { inclusive = true }
+                    navController.navigate(Gate) {
+                        popUpTo(Welcome) { inclusive = true }
                     }
                 },
                 onLogin = {
@@ -86,8 +79,8 @@ fun AppNavHost(
             LoginScreen(
                 onBack = { navController.popBackStack() },
                 onLogin = {
-                    navController.navigate(Home) {
-                        popUpTo(SignUp) { inclusive = true }
+                    navController.navigate(Gate) {
+                        popUpTo(Welcome) { inclusive = true }
                     }
                 },
                 onSignUp = {
@@ -100,8 +93,35 @@ fun AppNavHost(
             )
         }
 
+        composable<Onboarding> {
+            CompanionWizardScreen(
+                onExit = { navController.popBackStack() },
+                onCreated = {
+                    navController.navigate(Main) {
+                        popUpTo(Onboarding) { inclusive = true }
+                    }
+                },
+            )
+        }
+
+        composable<Main> {
+            MainShell(
+                onLoggedOut = {
+                    navController.navigate(Welcome) {
+                        popUpTo(Main) { inclusive = true }
+                    }
+                },
+            )
+        }
+
         composable<Home> {
-            HomeScreen()
+            MainShell(
+                onLoggedOut = {
+                    navController.navigate(Welcome) {
+                        popUpTo(Home) { inclusive = true }
+                    }
+                },
+            )
         }
 
     }

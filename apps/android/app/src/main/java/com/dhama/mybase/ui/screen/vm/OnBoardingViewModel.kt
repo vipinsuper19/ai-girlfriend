@@ -71,6 +71,7 @@ class OnBoardingViewModel @Inject constructor(
             try {
                 _authState.value = UiState.Loading
                 if (authRepository.register(email, password)) {
+                    saveLoggedInStatus(true)
                     val result = "Account created successfully!"
                     _authState.value = UiState.Success(result)
                 } else
@@ -88,6 +89,7 @@ class OnBoardingViewModel @Inject constructor(
             try {
                 _authState.value = UiState.Loading
                 if (authRepository.login(email, password)) {
+                    saveLoggedInStatus(true)
                     val result = "User logged in successfully!"
                     _authState.value = UiState.Success(result)
                 } else
@@ -105,6 +107,7 @@ class OnBoardingViewModel @Inject constructor(
             try {
                 _authState.value = UiState.Loading
                 if (authRepository.signInWithGoogle(credentialResponse)) {
+                    saveLoggedInStatus(true)
                     val result = "User logged in successfully!"
                     _authState.value = UiState.Success(result)
                 } else
