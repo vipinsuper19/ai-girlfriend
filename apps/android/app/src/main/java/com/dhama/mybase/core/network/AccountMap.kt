@@ -1,6 +1,7 @@
 package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.voice.resolveVoiceUrl
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -21,6 +22,7 @@ data class RemoteAvatar(
     val id: Int,
     val name: String = "",
     val greeting: String? = null,
+    val gender: String? = null,
     val systemPrompt: String? = null,
     val createdAt: String? = null,
     val appearance: RemoteAppearance? = null,
@@ -236,6 +238,7 @@ fun RemoteAvatar.toSaved(conversationId: Int, nowEpochMs: Long, origin: String =
         romanceLevel = personality?.romanceLevel ?: 58,
         serverId = id,
         conversationId = conversationId,
+        gender = companionGender(gender),
         avatarUrl = appearance?.avatarUrl
             ?.takeIf { it.isNotBlank() }
             ?.let { resolveVoiceUrl(origin, it) }

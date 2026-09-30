@@ -67,6 +67,8 @@ import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.model.companionGender
+import com.dhama.mybase.core.model.genderLabel
 import com.dhama.mybase.core.usage.CountedMessage
 import com.dhama.mybase.core.usage.FREE_IMAGE_LIMIT
 import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
@@ -269,6 +271,7 @@ fun CompanionProfileScreen(
         Meter("Romance", saved.romanceLevel)
         Spacer(Modifier.height(16.dp))
         GroupLine("Look", "${saved.style} · ${saved.hairColor} hair · ${saved.eyeColor} eyes · ${saved.skinTone} skin")
+        GroupLine("Gender", genderLabel(saved.gender))
         GroupLine("Voice", "${saved.voiceLabel} voice")
         GroupLine("Memory", "${memories.size} things remembered")
         Spacer(Modifier.height(28.dp))
@@ -326,8 +329,10 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
     var humour by remember(saved.humorLevel, revision) { mutableFloatStateOf(saved.humorLevel.toFloat()) }
     var flirt by remember(saved.flirtLevel, revision) { mutableFloatStateOf(saved.flirtLevel.toFloat()) }
     var romance by remember(saved.romanceLevel, revision) { mutableFloatStateOf(saved.romanceLevel.toFloat()) }
+    var gender by remember(saved.gender, revision) { mutableStateOf(companionGender(saved.gender)) }
     val changes = listOf(
         name.trim() != saved.name,
+        gender != companionGender(saved.gender),
         traits != saved.traits,
         warmth.toInt() != saved.empathyLevel,
         humour.toInt() != saved.humorLevel,
@@ -342,7 +347,7 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                 .padding(horizontal = 20.dp),
         ) {
             Text(
-                "Changing her personality affects how she talks from here on. Everything she already remembers stays.",
+                "Changing ${saved.name}'s personality affects how they talk from here on. Everything they already remember stays.",
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
@@ -358,6 +363,17 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                 label = { Text("Name") },
                 singleLine = true,
             )
+            Spacer(Modifier.height(12.dp))
+            Text("Gender", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("FEMALE" to "Woman", "MALE" to "Man", "OTHER" to "Non-binary").forEach { (code, label) ->
+                    FilterChip(
+                        selected = gender == code,
+                        onClick = { gender = code },
+                        label = { Text(label) },
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 traitOptions.forEach { trait ->
@@ -407,6 +423,7 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                             voiceLabel = saved.voiceLabel,
                             relationship = saved.relationship,
                             name = name.trim(),
+                            gender = gender,
                         )
                         viewModel.saveCompanion(saved, draft)
                         onBack()

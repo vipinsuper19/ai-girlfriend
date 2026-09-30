@@ -1,6 +1,9 @@
 package com.dhama.mybase
 
 import com.dhama.mybase.core.model.CompanionDraft
+import com.dhama.mybase.core.model.companionGender
+import com.dhama.mybase.core.model.genderLabel
+import com.dhama.mybase.core.model.genderPhrase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -38,5 +41,19 @@ class CompanionDraftTest {
         val request = CompanionDraft(name = "Aria").toCreateRequest()
         assertEquals("warm", request.voice.voiceId)
         assertTrue(request.voice.voiceId.isNotBlank())
+    }
+
+    @Test
+    fun genderStaysOneOfTheServerValues() {
+        assertEquals("MALE", companionGender("male"))
+        assertEquals("OTHER", companionGender("OTHER"))
+        assertEquals("FEMALE", companionGender("nope"))
+        assertEquals("Man", genderLabel("MALE"))
+        assertEquals("Non-binary", genderLabel("OTHER"))
+        assertEquals("a woman", genderPhrase(null))
+        val request = CompanionDraft(name = "Aria", gender = "MALE").toCreateRequest()
+        assertEquals("MALE", request.gender)
+        assertTrue(request.systemPrompt.contains("a man"))
+        assertEquals("MALE", CompanionDraft(name = "Aria", gender = "MALE").toSaved(1L).gender)
     }
 }

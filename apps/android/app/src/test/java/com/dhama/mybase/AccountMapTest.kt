@@ -70,7 +70,15 @@ class AccountMapTest {
         assertEquals("Black", saved.hairColor)
         assertEquals(4, saved.serverId)
         assertEquals(9, saved.conversationId)
+        assertEquals("FEMALE", saved.gender)
         assertEquals("Hi — I'm Aria.", saved.greeting)
+    }
+
+    @Test
+    fun restoredGenderKeepsMale() {
+        val saved = RemoteAvatar(id = 4, name = "Aria", gender = "MALE")
+            .toSaved(conversationId = 1, nowEpochMs = 1L)
+        assertEquals("MALE", saved.gender)
     }
 
     @Test

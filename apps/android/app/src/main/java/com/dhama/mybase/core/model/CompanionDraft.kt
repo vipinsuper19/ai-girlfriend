@@ -51,8 +51,9 @@ data class CompanionDraft(
 
     fun systemPrompt(): String {
         val traitLine = if (traits.isEmpty()) "warm and attentive" else traits.joinToString(", ")
+        val who = normalizedName().ifBlank { "a companion" }
         return buildString {
-            append("You are ${normalizedName().ifBlank { "a companion" }}, ")
+            append("You are $who, ${genderPhrase(gender)}, ")
             append("the user's $relationship. ")
             append("Your traits: $traitLine. ")
             append("Warmth $empathyLevel, humour $humorLevel, flirtiness $flirtLevel, romance $romanceLevel, on a 0–100 scale. ")
@@ -71,7 +72,7 @@ data class CompanionDraft(
         val cleanName = normalizedName()
         return CreateAvatarRequest(
             name = cleanName,
-            gender = gender,
+            gender = companionGender(gender),
             systemPrompt = systemPrompt(),
             greeting = greeting(),
             appearance = AppearanceRequest(
@@ -120,6 +121,7 @@ data class CompanionDraft(
             humorLevel = humorLevel,
             flirtLevel = flirtLevel,
             romanceLevel = romanceLevel,
+            gender = companionGender(gender),
         )
     }
 
@@ -148,6 +150,7 @@ data class SavedCompanion(
     val serverId: Int? = null,
     val conversationId: Int? = null,
     val avatarUrl: String = "",
+    val gender: String = "FEMALE",
 )
 
 @Serializable
@@ -192,3 +195,21 @@ data class VoiceRequest(
     val voiceId: String,
     val language: String,
 )
+
+fun companionGender(value: String?): String = when (value?.trim()?.uppercase()) {
+    "MALE" -> "MALE"
+    "OTHER" -> "OTHER"
+    else -> "FEMALE"
+}
+
+fun genderLabel(value: String?): String = when (companionGender(value)) {
+    "MALE" -> "Man"
+    "OTHER" -> "Non-binary"
+    else -> "Woman"
+}
+
+fun genderPhrase(value: String?): String = when (companionGender(value)) {
+    "MALE" -> "a man"
+    "OTHER" -> "a person"
+    else -> "a woman"
+}
