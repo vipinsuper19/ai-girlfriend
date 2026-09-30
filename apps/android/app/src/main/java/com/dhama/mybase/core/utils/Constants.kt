@@ -30,6 +30,9 @@ object Constants {
 
 object PreferencesKeys {
     val USER_EMAIL = stringPreferencesKey("user_email")
+    val DISPLAY_NAME = stringPreferencesKey("display_name")
+    val THEME_MODE = stringPreferencesKey("theme_mode")
     val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
     val IS_GOAL_SET = booleanPreferencesKey("is_goal_set")
+    val SCREEN_PRIVACY = booleanPreferencesKey("screen_privacy")
 }

@@ -45,7 +45,7 @@ class DataStoreRepo @Inject constructor(
     fun getBoolean(key: Preferences.Key<Boolean>, defaultValue: Boolean): Flow<Boolean> {
         return dataStore.data
             .map { preferences ->
-                preferences[key] ?: false
+                preferences[key] ?: defaultValue
             }
     }
 

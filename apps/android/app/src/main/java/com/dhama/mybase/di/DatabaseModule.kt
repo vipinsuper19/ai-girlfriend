@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.room.Room
 import com.dhama.mybase.core.db.AppDatabase
 import com.dhama.mybase.core.data.ChatRepositoryImpl
+import com.dhama.mybase.core.data.MemoryRepositoryImpl
 import com.dhama.mybase.core.db.dao.ChatMessageDao
+import com.dhama.mybase.core.db.dao.MemoryDao
 import com.dhama.mybase.core.db.dao.NotesDao
 import com.dhama.mybase.core.db.dao.UserDao
 import com.dhama.mybase.core.domain.ChatRepository
+import com.dhama.mybase.core.domain.MemoryRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -46,4 +49,12 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideChatRepository(dao: ChatMessageDao): ChatRepository = ChatRepositoryImpl(dao)
+
+    @Provides
+    @Singleton
+    fun provideMemoryDao(database: AppDatabase): MemoryDao = database.memoryDao()
+
+    @Provides
+    @Singleton
+    fun provideMemoryRepository(dao: MemoryDao): MemoryRepository = MemoryRepositoryImpl(dao)
 }

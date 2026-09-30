@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
+import com.dhama.mybase.core.domain.MemoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
+    private val memoryRepository: MemoryRepository,
     companionRepository: CompanionRepository,
 ) : ViewModel() {
 
@@ -50,6 +52,7 @@ class ChatViewModel @Inject constructor(
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
             chatRepository.send(text, saved.name, saved.relationship, saved.traits)
+            memoryRepository.notice(text)
         }
     }
 

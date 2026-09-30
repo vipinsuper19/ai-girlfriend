@@ -1,10 +1,6 @@
 package com.dhama.mybase.ui.chat
 
-import android.app.Activity
 import android.content.ClipData
-import android.content.Context
-import android.content.ContextWrapper
-import android.view.WindowManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -37,7 +33,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -88,14 +82,7 @@ fun ChatScreen(
     var selected by remember { mutableStateOf<ChatMessageEntity?>(null) }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val view = LocalView.current
     val name = companion?.name ?: "Chat"
-
-    DisposableEffect(view) {
-        val window = view.context.findActivity()?.window
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
-    }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
         if (messages.isNotEmpty()) {
@@ -361,10 +348,4 @@ private fun formatStamp(epochMs: Long): String {
         today.minusDays(1) -> "Yesterday · $clock"
         else -> "${day.format(DateTimeFormatter.ofPattern("MMM d"))} · $clock"
     }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }

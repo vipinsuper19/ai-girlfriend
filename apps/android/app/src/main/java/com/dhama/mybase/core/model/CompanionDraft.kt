@@ -113,6 +113,13 @@ data class CompanionDraft(
             style = style,
             systemPrompt = request.systemPrompt,
             createdAtEpochMs = createdAtEpochMs,
+            hairColor = hairColor,
+            eyeColor = eyeColor,
+            skinTone = skinTone,
+            empathyLevel = empathyLevel,
+            humorLevel = humorLevel,
+            flirtLevel = flirtLevel,
+            romanceLevel = romanceLevel,
         )
     }
 
@@ -131,6 +138,13 @@ data class SavedCompanion(
     val style: String,
     val systemPrompt: String,
     val createdAtEpochMs: Long,
+    val hairColor: String = "Brown",
+    val eyeColor: String = "Blue",
+    val skinTone: String = "Warm",
+    val empathyLevel: Int = 82,
+    val humorLevel: Int = 64,
+    val flirtLevel: Int = 45,
+    val romanceLevel: Int = 58,
 )
 
 @Serializable
