@@ -78,6 +78,7 @@ import com.dhama.mybase.ui.usage.PaywallCard
 import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.core.voice.AMPLITUDE_POLL_MS
 import com.dhama.mybase.core.voice.CANCEL_SLIDE_DP
+import com.dhama.mybase.core.home.exactMessageTime
 import com.dhama.mybase.core.voice.VoicePlayer
 import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.VoiceRecorder
@@ -111,6 +112,7 @@ fun ChatScreen(
     val draft by viewModel.draft.collectAsState()
     val speakingId by viewModel.speakingId.collectAsState()
     val speakNote by viewModel.speakNote.collectAsState()
+    val voiceStage by viewModel.voiceStage.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val usage = monthUsage(
         messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
@@ -246,6 +248,7 @@ fun ChatScreen(
         Text(
             when {
                 recording -> "Recording…"
+                !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
                 streaming -> "Typing…"
                 companion?.conversationId != null -> "Active now"
                 else -> "On this phone"
@@ -256,6 +259,7 @@ fun ChatScreen(
                 .padding(horizontal = 20.dp)
                 .semantics {
                     if (recording) contentDescription = "Recording"
+                    else if (!voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
                     else if (streaming) contentDescription = "$name is typing"
                 },
         )
@@ -404,10 +408,13 @@ fun ChatScreen(
             onDismissRequest = { selected = null },
             title = { Text(if (outgoing) "Your message" else name) },
             text = {
-                Text(
-                    if (outgoing) "Copy it or remove it from this thread."
-                    else "Copy it or remove it from this thread. Anything she already remembered stays in Memory.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(exactMessageTime(message.createdAtEpochMs, ZoneId.systemDefault()))
+                    Text(
+                        if (outgoing) "Copy it or remove it from this thread."
+                        else "Copy it or remove it from this thread. Anything she already remembered stays in Memory.",
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -496,6 +503,7 @@ private fun MessageRow(
                         durationMs = message.durationMs,
                         playing = playing,
                         color = color,
+                        showTranscript = outgoing && message.text.isNotBlank(),
                         onToggle = onToggleVoice,
                         modifier = Modifier
                             .widthIn(max = 280.dp)

@@ -13,14 +13,18 @@ import com.dhama.mybase.core.utils.PreferencesKeys
 import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.speakBlockReason
 import com.dhama.mybase.core.voice.speakFailure
+import com.dhama.mybase.core.voice.voiceRoundTripLabel
+import com.dhama.mybase.core.voice.voiceRoundTripStage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -56,6 +60,9 @@ class ChatViewModel @Inject constructor(
     private val _playRequest = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val playRequest = _playRequest.asSharedFlow()
 
+    private val _voiceStage = MutableStateFlow<String?>(null)
+    val voiceStage = _voiceStage.asStateFlow()
+
     init {
         viewModelScope.launch {
             companionRepository.observe().collect { saved ->
@@ -81,8 +88,27 @@ class ChatViewModel @Inject constructor(
 
     fun sendVoice(path: String, durationMs: Long) {
         if (path.isBlank() || sendJob?.isActive == true) return
-        viewModelScope.launch {
-            chatRepository.sendVoice(path, durationMs, companion.value?.conversationId)
+        val conversationId = companion.value?.conversationId
+        sendJob = viewModelScope.launch {
+            val ticker = if (conversationId != null) {
+                launch {
+                    val started = System.currentTimeMillis()
+                    while (isActive) {
+                        _voiceStage.value = voiceRoundTripLabel(
+                            voiceRoundTripStage(System.currentTimeMillis() - started),
+                        )
+                        delay(250)
+                    }
+                }
+            } else {
+                null
+            }
+            try {
+                chatRepository.sendVoice(path, durationMs, conversationId)
+            } finally {
+                ticker?.cancel()
+                _voiceStage.value = null
+            }
         }
     }
 

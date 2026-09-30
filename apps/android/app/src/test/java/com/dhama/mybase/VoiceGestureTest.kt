@@ -6,9 +6,12 @@ import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.formatVoiceDuration
 import com.dhama.mybase.core.voice.playbackWaveform
 import com.dhama.mybase.core.voice.resolveVoiceUrl
+import com.dhama.mybase.core.voice.VoiceRoundTrip
 import com.dhama.mybase.core.voice.speakBlockReason
 import com.dhama.mybase.core.voice.speakFailure
 import com.dhama.mybase.core.voice.voiceReleaseAction
+import com.dhama.mybase.core.voice.voiceRoundTripLabel
+import com.dhama.mybase.core.voice.voiceRoundTripStage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -66,5 +69,14 @@ class VoiceGestureTest {
         assertEquals("Sign in with email to hear her voice.", speakBlockReason("Hello", null))
         assertEquals("Her voice isn't set up yet.", speakFailure(404))
         assertEquals("Couldn't speak that.", speakFailure(500))
+    }
+
+    @Test
+    fun voiceRoundTripNamesTheLiveRequest() {
+        assertEquals(VoiceRoundTrip.Transcribing, voiceRoundTripStage(0))
+        assertEquals(VoiceRoundTrip.Thinking, voiceRoundTripStage(2_500))
+        assertEquals(VoiceRoundTrip.GeneratingVoice, voiceRoundTripStage(5_500))
+        assertEquals("Transcribing…", voiceRoundTripLabel(VoiceRoundTrip.Transcribing))
+        assertEquals("Generating her voice…", voiceRoundTripLabel(VoiceRoundTrip.GeneratingVoice))
     }
 }

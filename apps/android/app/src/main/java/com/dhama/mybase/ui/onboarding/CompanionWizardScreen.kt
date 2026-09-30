@@ -59,6 +59,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.model.CompanionDraft
+import com.dhama.mybase.core.model.companionGender
+import com.dhama.mybase.core.model.relationshipOptions
 
 private val styles = listOf("Realistic", "Illustrated", "Anime")
 private val hairColors = listOf("Black", "Brown", "Auburn", "Blonde", "Copper")
@@ -71,7 +73,6 @@ private val voices = listOf(
     "bright" to ("Bright" to "Light, quick"),
     "calm" to ("Calm" to "Even, grounded"),
 )
-private val relationships = listOf("Girlfriend", "Partner", "Close friend", "Confidante")
 
 @Composable
 fun CompanionWizardScreen(
@@ -302,6 +303,17 @@ private fun PersonalityStep(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
+            Text("Gender", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("FEMALE" to "Woman", "MALE" to "Man", "OTHER" to "Non-binary").forEach { (code, label) ->
+                    FilterChip(
+                        selected = companionGender(draft.gender) == code,
+                        onClick = { onChange { it.copy(gender = code) } },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 traits.forEach { trait ->
                     FilterChip(
@@ -366,7 +378,7 @@ private fun VoiceStep(
             }
             SectionLabel("WHAT IS SHE TO YOU?")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                relationships.forEach { relation ->
+                relationshipOptions.forEach { relation ->
                     FilterChip(
                         selected = draft.relationship == relation,
                         onClick = { onChange { it.copy(relationship = relation) } },

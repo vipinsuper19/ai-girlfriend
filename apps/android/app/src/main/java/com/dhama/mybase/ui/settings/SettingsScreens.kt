@@ -66,6 +66,13 @@ import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.core.model.CompanionDraft
+import com.dhama.mybase.core.model.eyeColors
+import com.dhama.mybase.core.model.hairColors
+import com.dhama.mybase.core.model.lookStyles
+import com.dhama.mybase.core.model.relationshipOptions
+import com.dhama.mybase.core.model.skinTones
+import com.dhama.mybase.core.model.voiceChoices
+import com.dhama.mybase.core.model.voiceIdFor
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.genderLabel
@@ -330,9 +337,21 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
     var flirt by remember(saved.flirtLevel, revision) { mutableFloatStateOf(saved.flirtLevel.toFloat()) }
     var romance by remember(saved.romanceLevel, revision) { mutableFloatStateOf(saved.romanceLevel.toFloat()) }
     var gender by remember(saved.gender, revision) { mutableStateOf(companionGender(saved.gender)) }
+    var relationship by remember(saved.relationship, revision) { mutableStateOf(saved.relationship) }
+    var style by remember(saved.style, revision) { mutableStateOf(saved.style) }
+    var hair by remember(saved.hairColor, revision) { mutableStateOf(saved.hairColor) }
+    var eyes by remember(saved.eyeColor, revision) { mutableStateOf(saved.eyeColor) }
+    var skin by remember(saved.skinTone, revision) { mutableStateOf(saved.skinTone) }
+    var voiceLabel by remember(saved.voiceLabel, revision) { mutableStateOf(saved.voiceLabel) }
     val changes = listOf(
         name.trim() != saved.name,
         gender != companionGender(saved.gender),
+        relationship != saved.relationship,
+        style != saved.style,
+        hair != saved.hairColor,
+        eyes != saved.eyeColor,
+        skin != saved.skinTone,
+        voiceLabel != saved.voiceLabel,
         traits != saved.traits,
         warmth.toInt() != saved.empathyLevel,
         humour.toInt() != saved.humorLevel,
@@ -375,6 +394,17 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                 }
             }
             Spacer(Modifier.height(12.dp))
+            Text("Relationship", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                relationshipOptions.forEach { option ->
+                    FilterChip(
+                        selected = relationship == option,
+                        onClick = { relationship = option },
+                        label = { Text(option) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 traitOptions.forEach { trait ->
                     FilterChip(
@@ -390,6 +420,16 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                     )
                 }
             }
+            Text("Look", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(lookStyles, style) { style = it }
+            Text("Hair", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(hairColors, hair) { hair = it }
+            Text("Eyes", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(eyeColors, eyes) { eyes = it }
+            Text("Skin", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(skinTones, skin) { skin = it }
+            Text("Voice", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
             Level("Warmth", warmth) { warmth = it }
             Level("Humour", humour) { humour = it }
             Level("Flirtiness", flirt) { flirt = it }
@@ -411,17 +451,18 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                 TextButton(
                     onClick = {
                         val draft = CompanionDraft(
-                            style = saved.style,
-                            hairColor = saved.hairColor,
-                            eyeColor = saved.eyeColor,
-                            skinTone = saved.skinTone,
+                            style = style,
+                            hairColor = hair,
+                            eyeColor = eyes,
+                            skinTone = skin,
                             traits = traits,
                             empathyLevel = warmth.toInt(),
                             humorLevel = humour.toInt(),
                             flirtLevel = flirt.toInt(),
                             romanceLevel = romance.toInt(),
-                            voiceLabel = saved.voiceLabel,
-                            relationship = saved.relationship,
+                            voiceId = voiceIdFor(voiceLabel),
+                            voiceLabel = voiceLabel,
+                            relationship = relationship,
                             name = name.trim(),
                             gender = gender,
                         )
@@ -623,6 +664,20 @@ private fun GroupLine(label: String, value: String) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChoiceChips(options: List<String>, selected: String, onSelect: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { option ->
+            FilterChip(
+                selected = selected == option,
+                onClick = { onSelect(option) },
+                label = { Text(option) },
+            )
+        }
+    }
+}
+
 private fun Level(label: String, value: Float, onChange: (Float) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("$label ${value.toInt()}")

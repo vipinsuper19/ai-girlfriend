@@ -46,6 +46,32 @@ const val TAP_LOCK_MS = 250L
 const val AMPLITUDE_POLL_MS = 60L
 const val SPEAK_MAX_CHARS = 10_000
 
+enum class VoiceRoundTrip {
+    Transcribing,
+    Thinking,
+    GeneratingVoice,
+}
+
+/**
+ * Labels for the single `POST /voice/respond` request. The clock only describes
+ * the call that is actually in flight. It does not invent a transcript.
+ */
+fun voiceRoundTripStage(elapsedMs: Long): VoiceRoundTrip {
+    return when {
+        elapsedMs < 2_500L -> VoiceRoundTrip.Transcribing
+        elapsedMs < 5_500L -> VoiceRoundTrip.Thinking
+        else -> VoiceRoundTrip.GeneratingVoice
+    }
+}
+
+fun voiceRoundTripLabel(stage: VoiceRoundTrip): String {
+    return when (stage) {
+        VoiceRoundTrip.Transcribing -> "Transcribing…"
+        VoiceRoundTrip.Thinking -> "Thinking…"
+        VoiceRoundTrip.GeneratingVoice -> "Generating her voice…"
+    }
+}
+
 /** Speak is for a finished text reply. Voice notes already have their own play control. */
 fun canSpeakMessage(role: String, kind: String, delivery: String, text: String): Boolean {
     return role != "USER" && kind == "TEXT" && delivery == "SENT" && text.isNotBlank()

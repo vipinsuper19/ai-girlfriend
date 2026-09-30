@@ -4,6 +4,7 @@ import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.genderLabel
 import com.dhama.mybase.core.model.genderPhrase
+import com.dhama.mybase.core.model.voiceIdFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -34,6 +35,13 @@ class CompanionDraftTest {
         assertEquals("default", request.voice.provider)
         assertTrue(request.systemPrompt.contains("Girlfriend"))
         assertTrue(request.greeting.startsWith("Hi — I'm Aria"))
+    }
+
+    @Test
+    fun voiceLabelMapsBackToTheIdSentOnUpdate() {
+        assertEquals("soft", voiceIdFor("Soft"))
+        assertEquals("calm", voiceIdFor(" calm "))
+        assertEquals("warm", voiceIdFor("unknown"))
     }
 
     @Test

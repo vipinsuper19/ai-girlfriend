@@ -208,6 +208,25 @@ fun genderLabel(value: String?): String = when (companionGender(value)) {
     else -> "Woman"
 }
 
+val relationshipOptions = listOf("Girlfriend", "Partner", "Close friend", "Confidante")
+
+val lookStyles = listOf("Realistic", "Illustrated", "Anime")
+val hairColors = listOf("Black", "Brown", "Auburn", "Blonde", "Copper")
+val eyeColors = listOf("Brown", "Green", "Blue", "Hazel", "Grey")
+val skinTones = listOf("Fair", "Warm", "Olive", "Deep")
+
+val voiceChoices = listOf(
+    "soft" to "Soft",
+    "warm" to "Warm",
+    "bright" to "Bright",
+    "calm" to "Calm",
+)
+
+fun voiceIdFor(label: String): String {
+    val match = voiceChoices.firstOrNull { it.second.equals(label.trim(), ignoreCase = true) }
+    return match?.first ?: "warm"
+}
+
 fun genderPhrase(value: String?): String = when (companionGender(value)) {
     "MALE" -> "a man"
     "OTHER" -> "a person"

@@ -53,6 +53,35 @@ fun memoryTypeLabel(type: String): String = when (type) {
     else -> type
 }
 
+data class RankedMemory(
+    val content: String,
+    val importance: Int,
+    val createdAtEpochMs: Long,
+)
+
+data class MemoryHighlight(
+    val content: String,
+    val thisWeek: Boolean,
+)
+
+/** Prefer something she kept this week. Otherwise the memory she holds most strongly. */
+fun pickMemoryHighlight(items: List<RankedMemory>, nowEpochMs: Long): MemoryHighlight? {
+    if (items.isEmpty()) return null
+    val weekAgo = nowEpochMs - 7L * DAY_MS
+    val recent = items.filter { it.createdAtEpochMs >= weekAgo }
+    val pool = recent.ifEmpty { items }
+    val chosen = pool.maxBy { it.importance }
+    return MemoryHighlight(chosen.content, chosen.createdAtEpochMs >= weekAgo)
+}
+
+fun highlightLine(highlight: MemoryHighlight): String {
+    return if (highlight.thisWeek) {
+        "She remembered this week: ${highlight.content}"
+    } else {
+        "She remembers: ${highlight.content}"
+    }
+}
+
 fun togetherLine(relationship: String, createdAtEpochMs: Long, nowEpochMs: Long): String {
     val days = ((nowEpochMs - createdAtEpochMs) / DAY_MS).coerceAtLeast(0)
     val duration = when {

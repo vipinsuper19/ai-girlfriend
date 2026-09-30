@@ -128,6 +128,7 @@ fun VoiceNoteContent(
     durationMs: Long,
     playing: Boolean,
     color: Color,
+    showTranscript: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -150,12 +151,14 @@ fun VoiceNoteContent(
             Text(formatVoiceDuration(durationMs), color = color, style = MaterialTheme.typography.labelMedium)
         }
         if (text.isNotBlank()) {
-            Text(
-                "Transcribed from your voice note",
-                color = color.copy(alpha = 0.8f),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp),
-            )
+            if (showTranscript) {
+                Text(
+                    "Transcribed from your voice note",
+                    color = color.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp),
+                )
+            }
             Text(
                 text,
                 color = color,

@@ -2,6 +2,8 @@ package com.dhama.mybase.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.memory.RankedMemory
+import com.dhama.mybase.core.memory.pickMemoryHighlight
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.domain.AuthRepository
@@ -35,8 +37,16 @@ class CompanionHomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val memoryHighlight = memoryRepository.observe()
-        .map { list -> list.maxByOrNull { it.importance } }
+        .map { list ->
+            pickMemoryHighlight(
+                list.map { RankedMemory(it.content, it.importance, it.createdAtEpochMs) },
+                System.currentTimeMillis(),
+            )
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val displayName = dataStoreRepo.getString(PreferencesKeys.DISPLAY_NAME, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     val hasTalked = chatRepository.observe()
         .map { messages -> messages.any { it.role == ChatRepositoryImpl.ROLE_USER } }

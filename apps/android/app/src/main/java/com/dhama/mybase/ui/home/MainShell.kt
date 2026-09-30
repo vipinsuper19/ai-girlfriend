@@ -57,7 +57,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.dhama.mybase.core.db.entity.MemoryEntity
+import com.dhama.mybase.core.home.homeGreeting
+import com.dhama.mybase.core.home.presenceLine
+import com.dhama.mybase.core.memory.MemoryHighlight
+import com.dhama.mybase.core.memory.highlightLine
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
 import com.dhama.mybase.core.usage.METERING_ENFORCED
@@ -103,6 +106,7 @@ fun MainShell(
     val usage by viewModel.usage.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val planLabel by viewModel.planLabel.collectAsState()
+    val displayName by viewModel.displayName.collectAsState()
     val settings = rememberSettingsViewModel()
     val memoryViewModel: MemoryViewModel = hiltViewModel()
     val pendingDelete by memoryViewModel.pendingDelete.collectAsState()
@@ -177,6 +181,7 @@ fun MainShell(
                         usage = usage,
                         warningDismissed = warningDismissed,
                         planLabel = planLabel,
+                        displayName = displayName,
                         onDismissWarning = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
                         onTalk = { tab = MainTab.Chat.ordinal },
                         onMemories = { tab = MainTab.Memory.ordinal },
@@ -210,12 +215,13 @@ fun MainShell(
 @Composable
 private fun HomeTab(
     companion: SavedCompanion?,
-    highlight: MemoryEntity?,
+    highlight: MemoryHighlight?,
     hasTalked: Boolean,
     lastReply: String?,
     usage: MonthUsage,
     warningDismissed: String,
     planLabel: String,
+    displayName: String,
     onDismissWarning: () -> Unit,
     onTalk: () -> Unit,
     onMemories: () -> Unit,
@@ -238,7 +244,7 @@ private fun HomeTab(
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                timeGreeting(),
+                homeGreeting(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), displayName),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -276,7 +282,7 @@ private fun HomeTab(
                     .clearAndSetSemantics {},
             )
             Text(
-                "  Active now",
+                "  ${presenceLine(companion.conversationId != null)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -323,7 +329,7 @@ private fun HomeTab(
         if (highlight != null) {
             Spacer(Modifier.height(16.dp))
             Text(
-                "She remembers: ${highlight.content}",
+                highlightLine(highlight),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
@@ -345,11 +351,3 @@ private fun QuickAction(label: String, onClick: () -> Unit, modifier: Modifier =
     ) { Text(label) }
 }
 
-private fun timeGreeting(): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when {
-        hour < 12 -> "Good morning"
-        hour < 17 -> "Good afternoon"
-        else -> "Good evening"
-    }
-}
