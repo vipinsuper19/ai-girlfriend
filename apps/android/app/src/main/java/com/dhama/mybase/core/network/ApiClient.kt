@@ -173,6 +173,17 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
     }
 
+    suspend fun getMe(): RemoteUser {
+        return withAuth { access -> unwrapData(execute(authed("GET", "users/me", null, access))) }
+    }
+
+    suspend fun patchDisplayName(displayName: String): RemoteUser {
+        return withAuth { access ->
+            val payload = json.encodeToString(DisplayNameBody(displayName))
+            unwrapData(execute(authed("PATCH", "users/me", payload, access)))
+        }
+    }
+
     suspend fun respondVoice(conversationId: Int, audioFile: File): VoiceTurn {
         return withAuth { access ->
             val body = MultipartBody.Builder()
@@ -310,6 +321,9 @@ private data class IdPayload(val id: Int)
 
 @Serializable
 private data class MemoryPatch(val content: String, val type: String, val importance: Int)
+
+@Serializable
+private data class DisplayNameBody(val displayName: String)
 
 @Serializable
 data class VoiceTurn(

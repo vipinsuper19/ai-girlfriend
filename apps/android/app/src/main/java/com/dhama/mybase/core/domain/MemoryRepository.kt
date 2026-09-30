@@ -9,4 +9,7 @@ interface MemoryRepository {
     suspend fun update(id: String, content: String, type: String, importance: Int)
     suspend fun delete(id: String)
     suspend fun clear()
+    suspend fun clearAll(onProgress: suspend (done: Int, total: Int) -> Unit): MemoryClearResult
 }
+
+data class MemoryClearResult(val removed: Int, val kept: Int)

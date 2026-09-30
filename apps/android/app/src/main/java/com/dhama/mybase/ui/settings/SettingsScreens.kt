@@ -84,6 +84,7 @@ fun YouSettingsScreen(
     viewModel: SettingsViewModel = rememberSettingsViewModel(),
 ) {
     val displayName by viewModel.displayName.collectAsState()
+    val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
     val privacy by viewModel.screenPrivacy.collectAsState()
     val theme by viewModel.themeMode.collectAsState()
@@ -115,6 +116,9 @@ fun YouSettingsScreen(
             )
             if (nameDraft.trim() != displayName) {
                 TextButton(onClick = { viewModel.setDisplayName(nameDraft) }) { Text("Save name") }
+            }
+            if (!nameMessage.isNullOrBlank()) {
+                Text(nameMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
             }
         }
         Spacer(Modifier.height(20.dp))

@@ -12,6 +12,7 @@ import com.dhama.mybase.core.network.RestoredMessage
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.network.toSaved
+import com.dhama.mybase.core.utils.PreferencesKeys
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
@@ -21,16 +22,42 @@ class AccountSync @Inject constructor(
     private val companions: CompanionRepository,
     private val messages: ChatMessageDao,
     private val memories: MemoryDao,
+    private val dataStore: DataStoreRepo,
 ) {
     suspend fun restore(): SavedCompanion? {
         val local = companions.observe().first()
         if (!api.hasSession()) return local
+        syncProfile()
         return try {
             pull(local)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             companions.observe().first() ?: local
+        }
+    }
+
+    suspend fun saveDisplayName(name: String): String {
+        if (!api.hasSession()) return name
+        val updated = api.patchDisplayName(name)
+        return updated.displayName?.trim().orEmpty().ifBlank { name }
+    }
+
+    private suspend fun syncProfile() {
+        try {
+            val me = api.getMe()
+            val displayName = me.displayName?.trim().orEmpty()
+            val email = me.email?.trim().orEmpty()
+            if (displayName.isNotBlank()) {
+                dataStore.saveString(PreferencesKeys.DISPLAY_NAME, displayName)
+            }
+            if (email.isNotBlank()) {
+                dataStore.saveString(PreferencesKeys.USER_EMAIL, email)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Her profile can still load when the account row cannot.
         }
     }
 

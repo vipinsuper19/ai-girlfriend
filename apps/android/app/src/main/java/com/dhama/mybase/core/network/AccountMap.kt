@@ -108,6 +108,33 @@ fun serverRecordId(localId: String): Int? {
     return localId.removePrefix("server-").toIntOrNull()
 }
 
+enum class MemoryForget {
+    Local,
+    Server,
+    Keep,
+}
+
+/** A phone-only memory can be dropped locally. A server row needs the API, and stays if there is no session. */
+fun memoryForgetAction(localId: String, hasSession: Boolean): MemoryForget {
+    if (serverRecordId(localId) == null) return MemoryForget.Local
+    return if (hasSession) MemoryForget.Server else MemoryForget.Keep
+}
+
+fun displayNameError(name: String): String? {
+    val length = name.trim().length
+    return when {
+        length < 2 -> "Your name needs at least 2 characters"
+        length > 100 -> "Keep your name under 100 characters"
+        else -> null
+    }
+}
+
+@Serializable
+data class RemoteUser(
+    val email: String? = null,
+    val displayName: String? = null,
+)
+
 fun epochMillis(value: String?): Long {
     if (value.isNullOrBlank()) return 0L
     return runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)

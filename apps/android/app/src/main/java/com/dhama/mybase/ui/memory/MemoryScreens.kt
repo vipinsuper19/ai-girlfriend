@@ -250,6 +250,8 @@ fun MemoryPrivacyScreen(
 ) {
     val memories by viewModel.memories.collectAsState()
     val clearing by viewModel.clearing.collectAsState()
+    val clearProgress by viewModel.clearProgress.collectAsState()
+    val clearNotice by viewModel.clearNotice.collectAsState()
     var confirm by remember { mutableStateOf(false) }
     val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
     val thisWeek = memories.count { it.createdAtEpochMs >= weekAgo }
@@ -290,6 +292,22 @@ fun MemoryPrivacyScreen(
         DisabledControl("Pause new memories", "No endpoint yet")
         DisabledControl("Export my data", "No endpoint yet")
         Spacer(Modifier.height(12.dp))
+        val progress = clearProgress
+        if (clearing && progress != null && progress.second > 0) {
+            LinearProgressIndicator(
+                progress = { progress.first / progress.second.toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "Clearing ${progress.first} of ${progress.second}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        if (!clearNotice.isNullOrBlank()) {
+            Text(clearNotice.orEmpty(), color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(8.dp))
+        }
         TextButton(
             onClick = { confirm = true },
             enabled = memories.isNotEmpty() && !clearing,

@@ -2,6 +2,7 @@ package com.dhama.mybase.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.ChatRepository
@@ -9,11 +10,14 @@ import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,6 +30,7 @@ class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val chatRepository: ChatRepository,
     private val memoryRepository: MemoryRepository,
+    private val accountSync: AccountSync,
 ) : ViewModel() {
 
     val themeMode = dataStoreRepo.getString(PreferencesKeys.THEME_MODE, false)
@@ -58,6 +63,9 @@ class SettingsViewModel @Inject constructor(
     private val _archiveFailed = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val archiveFailed = _archiveFailed.asSharedFlow()
 
+    private val _nameMessage = MutableStateFlow<String?>(null)
+    val nameMessage = _nameMessage.asStateFlow()
+
     fun setThemeMode(mode: String) {
         viewModelScope.launch { dataStoreRepo.saveString(PreferencesKeys.THEME_MODE, mode) }
     }
@@ -67,7 +75,23 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setDisplayName(name: String) {
-        viewModelScope.launch { dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, name.trim()) }
+        val trimmed = name.trim()
+        val error = displayNameError(trimmed)
+        if (error != null) {
+            _nameMessage.value = error
+            return
+        }
+        viewModelScope.launch {
+            _nameMessage.value = null
+            try {
+                val saved = accountSync.saveDisplayName(trimmed)
+                dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, saved)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _nameMessage.value = "Couldn't save your name."
+            }
+        }
     }
 
     fun saveCompanion(current: SavedCompanion, draft: CompanionDraft) {

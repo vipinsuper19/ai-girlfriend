@@ -1,17 +1,22 @@
 package com.dhama.mybase
 
+import com.dhama.mybase.core.network.MemoryForget
 import com.dhama.mybase.core.network.RemoteAppearance
 import com.dhama.mybase.core.network.RemoteAvatar
 import com.dhama.mybase.core.network.RemoteAvatarSummary
 import com.dhama.mybase.core.network.RemoteMemory
 import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemotePersonality
+import com.dhama.mybase.core.network.RemoteUser
 import com.dhama.mybase.core.network.decodeDataList
+import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.network.epochMillis
+import com.dhama.mybase.core.network.memoryForgetAction
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.network.toSaved
+import com.dhama.mybase.core.network.unwrapData
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -100,5 +105,28 @@ class AccountMapTest {
         assertEquals("Aria", list[0].name)
         assertEquals(2, list[1].id)
         assertEquals(0, decodeDataList<RemoteAvatarSummary>("""{"data":[]}""").size)
+    }
+
+    @Test
+    fun forgetsPhoneMemoriesLocallyAndKeepsServerRowsOffline() {
+        assertEquals(MemoryForget.Local, memoryForgetAction("uuid", hasSession = true))
+        assertEquals(MemoryForget.Server, memoryForgetAction("server-4", hasSession = true))
+        assertEquals(MemoryForget.Keep, memoryForgetAction("server-4", hasSession = false))
+    }
+
+    @Test
+    fun displayNameMatchesTheServerLength() {
+        assertEquals("Your name needs at least 2 characters", displayNameError("A"))
+        assertNull(displayNameError("Al"))
+        assertEquals("Keep your name under 100 characters", displayNameError("a".repeat(101)))
+    }
+
+    @Test
+    fun readsTheAccountEnvelope() {
+        val user = unwrapData<RemoteUser>(
+            """{"data":{"id":3,"email":"aria@example.com","displayName":"Aria","passwordHash":"secret"}}""",
+        )
+        assertEquals("Aria", user.displayName)
+        assertEquals("aria@example.com", user.email)
     }
 }

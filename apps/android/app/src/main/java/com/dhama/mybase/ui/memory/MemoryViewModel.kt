@@ -32,6 +32,12 @@ class MemoryViewModel @Inject constructor(
     private val _clearing = MutableStateFlow(false)
     val clearing = _clearing.asStateFlow()
 
+    private val _clearProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val clearProgress = _clearProgress.asStateFlow()
+
+    private val _clearNotice = MutableStateFlow<String?>(null)
+    val clearNotice = _clearNotice.asStateFlow()
+
     private var deleteJob: Job? = null
 
     fun stageDelete(memory: MemoryEntity) {
@@ -64,8 +70,22 @@ class MemoryViewModel @Inject constructor(
         _hiddenIds.value = emptySet()
         viewModelScope.launch {
             _clearing.value = true
-            repository.clear()
-            _clearing.value = false
+            _clearNotice.value = null
+            try {
+                val result = repository.clearAll { done, total ->
+                    _clearProgress.value = done to total
+                }
+                _clearNotice.value = when {
+                    result.kept == 0 -> null
+                    result.removed == 0 -> "Couldn't forget them. They're still here."
+                    else -> "${result.kept} still here. The rest are forgotten."
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } finally {
+                _clearing.value = false
+                _clearProgress.value = null
+            }
         }
     }
 
