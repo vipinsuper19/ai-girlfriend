@@ -229,6 +229,7 @@ fun ChatScreen(
             when {
                 recording -> "Recording…"
                 streaming -> "Typing…"
+                companion?.conversationId != null -> "Active now"
                 else -> "On this phone"
             },
             style = MaterialTheme.typography.bodySmall,
@@ -240,7 +241,9 @@ fun ChatScreen(
                     else if (streaming) contentDescription = "$name is typing"
                 },
         )
-        OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        if (companion?.conversationId == null) {
+            OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        }
         if (showWarning) {
             UsageWarning(
                 name = name,
@@ -490,7 +493,11 @@ private fun MessageRow(
                 TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("Not sent · Retry", color = MaterialTheme.colorScheme.error)
                 }
-            } else if (message.kind == ChatMessageEntity.KIND_AUDIO && message.text.isBlank()) {
+            } else if (
+                message.kind == ChatMessageEntity.KIND_AUDIO &&
+                message.text.isBlank() &&
+                !message.audioPath.startsWith("http")
+            ) {
                 Text(
                     "On this phone",
                     style = MaterialTheme.typography.bodySmall,

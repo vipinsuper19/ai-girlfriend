@@ -58,7 +58,7 @@ class ChatViewModel @Inject constructor(
         if (text.isEmpty() || sendJob?.isActive == true) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
-            chatRepository.send(text, saved.name, saved.relationship, saved.traits)
+            chatRepository.send(text, saved.name, saved.relationship, saved.traits, saved.conversationId)
             memoryRepository.notice(text)
         }
     }
@@ -66,7 +66,7 @@ class ChatViewModel @Inject constructor(
     fun sendVoice(path: String, durationMs: Long) {
         if (path.isBlank() || sendJob?.isActive == true) return
         viewModelScope.launch {
-            chatRepository.sendVoice(path, durationMs)
+            chatRepository.sendVoice(path, durationMs, companion.value?.conversationId)
         }
     }
 
@@ -96,12 +96,15 @@ class ChatViewModel @Inject constructor(
         } else {
             thread.getOrNull(index - 1)?.takeIf { it.role == ChatRepositoryImpl.ROLE_USER }
         } ?: return
-        if (source.text.isBlank()) return
         sendJob = viewModelScope.launch {
-            chatRepository.delete(failed.id)
-            if (source.id != failed.id) chatRepository.delete(source.id)
-            chatRepository.send(source.text, saved.name, saved.relationship, saved.traits)
-            memoryRepository.notice(source.text)
+            chatRepository.discard(failed.id)
+            if (source.id != failed.id) chatRepository.discard(source.id)
+            if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
+                chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
+            } else if (source.text.isNotBlank()) {
+                chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
+                memoryRepository.notice(source.text)
+            }
         }
     }
 }

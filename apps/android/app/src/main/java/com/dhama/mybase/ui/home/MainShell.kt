@@ -228,8 +228,10 @@ private fun HomeTab(
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
-        Spacer(Modifier.height(8.dp))
-        OfflineStrip()
+        if (companion.conversationId == null) {
+            Spacer(Modifier.height(8.dp))
+            OfflineStrip()
+        }
         Spacer(Modifier.height(12.dp))
         Monogram(companion.name)
         Text(

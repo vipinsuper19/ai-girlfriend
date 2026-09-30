@@ -2,6 +2,7 @@ package com.dhama.mybase.di
 
 import com.dhama.mybase.core.data.AuthRepoImpl
 import com.dhama.mybase.core.domain.AuthRepository
+import com.dhama.mybase.core.network.ApiClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -15,8 +16,8 @@ object AuthModule {
 
     @Provides
     @Singleton
-    fun provideAuthRepository(): AuthRepository {
-        return AuthRepoImpl()
+    fun provideAuthRepository(api: ApiClient): AuthRepository {
+        return AuthRepoImpl(api)
     }
 
 }

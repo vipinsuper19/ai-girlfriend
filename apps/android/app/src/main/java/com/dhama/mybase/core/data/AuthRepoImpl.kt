@@ -9,6 +9,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.model.AuthState
+import com.dhama.mybase.core.network.ApiClient
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
@@ -31,7 +32,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class AuthRepoImpl () : AuthRepository {
+class AuthRepoImpl(
+    private val api: ApiClient,
+) : AuthRepository {
 
     private val tag = "AuthRepository"
     private val auth = Firebase.auth
@@ -85,6 +88,15 @@ class AuthRepoImpl () : AuthRepository {
                    }
            }
 
+           if (result) {
+               try {
+                   api.establish(email, password)
+               } catch (error: CancellationException) {
+                   throw error
+               } catch (_: Exception) {
+                   // Email sign-in still stands. Chat stays on this phone until the API accepts the session.
+               }
+           }
            return result
 
        } catch (e: Exception) {
@@ -131,7 +143,11 @@ class AuthRepoImpl () : AuthRepository {
                 val authCredential = GoogleAuthProvider.getCredential(tokenCredential.idToken,null)
                 val authResult = auth.signInWithCredential(authCredential).await()
 
-                return authResult.user != null
+                if (authResult.user != null) {
+                    api.clear()
+                    return true
+                }
+                return false
 
 
 
@@ -167,6 +183,7 @@ class AuthRepoImpl () : AuthRepository {
         try {
             val credential = PhoneAuthProvider.getCredential(verificationId, otp)
             val result = auth.signInWithCredential(credential).await()
+            api.clear()
             emit(AuthState.Success(result.user))
         } catch (e: Exception) {
             emit(AuthState.Error(e.message ?: "Verification failed"))
@@ -177,6 +194,7 @@ class AuthRepoImpl () : AuthRepository {
 //        credentialManager.clearCredentialState(
 //            ClearCredentialStateRequest()
 //        )
+        api.clear()
         auth.signOut()
     }
 

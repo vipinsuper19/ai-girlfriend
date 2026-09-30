@@ -11,6 +11,7 @@ import com.dhama.mybase.core.db.dao.NotesDao
 import com.dhama.mybase.core.db.dao.UserDao
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.MemoryRepository
+import com.dhama.mybase.core.network.ApiClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -51,8 +52,9 @@ object DatabaseModule {
     @Singleton
     fun provideChatRepository(
         dao: ChatMessageDao,
+        api: ApiClient,
         @ApplicationContext context: Context,
-    ): ChatRepository = ChatRepositoryImpl(dao, File(context.filesDir, "voice-notes"))
+    ): ChatRepository = ChatRepositoryImpl(dao, File(context.filesDir, "voice-notes"), api)
 
     @Provides
     @Singleton

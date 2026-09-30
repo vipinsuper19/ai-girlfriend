@@ -77,7 +77,7 @@ class CompanionWizardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(creating = true, error = null, nameError = null) }
             try {
-                repository.save(draft.toSaved(System.currentTimeMillis()))
+                repository.create(draft)
                 _state.update { it.copy(creating = false) }
                 _created.emit(Unit)
             } catch (error: Exception) {

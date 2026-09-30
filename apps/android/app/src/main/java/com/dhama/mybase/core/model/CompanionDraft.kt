@@ -145,6 +145,8 @@ data class SavedCompanion(
     val humorLevel: Int = 64,
     val flirtLevel: Int = 45,
     val romanceLevel: Int = 58,
+    val serverId: Int? = null,
+    val conversationId: Int? = null,
 )
 
 @Serializable
