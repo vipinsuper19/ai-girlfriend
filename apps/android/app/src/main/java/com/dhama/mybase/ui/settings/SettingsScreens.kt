@@ -53,6 +53,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -80,8 +81,12 @@ import com.dhama.mybase.core.usage.CountedMessage
 import com.dhama.mybase.core.usage.FREE_IMAGE_LIMIT
 import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
 import com.dhama.mybase.core.usage.FREE_VOICE_MINUTES
+import com.dhama.mybase.core.usage.MonthUsage
 import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.preview.sampleMemories
+import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.usage.PaywallCard
 import com.dhama.mybase.ui.usage.UsageMeter
 
@@ -104,6 +109,43 @@ fun YouSettingsScreen(
     val privacy by viewModel.screenPrivacy.collectAsState()
     val theme by viewModel.themeMode.collectAsState()
     val companion by viewModel.companion.collectAsState()
+    YouSettingsContent(
+        displayName = displayName,
+        plan = plan,
+        nameMessage = nameMessage,
+        email = email,
+        privacy = privacy,
+        theme = theme,
+        companionName = companion?.name,
+        onProfile = onProfile,
+        onPrivacy = onPrivacy,
+        onPlans = onPlans,
+        onLogout = onLogout,
+        onSaveName = viewModel::setDisplayName,
+        onScreenPrivacy = viewModel::setScreenPrivacy,
+        onTheme = viewModel::setThemeMode,
+        onDeleteAccount = viewModel::deleteAccount,
+    )
+}
+
+@Composable
+private fun YouSettingsContent(
+    displayName: String,
+    plan: String,
+    nameMessage: String?,
+    email: String,
+    privacy: Boolean,
+    theme: String,
+    companionName: String?,
+    onProfile: () -> Unit,
+    onPrivacy: () -> Unit,
+    onPlans: () -> Unit,
+    onLogout: () -> Unit,
+    onSaveName: (String) -> Unit,
+    onScreenPrivacy: (Boolean) -> Unit,
+    onTheme: (String) -> Unit,
+    onDeleteAccount: () -> Unit,
+) {
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     var confirmDelete by remember { mutableStateOf(false) }
     Column(
@@ -130,7 +172,7 @@ fun YouSettingsScreen(
                 placeholder = { Text("Your name") },
             )
             if (nameDraft.trim() != displayName) {
-                TextButton(onClick = { viewModel.setDisplayName(nameDraft) }) { Text("Save name") }
+                TextButton(onClick = { onSaveName(nameDraft) }) { Text("Save name") }
             }
             if (!nameMessage.isNullOrBlank()) {
                 Text(nameMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
@@ -138,7 +180,7 @@ fun YouSettingsScreen(
         }
         Spacer(Modifier.height(20.dp))
         SectionLabel("Companion")
-        SettingsRow("Her profile", companion?.name ?: "Not created yet", onClick = onProfile)
+        SettingsRow("Her profile", companionName ?: "Not created yet", onClick = onProfile)
         SettingsRow("Memory & privacy", "What she keeps", onClick = onPrivacy)
         SectionLabel("Privacy")
         Row(
@@ -156,7 +198,7 @@ fun YouSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = privacy, onCheckedChange = viewModel::setScreenPrivacy)
+            Switch(checked = privacy, onCheckedChange = onScreenPrivacy)
         }
         DisabledRow("Email", email.ifBlank { "No email-change endpoint" })
         DisabledRow("Change password", "No endpoint yet")
@@ -164,7 +206,7 @@ fun YouSettingsScreen(
         SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
         SectionLabel("App")
         Text("Theme", style = MaterialTheme.typography.bodyLarge)
-        ThemePicker(selected = theme.ifBlank { "system" }, onSelect = viewModel::setThemeMode)
+        ThemePicker(selected = theme.ifBlank { "system" }, onSelect = onTheme)
         DisabledRow("Notifications", "No notifications module yet")
         Spacer(Modifier.height(24.dp))
         TextButton(
@@ -188,7 +230,7 @@ fun YouSettingsScreen(
             onDismiss = { confirmDelete = false },
             onConfirm = {
                 confirmDelete = false
-                viewModel.deleteAccount()
+                onDeleteAccount()
             },
         )
     }
@@ -222,8 +264,30 @@ fun CompanionProfileScreen(
         }
         viewModel.uploadPhoto(bytes, mime)
     }
+    CompanionProfileContent(
+        saved = companion,
+        memoryCount = memories.size,
+        photoSaving = photoSaving,
+        photoMessage = photoMessage,
+        onBack = onBack,
+        onEdit = onEdit,
+        onPickPhoto = { photoPicker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) },
+        onArchive = viewModel::archive,
+    )
+}
+
+@Composable
+private fun CompanionProfileContent(
+    saved: SavedCompanion?,
+    memoryCount: Int,
+    photoSaving: Boolean,
+    photoMessage: String?,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onPickPhoto: () -> Unit,
+    onArchive: () -> Unit,
+) {
     var confirmArchive by remember { mutableStateOf(false) }
-    val saved = companion
     Column(
         Modifier
             .fillMaxSize()
@@ -245,7 +309,7 @@ fun CompanionProfileScreen(
         CompanionPortrait(saved.name, saved.avatarUrl, 112.dp)
         if (saved.serverId != null) {
             TextButton(
-                onClick = { photoPicker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) },
+                onClick = onPickPhoto,
                 enabled = !photoSaving,
                 modifier = Modifier.heightIn(min = 48.dp),
             ) { Text(if (photoSaving) "Saving her photo…" else "Set photo") }
@@ -280,7 +344,7 @@ fun CompanionProfileScreen(
         GroupLine("Look", "${saved.style} · ${saved.hairColor} hair · ${saved.eyeColor} eyes · ${saved.skinTone} skin")
         GroupLine("Gender", genderLabel(saved.gender))
         GroupLine("Voice", "${saved.voiceLabel} voice")
-        GroupLine("Memory", "${memories.size} things remembered")
+        GroupLine("Memory", "$memoryCount things remembered")
         Spacer(Modifier.height(28.dp))
         TextButton(
             onClick = { confirmArchive = true },
@@ -298,7 +362,7 @@ fun CompanionProfileScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmArchive = false
-                    viewModel.archive()
+                    onArchive()
                 }) { Text("Archive", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmArchive = false }) { Text("Cancel") } },
@@ -322,13 +386,17 @@ fun EditCompanionScreen(
             Text("Edit", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         }
         if (saved == null) return
-        EditBody(saved, onBack, viewModel)
+        EditBody(saved, onBack, viewModel::saveCompanion)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: SettingsViewModel) {
+private fun EditBody(
+    saved: SavedCompanion,
+    onBack: () -> Unit,
+    onSave: (SavedCompanion, CompanionDraft) -> Unit,
+) {
     var revision by remember { mutableIntStateOf(0) }
     var name by remember(saved.name, revision) { mutableStateOf(saved.name) }
     var traits by remember(saved.traits, revision) { mutableStateOf(saved.traits) }
@@ -466,7 +534,7 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
                             name = name.trim(),
                             gender = gender,
                         )
-                        viewModel.saveCompanion(saved, draft)
+                        onSave(saved, draft)
                         onBack()
                     },
                     enabled = name.trim().length in 2..100,
@@ -488,6 +556,16 @@ fun SubscriptionScreen(onBack: () -> Unit) {
         System.currentTimeMillis(),
     )
     val name = companion?.name?.ifBlank { null } ?: "her"
+    SubscriptionContent(name, usage, plan, onBack)
+}
+
+@Composable
+private fun SubscriptionContent(
+    name: String,
+    usage: MonthUsage,
+    plan: String,
+    onBack: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -663,7 +741,6 @@ private fun GroupLine(label: String, value: String) {
     }
 }
 
-@Composable
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChoiceChips(options: List<String>, selected: String, onSelect: (String) -> Unit) {
@@ -686,6 +763,72 @@ private fun Level(label: String, value: Float, onChange: (Float) -> Unit) {
             onValueChange = onChange,
             valueRange = 0f..100f,
             modifier = Modifier.semantics { progressBarRangeInfo = ProgressBarRangeInfo(value / 100f, 0f..1f) },
+        )
+    }
+}
+
+@Preview(name = "You", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun YouSettingsPreview() {
+    MyBaseTheme {
+        YouSettingsContent(
+            displayName = "Vipin",
+            plan = "Free",
+            nameMessage = null,
+            email = "vipin@example.com",
+            privacy = true,
+            theme = "system",
+            companionName = "Aria",
+            onProfile = {},
+            onPrivacy = {},
+            onPlans = {},
+            onLogout = {},
+            onSaveName = {},
+            onScreenPrivacy = {},
+            onTheme = {},
+            onDeleteAccount = {},
+        )
+    }
+}
+
+@Preview(name = "Companion profile", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun CompanionProfilePreview() {
+    MyBaseTheme {
+        CompanionProfileContent(
+            saved = sampleCompanion(),
+            memoryCount = sampleMemories().size,
+            photoSaving = false,
+            photoMessage = null,
+            onBack = {},
+            onEdit = {},
+            onPickPhoto = {},
+            onArchive = {},
+        )
+    }
+}
+
+@Preview(name = "Edit companion", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun EditCompanionPreview() {
+    MyBaseTheme {
+        EditBody(sampleCompanion(), onBack = {}, onSave = { _, _ -> })
+    }
+}
+
+@Preview(name = "Plan", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun SubscriptionPreview() {
+    val now = System.currentTimeMillis()
+    MyBaseTheme {
+        SubscriptionContent(
+            name = "Aria",
+            usage = monthUsage(
+                listOf(CountedMessage("USER", now, 60_000)),
+                now,
+            ),
+            plan = "Free",
+            onBack = {},
         )
     }
 }

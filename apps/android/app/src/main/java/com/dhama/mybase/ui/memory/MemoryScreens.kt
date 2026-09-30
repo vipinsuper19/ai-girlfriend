@@ -44,11 +44,14 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.memory.importanceReading
 import com.dhama.mybase.core.memory.memoryTypeLabel
+import com.dhama.mybase.ui.preview.sampleMemories
+import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import java.time.Instant
 import java.time.ZoneId
@@ -65,8 +68,18 @@ fun MemoryListScreen(
 ) {
     val memories by viewModel.memories.collectAsState()
     val hidden by viewModel.hiddenIds.collectAsState()
+    MemoryListContent(companionName, memories.filter { it.id !in hidden }, onOpen)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MemoryListContent(
+    companionName: String,
+    memories: List<MemoryEntity>,
+    onOpen: (String) -> Unit,
+) {
     var filter by remember { mutableStateOf<String?>(null) }
-    val visible = memories.filter { it.id !in hidden && (filter == null || it.type == filter) }
+    val visible = memories.filter { filter == null || it.type == filter }
     val name = companionName.ifBlank { "She" }
     Column(
         Modifier
@@ -175,7 +188,14 @@ fun MemoryDetailScreen(
             )
             return
         }
-        DetailBody(memory, onBack, viewModel)
+        DetailBody(
+            memory = memory,
+            onSave = { content, type, importance -> viewModel.save(memory.id, content, type, importance) },
+            onDelete = {
+                viewModel.stageDelete(memory)
+                onBack()
+            },
+        )
     }
 }
 
@@ -183,8 +203,8 @@ fun MemoryDetailScreen(
 @Composable
 private fun DetailBody(
     memory: MemoryEntity,
-    onBack: () -> Unit,
-    viewModel: MemoryViewModel,
+    onSave: (String, String, Int) -> Unit,
+    onDelete: () -> Unit,
 ) {
     var content by remember(memory.id) { mutableStateOf(memory.content) }
     var type by remember(memory.id) { mutableStateOf(memory.type) }
@@ -227,15 +247,12 @@ private fun DetailBody(
         ProvenanceRow("Confidence", "%.2f".format(memory.confidence))
         Spacer(Modifier.height(20.dp))
         TextButton(
-            onClick = { viewModel.save(memory.id, content, type, importance.toInt()) },
+            onClick = { onSave(content, type, importance.toInt()) },
             enabled = dirty && content.isNotBlank(),
             modifier = Modifier.heightIn(min = 48.dp),
         ) { Text("Save") }
         TextButton(
-            onClick = {
-                viewModel.stageDelete(memory)
-                onBack()
-            },
+            onClick = onDelete,
             modifier = Modifier.heightIn(min = 48.dp),
         ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(24.dp))
@@ -252,6 +269,27 @@ fun MemoryPrivacyScreen(
     val clearing by viewModel.clearing.collectAsState()
     val clearProgress by viewModel.clearProgress.collectAsState()
     val clearNotice by viewModel.clearNotice.collectAsState()
+    MemoryPrivacyContent(
+        companionName = companionName,
+        memories = memories,
+        clearing = clearing,
+        clearProgress = clearProgress,
+        clearNotice = clearNotice,
+        onBack = onBack,
+        onClearAll = viewModel::clearAll,
+    )
+}
+
+@Composable
+private fun MemoryPrivacyContent(
+    companionName: String,
+    memories: List<MemoryEntity>,
+    clearing: Boolean,
+    clearProgress: Pair<Int, Int>?,
+    clearNotice: String?,
+    onBack: () -> Unit,
+    onClearAll: () -> Unit,
+) {
     var confirm by remember { mutableStateOf(false) }
     val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
     val thisWeek = memories.count { it.createdAtEpochMs >= weekAgo }
@@ -321,7 +359,7 @@ fun MemoryPrivacyScreen(
             onDismiss = { confirm = false },
             onConfirm = {
                 confirm = false
-                viewModel.clearAll()
+                onClearAll()
             },
         )
     }
@@ -434,6 +472,46 @@ private fun relativeTime(epochMs: Long): String {
 private fun rememberedOn(epochMs: Long): String {
     val time = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
     return time.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+}
+
+@Preview(name = "Memory", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun MemoryListPreview() {
+    MyBaseTheme {
+        MemoryListContent("Aria", sampleMemories(), onOpen = {})
+    }
+}
+
+@Preview(name = "Memory detail", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun MemoryDetailPreview() {
+    MyBaseTheme {
+        Column(Modifier.fillMaxSize()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+                IconButton(onClick = {}) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text("Memory", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+            }
+            DetailBody(sampleMemories().first(), onSave = { _, _, _ -> }, onDelete = {})
+        }
+    }
+}
+
+@Preview(name = "Memory & privacy", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun MemoryPrivacyPreview() {
+    MyBaseTheme {
+        MemoryPrivacyContent(
+            companionName = "Aria",
+            memories = sampleMemories(),
+            clearing = false,
+            clearProgress = null,
+            clearNotice = null,
+            onBack = {},
+            onClearAll = {},
+        )
+    }
 }
 
 private fun sourceLabel(source: String): String = when (source) {

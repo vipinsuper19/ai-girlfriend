@@ -56,7 +56,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.dhama.mybase.ui.theme.MyBaseTheme
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.companionGender
@@ -539,5 +541,72 @@ private fun PrimaryAction(label: String, onClick: () -> Unit, loading: Boolean =
             Spacer(Modifier.width(8.dp))
         }
         Text(label)
+    }
+}
+
+@Preview(name = "Wizard – Intro", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun WizardIntroPreview() {
+    MyBaseTheme {
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            IntroStep(onStart = {})
+        }
+    }
+}
+
+@Preview(name = "Wizard – Appearance", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun WizardAppearancePreview() {
+    WizardStepPreview(WizardStep.Appearance) { draft, onChange ->
+        AppearanceStep(draft, onChange, onContinue = {})
+    }
+}
+
+@Preview(name = "Wizard – Personality", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun WizardPersonalityPreview() {
+    WizardStepPreview(WizardStep.Personality) { draft, onChange ->
+        PersonalityStep(draft, onChange, onContinue = {})
+    }
+}
+
+@Preview(name = "Wizard – Voice", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun WizardVoicePreview() {
+    WizardStepPreview(WizardStep.Voice) { draft, onChange ->
+        VoiceStep(draft, onChange, onContinue = {})
+    }
+}
+
+@Preview(name = "Wizard – Finalize", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun WizardFinalizePreview() {
+    MyBaseTheme {
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            StepHeader(WizardStep.Finalize, showSkip = false, onBack = {}, onSkip = {})
+            Spacer(Modifier.height(8.dp))
+            FinalizeStep(
+                draft = CompanionDraft(name = "Aria"),
+                creating = false,
+                error = null,
+                nameError = null,
+                onName = {},
+                onCreate = {},
+            )
+        }
+    }
+}
+
+@Composable
+private fun WizardStepPreview(
+    step: WizardStep,
+    body: @Composable (CompanionDraft, ((CompanionDraft) -> CompanionDraft) -> Unit) -> Unit,
+) {
+    MyBaseTheme {
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            StepHeader(step, showSkip = true, onBack = {}, onSkip = {})
+            Spacer(Modifier.height(8.dp))
+            body(CompanionDraft()) { _ -> }
+        }
     }
 }

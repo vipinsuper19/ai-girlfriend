@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.home.homeGreeting
@@ -65,6 +66,7 @@ import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
 import com.dhama.mybase.core.usage.METERING_ENFORCED
 import com.dhama.mybase.core.usage.MonthUsage
+import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.UsageLevel
 import com.dhama.mybase.core.usage.resetLabel
 import com.dhama.mybase.core.usage.usageLevel
@@ -82,6 +84,8 @@ import com.dhama.mybase.ui.settings.EditCompanionScreen
 import com.dhama.mybase.ui.settings.SubscriptionScreen
 import com.dhama.mybase.ui.settings.YouSettingsScreen
 import com.dhama.mybase.ui.settings.rememberSettingsViewModel
+import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -349,5 +353,44 @@ private fun QuickAction(label: String, onClick: () -> Unit, modifier: Modifier =
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
     ) { Text(label) }
+}
+
+@Preview(name = "Home", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun HomeTabPreview() {
+    MyBaseTheme {
+        Scaffold(
+            bottomBar = {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    MainTab.entries.forEach { item ->
+                        NavigationBarItem(
+                            selected = item == MainTab.Home,
+                            onClick = {},
+                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+            },
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                HomeTab(
+                    companion = sampleCompanion(),
+                    highlight = MemoryHighlight("You mentioned your sister", thisWeek = true),
+                    hasTalked = true,
+                    lastReply = "Tell me about her. I'm right here.",
+                    usage = monthUsage(emptyList(), System.currentTimeMillis()),
+                    warningDismissed = "",
+                    planLabel = "Free",
+                    displayName = "Vipin",
+                    onDismissWarning = {},
+                    onTalk = {},
+                    onMemories = {},
+                    onProfile = {},
+                    onSettings = {},
+                )
+            }
+        }
+    }
 }
 

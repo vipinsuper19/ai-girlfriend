@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -84,6 +85,8 @@ import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.VoiceRecorder
 import com.dhama.mybase.core.voice.VoiceRelease
 import com.dhama.mybase.core.voice.voiceReleaseAction
+import com.dhama.mybase.ui.preview.sampleMessages
+import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import java.io.File
 import kotlinx.coroutines.delay
@@ -640,6 +643,87 @@ private fun Composer(
             else -> IconButton(onClick = onSend, enabled = enabled && value.isNotBlank()) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
+        }
+    }
+}
+
+@Preview(name = "Chat", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun ChatScreenPreview() {
+    val name = "Aria"
+    val messages = sampleMessages()
+    var draft by remember { mutableStateOf("") }
+    MyBaseTheme {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CompanionPortrait(name, "", 40.dp)
+                Text(
+                    name,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier
+                        .padding(start = 12.dp)
+                        .weight(1f)
+                        .semantics { heading() },
+                )
+                TextButton(onClick = {}) { Text("History") }
+            }
+            Text(
+                "Active now",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                    val previous = messages.getOrNull(index - 1)
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (needsStamp(previous, message)) {
+                            Text(
+                                formatStamp(message.createdAtEpochMs),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        MessageRow(
+                            message = message,
+                            senderName = name,
+                            playing = false,
+                            onToggleVoice = {},
+                            onLongClick = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            Composer(
+                value = draft,
+                streaming = false,
+                enabled = true,
+                recording = false,
+                locked = false,
+                cancelling = false,
+                elapsedMs = 0,
+                amplitudes = emptyList(),
+                onChange = { draft = it },
+                onSend = {},
+                onStop = {},
+                onMicDown = {},
+                onMicDrag = {},
+                onMicUp = {},
+                onVoiceSend = {},
+                onVoiceCancel = {},
+            )
         }
     }
 }

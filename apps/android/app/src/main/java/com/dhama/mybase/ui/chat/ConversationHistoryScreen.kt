@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.network.RemoteConversation
@@ -44,6 +45,9 @@ import com.dhama.mybase.core.network.conversationTitle
 import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.relativeChatTime
 import com.dhama.mybase.ui.companion.CompanionPortrait
+import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.preview.sampleConversations
+import com.dhama.mybase.ui.theme.MyBaseTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -192,6 +196,46 @@ private fun ConversationRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+}
+
+@Preview(name = "History", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun ConversationHistoryPreview() {
+    val companion = sampleCompanion()
+    MyBaseTheme {
+        Scaffold(
+            bottomBar = {
+                Button(
+                    onClick = {},
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .heightIn(min = 56.dp),
+                ) { Text("Start a new conversation") }
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    IconButton(onClick = {}) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                    Text("History", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(sampleConversations(), key = { it.id }) { conversation ->
+                        ConversationRow(
+                            conversation = conversation,
+                            companionName = companion.name,
+                            avatarUrl = "",
+                            active = conversation.id == companion.conversationId,
+                            onOpen = {},
+                            onDelete = {},
+                        )
+                    }
+                }
             }
         }
     }
