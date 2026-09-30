@@ -3,7 +3,6 @@ package com.dhama.mybase.ui.home
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +65,7 @@ import com.dhama.mybase.core.usage.MonthUsage
 import com.dhama.mybase.core.usage.UsageLevel
 import com.dhama.mybase.core.usage.resetLabel
 import com.dhama.mybase.core.usage.usageLevel
+import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.ui.usage.OfflineStrip
 import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.ui.chat.ChatScreen
@@ -238,7 +238,7 @@ private fun HomeTab(
             OfflineStrip()
         }
         Spacer(Modifier.height(12.dp))
-        Monogram(companion.name)
+        CompanionPortrait(companion.name, companion.avatarUrl, 128.dp)
         Text(
             companion.name,
             style = MaterialTheme.typography.displayMedium,
@@ -322,25 +322,6 @@ private fun QuickAction(label: String, onClick: () -> Unit, modifier: Modifier =
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
     ) { Text(label) }
-}
-
-@Composable
-private fun Monogram(name: String) {
-    Box(
-        Modifier
-            .size(128.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-            .clearAndSetSemantics {},
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            name.take(1).uppercase(),
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    }
 }
 
 private fun timeGreeting(): String {

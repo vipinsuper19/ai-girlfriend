@@ -10,6 +10,7 @@ import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -66,6 +67,12 @@ class SettingsViewModel @Inject constructor(
     private val _nameMessage = MutableStateFlow<String?>(null)
     val nameMessage = _nameMessage.asStateFlow()
 
+    private val _photoSaving = MutableStateFlow(false)
+    val photoSaving = _photoSaving.asStateFlow()
+
+    private val _photoMessage = MutableStateFlow<String?>(null)
+    val photoMessage = _photoMessage.asStateFlow()
+
     fun setThemeMode(mode: String) {
         viewModelScope.launch { dataStoreRepo.saveString(PreferencesKeys.THEME_MODE, mode) }
     }
@@ -92,6 +99,31 @@ class SettingsViewModel @Inject constructor(
                 _nameMessage.value = "Couldn't save your name."
             }
         }
+    }
+
+    fun uploadPhoto(bytes: ByteArray, mime: String) {
+        val error = avatarPhotoError(mime, bytes.size.toLong())
+        if (error != null) {
+            _photoMessage.value = error
+            return
+        }
+        viewModelScope.launch {
+            _photoSaving.value = true
+            _photoMessage.value = null
+            try {
+                companionRepository.uploadPhoto(bytes, mime)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _photoMessage.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't save her photo."
+            } finally {
+                _photoSaving.value = false
+            }
+        }
+    }
+
+    fun rejectPhoto(message: String) {
+        _photoMessage.value = message
     }
 
     fun saveCompanion(current: SavedCompanion, draft: CompanionDraft) {

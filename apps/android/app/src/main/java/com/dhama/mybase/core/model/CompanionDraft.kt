@@ -147,6 +147,7 @@ data class SavedCompanion(
     val romanceLevel: Int = 58,
     val serverId: Int? = null,
     val conversationId: Int? = null,
+    val avatarUrl: String = "",
 )
 
 @Serializable
@@ -171,6 +172,7 @@ data class AppearanceRequest(
     val height: String? = null,
     val clothingStyle: String? = null,
     val imagePrompt: String? = null,
+    val avatarUrl: String? = null,
     val metadata: Map<String, String> = emptyMap(),
 )
 

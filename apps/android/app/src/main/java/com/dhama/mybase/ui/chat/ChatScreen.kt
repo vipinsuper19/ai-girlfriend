@@ -62,6 +62,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
@@ -218,13 +219,19 @@ fun ChatScreen(
             .fillMaxSize()
             .imePadding(),
     ) {
-        Text(
-            name,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .semantics { heading() },
-        )
+        Row(
+            Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompanionPortrait(name, companion?.avatarUrl.orEmpty(), 40.dp)
+            Text(
+                name,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .semantics { heading() },
+            )
+        }
         Text(
             when {
                 recording -> "Recording…"

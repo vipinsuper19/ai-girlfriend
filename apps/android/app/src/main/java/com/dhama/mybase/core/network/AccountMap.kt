@@ -33,6 +33,7 @@ data class RemoteAppearance(
     val hairColor: String? = null,
     val eyeColor: String? = null,
     val skinTone: String? = null,
+    val avatarUrl: String? = null,
     val metadata: JsonObject? = null,
 )
 
@@ -49,6 +50,11 @@ data class RemotePersonality(
 @Serializable
 data class RemoteVoice(
     val voiceId: String? = null,
+)
+
+@Serializable
+data class RemoteAvatarUpload(
+    val avatarUrl: String = "",
 )
 
 @Serializable
@@ -145,7 +151,28 @@ fun stringList(element: JsonElement?): List<String> {
     return array.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { text -> text.isNotBlank() } }
 }
 
-fun RemoteAvatar.toSaved(conversationId: Int, nowEpochMs: Long): SavedCompanion {
+const val AVATAR_MAX_BYTES = 5L * 1024 * 1024
+
+fun avatarPhotoError(mime: String?, sizeBytes: Long): String? {
+    val type = mime?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+    val allowed = type == "image/jpeg" || type == "image/png" || type == "image/webp"
+    if (!allowed) return "Use a JPEG, PNG, or WebP image."
+    if (sizeBytes > AVATAR_MAX_BYTES) {
+        val megabytes = sizeBytes / (1024.0 * 1024.0)
+        return "That image is ${"%.1f".format(java.util.Locale.US, megabytes)}MB. The limit is 5MB."
+    }
+    return null
+}
+
+fun avatarFileName(mime: String): String {
+    return when (mime.substringBefore(';').trim().lowercase()) {
+        "image/png" -> "avatar.png"
+        "image/webp" -> "avatar.webp"
+        else -> "avatar.jpg"
+    }
+}
+
+fun RemoteAvatar.toSaved(conversationId: Int, nowEpochMs: Long, origin: String = ""): SavedCompanion {
     val relationship = text(personality?.metadata, "relationshipType") ?: "Girlfriend"
     val style = text(appearance?.metadata, "style") ?: "Realistic"
     val voiceId = voice?.voiceId?.takeIf { it.isNotBlank() } ?: "warm"
@@ -168,6 +195,10 @@ fun RemoteAvatar.toSaved(conversationId: Int, nowEpochMs: Long): SavedCompanion 
         romanceLevel = personality?.romanceLevel ?: 58,
         serverId = id,
         conversationId = conversationId,
+        avatarUrl = appearance?.avatarUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.let { resolveVoiceUrl(origin, it) }
+            .orEmpty(),
     )
 }
 

@@ -154,6 +154,25 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "avatars/$id", null, access)) }
     }
 
+    suspend fun uploadAvatar(id: Int, bytes: ByteArray, mime: String): String {
+        return withAuth { access ->
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "file",
+                    avatarFileName(mime),
+                    bytes.toRequestBody(mime.toMediaType()),
+                )
+                .build()
+            val request = Request.Builder()
+                .url(url("avatars/$id/avatar"))
+                .header("Authorization", "Bearer $access")
+                .post(body)
+                .build()
+            unwrapData<RemoteAvatarUpload>(execute(request), json).avatarUrl
+        }
+    }
+
     suspend fun deleteMessage(id: Int) {
         withAuth { access -> execute(authed("DELETE", "messages/$id", null, access)) }
     }

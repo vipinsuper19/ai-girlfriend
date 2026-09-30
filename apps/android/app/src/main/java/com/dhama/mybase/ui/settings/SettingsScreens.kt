@@ -2,11 +2,13 @@
 
 package com.dhama.mybase.ui.settings
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -17,9 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -60,6 +60,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalContext
 import com.dhama.mybase.core.memory.togetherLine
+import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
+import com.dhama.mybase.core.network.avatarPhotoError
+import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.usage.CountedMessage
@@ -187,6 +190,26 @@ fun CompanionProfileScreen(
 ) {
     val companion by viewModel.companion.collectAsState()
     val memories by viewModel.memories.collectAsState()
+    val photoSaving by viewModel.photoSaving.collectAsState()
+    val photoMessage by viewModel.photoMessage.collectAsState()
+    val context = LocalContext.current
+    val photoPicker = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        val size = context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+        } ?: -1L
+        if (size > AVATAR_MAX_BYTES) {
+            viewModel.rejectPhoto(avatarPhotoError(mime, size) ?: "That image is over 5MB.")
+            return@rememberLauncherForActivityResult
+        }
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (bytes == null) {
+            viewModel.rejectPhoto("Couldn't read that photo.")
+            return@rememberLauncherForActivityResult
+        }
+        viewModel.uploadPhoto(bytes, mime)
+    }
     var confirmArchive by remember { mutableStateOf(false) }
     val saved = companion
     Column(
@@ -207,7 +230,22 @@ fun CompanionProfileScreen(
             Text("No companion yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             return
         }
-        Monogram(saved.name, 112.dp)
+        CompanionPortrait(saved.name, saved.avatarUrl, 112.dp)
+        if (saved.serverId != null) {
+            TextButton(
+                onClick = { photoPicker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) },
+                enabled = !photoSaving,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(if (photoSaving) "Saving her photo…" else "Set photo") }
+            if (!photoMessage.isNullOrBlank()) {
+                Text(photoMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
+            }
+        } else {
+            Text(
+                "Sign in with email to keep her photo.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text(
             saved.name,
             style = MaterialTheme.typography.displayMedium,
@@ -571,24 +609,6 @@ private fun Level(label: String, value: Float, onChange: (Float) -> Unit) {
             onValueChange = onChange,
             valueRange = 0f..100f,
             modifier = Modifier.semantics { progressBarRangeInfo = ProgressBarRangeInfo(value / 100f, 0f..1f) },
-        )
-    }
-}
-
-@Composable
-private fun Monogram(name: String, diameter: androidx.compose.ui.unit.Dp) {
-    Box(
-        Modifier
-            .size(diameter)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            name.take(1).uppercase(),
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
     }
 }

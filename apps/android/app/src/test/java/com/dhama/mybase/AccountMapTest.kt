@@ -1,6 +1,9 @@
 package com.dhama.mybase
 
+import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
 import com.dhama.mybase.core.network.MemoryForget
+import com.dhama.mybase.core.network.avatarFileName
+import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.RemoteAppearance
 import com.dhama.mybase.core.network.RemoteAvatar
 import com.dhama.mybase.core.network.RemoteAvatarSummary
@@ -128,5 +131,23 @@ class AccountMapTest {
         )
         assertEquals("Aria", user.displayName)
         assertEquals("aria@example.com", user.email)
+    }
+
+    @Test
+    fun photoRulesMatchTheUploadLimit() {
+        assertNull(avatarPhotoError("image/jpeg", AVATAR_MAX_BYTES))
+        assertEquals("Use a JPEG, PNG, or WebP image.", avatarPhotoError("image/gif", 100))
+        assertEquals("That image is 6.0MB. The limit is 5MB.", avatarPhotoError("image/png", 6L * 1024 * 1024))
+        assertEquals("avatar.webp", avatarFileName("image/webp"))
+    }
+
+    @Test
+    fun avatarUrlResolvesAgainstTheOrigin() {
+        val saved = RemoteAvatar(
+            id = 4,
+            name = "Aria",
+            appearance = RemoteAppearance(avatarUrl = "/uploads/companions/4.jpg"),
+        ).toSaved(conversationId = 9, nowEpochMs = 1L, origin = "http://10.0.2.2:3001")
+        assertEquals("http://10.0.2.2:3001/uploads/companions/4.jpg", saved.avatarUrl)
     }
 }

@@ -72,7 +72,7 @@ class AccountSync @Inject constructor(
             .firstOrNull { it.companionId == id }
             ?.id
             ?: api.createConversation(id, name)
-        val saved = avatar.toSaved(conversationId, System.currentTimeMillis())
+        val saved = avatar.toSaved(conversationId, System.currentTimeMillis(), api.origin())
         val remoteMessages = api.listMessages(conversationId)
         val remoteMemories = api.listMemories(id)
         val failedLocal = messages.snapshot().filter { message ->

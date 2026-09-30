@@ -8,6 +8,8 @@ import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.ApiClient
+import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.voice.resolveVoiceUrl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -52,12 +54,30 @@ class CompanionRepositoryImpl(
         val next = draft.toSaved(current.createdAtEpochMs).copy(
             serverId = current.serverId,
             conversationId = current.conversationId,
+            avatarUrl = current.avatarUrl,
         )
         val serverId = current.serverId
         if (serverId != null && api.hasSession()) {
-            api.patchAvatar(serverId, draft.toCreateRequest())
+            val request = draft.toCreateRequest().let { body ->
+                if (current.avatarUrl.isBlank()) body
+                else body.copy(appearance = body.appearance.copy(avatarUrl = current.avatarUrl))
+            }
+            api.patchAvatar(serverId, request)
         }
         save(next)
+    }
+
+    override suspend fun uploadPhoto(bytes: ByteArray, mime: String) {
+        val current = observe().first()
+            ?: throw ApiStatusException(0, "Create her before adding a photo.", null)
+        val serverId = current.serverId
+        if (serverId == null || !api.hasSession()) {
+            throw ApiStatusException(401, "Sign in with email to keep her photo.", null)
+        }
+        val raw = api.uploadAvatar(serverId, bytes, mime)
+        val resolved = raw.takeIf { it.isNotBlank() }?.let { resolveVoiceUrl(api.origin(), it) }.orEmpty()
+        if (resolved.isBlank()) throw ApiStatusException(0, "Couldn't save her photo.", null)
+        save(current.copy(avatarUrl = resolved))
     }
 
     override suspend fun archive() {

@@ -9,6 +9,7 @@ interface CompanionRepository {
     suspend fun save(companion: SavedCompanion)
     suspend fun create(draft: CompanionDraft): SavedCompanion
     suspend fun saveEdit(current: SavedCompanion, draft: CompanionDraft)
+    suspend fun uploadPhoto(bytes: ByteArray, mime: String)
     suspend fun archive()
     suspend fun clear()
 }
