@@ -17,6 +17,7 @@ import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import { MessagesService } from './messages.service.js';
+import { formatSseEvent, writeServerSentEvents } from './sse-stream.js';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -82,33 +83,24 @@ export class MessagesController {
         response.flushHeaders();
 
         try {
-            for await (
-                const event of this.messagesService.createAndStream(
+            await writeServerSentEvents(
+                this.messagesService.createAndStream(
                     user.sub,
                     conversationId,
                     dto,
-                )
-            ) {
-                response.write(
-                    `event: ${event.type}\n`,
-                );
-
-                response.write(
-                    `data: ${JSON.stringify(event)}\n\n`,
-                );
-            }
+                ),
+                (chunk) => {
+                    response.write(chunk);
+                },
+            );
         } catch (error) {
             response.write(
-                'event: error\n',
-            );
-
-            response.write(
-                `data: ${JSON.stringify({
+                formatSseEvent('error', {
                     message:
                         error instanceof Error
                             ? error.message
                             : 'Streaming failed',
-                })}\n\n`,
+                }),
             );
         } finally {
             response.end();

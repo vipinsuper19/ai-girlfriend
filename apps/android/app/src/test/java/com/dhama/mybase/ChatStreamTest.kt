@@ -31,6 +31,17 @@ class ChatStreamTest {
     }
 
     @Test
+    fun ignoresKeepaliveCommentsBetweenEvents() {
+        val raw = "event: delta\ndata: {\"type\":\"delta\",\"content\":\"Hi\"}\n\n: ping\n\nevent: done\ndata: {\"type\":\"done\",\"message\":{\"content\":\"Hi\"}}\n\n"
+        val (events, rest) = consumeSse(raw)
+        assertEquals(
+            listOf(ChatStreamEvent.Delta("Hi"), ChatStreamEvent.Done("Hi")),
+            events,
+        )
+        assertEquals("", rest)
+    }
+
+    @Test
     fun parsesErrorWhenMessageIsAString() {
         val raw = "event: error\ndata: {\"message\":\"The model stalled\"}\n\n"
         val (events, rest) = consumeSse(raw)

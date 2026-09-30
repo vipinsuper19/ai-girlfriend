@@ -48,6 +48,7 @@ export class AuthController {
     }
 
     @Get('me')
+    @UseGuards(JwtAuthGuard)
     me(
         @CurrentUser() user: JwtPayload,
     ) {

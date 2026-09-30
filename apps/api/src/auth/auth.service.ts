@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
 
+import { accessTokenExpiresIn } from './access-token.js';
 import type { LoginDto } from '../dto/login.dto.js';
 import type { RegisterDto } from '../dto/register.dto.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -133,9 +134,7 @@ export class AuthService {
             throw new UnauthorizedException('User not found');
         }
 
-        const accessExpiresIn = (
-            process.env['JWT_ACCESS_EXPIRES_IN'] ?? '15m'
-        ) as StringValue;
+        const accessExpiresIn = accessTokenExpiresIn() as StringValue;
 
         const refreshExpiresIn = (
             process.env['JWT_REFRESH_EXPIRES_IN'] ?? '30d'
@@ -249,9 +248,7 @@ export class AuthService {
         const db = this.prisma.client as any;
 
 
-        const accessExpiresIn = (
-            process.env['JWT_ACCESS_EXPIRES_IN'] ?? '30d'
-        ) as StringValue;
+        const accessExpiresIn = accessTokenExpiresIn() as StringValue;
 
         const refreshExpiresIn = (
             process.env['JWT_REFRESH_EXPIRES_IN'] ?? '30d'
