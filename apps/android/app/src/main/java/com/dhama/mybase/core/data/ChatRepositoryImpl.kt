@@ -10,6 +10,7 @@ import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.voice.resolveVoiceUrl
+import com.dhama.mybase.core.voice.speakBlockReason
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -267,6 +268,15 @@ class ChatRepositoryImpl(
                 ),
             )
         }
+    }
+
+    override suspend fun speak(companionId: Int, text: String): String {
+        val body = text.trim()
+        val blocked = speakBlockReason(body, companionId)
+        if (blocked != null) throw ApiStatusException(400, blocked, null)
+        val url = api.synthesize(companionId, body)
+        if (url.isBlank()) throw ApiStatusException(0, "Couldn't speak that.", null)
+        return resolveVoiceUrl(api.origin(), url)
     }
 
     override suspend fun delete(id: String) {

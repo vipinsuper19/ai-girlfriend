@@ -14,6 +14,7 @@ interface ChatRepository {
         conversationId: Int? = null,
     )
     suspend fun sendVoice(path: String, durationMs: Long, conversationId: Int? = null)
+    suspend fun speak(companionId: Int, text: String): String
     suspend fun delete(id: String)
     suspend fun discard(id: String)
     suspend fun note(text: String)

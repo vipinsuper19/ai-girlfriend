@@ -213,6 +213,16 @@ class ApiClient(
         }
     }
 
+    suspend fun synthesize(companionId: Int, text: String): String {
+        return withAuth { access ->
+            val payload = json.encodeToString(SynthesizeBody(companionId, text))
+            unwrapData<SynthesizedSpeech>(
+                execute(authed("POST", "voice/synthesize", payload, access)),
+                json,
+            ).audioUrl
+        }
+    }
+
     suspend fun respondVoice(conversationId: Int, audioFile: File): VoiceTurn {
         return withAuth { access ->
             val body = MultipartBody.Builder()
@@ -353,6 +363,12 @@ private data class MemoryPatch(val content: String, val type: String, val import
 
 @Serializable
 private data class DisplayNameBody(val displayName: String)
+
+@Serializable
+private data class SynthesizeBody(val companionId: Int, val text: String)
+
+@Serializable
+private data class SynthesizedSpeech(val audioUrl: String = "")
 
 @Serializable
 data class VoiceTurn(

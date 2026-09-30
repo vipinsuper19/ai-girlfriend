@@ -1,11 +1,16 @@
 package com.dhama.mybase
 
+import com.dhama.mybase.core.voice.SPEAK_MAX_CHARS
 import com.dhama.mybase.core.voice.VoiceRelease
+import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.formatVoiceDuration
 import com.dhama.mybase.core.voice.playbackWaveform
 import com.dhama.mybase.core.voice.resolveVoiceUrl
+import com.dhama.mybase.core.voice.speakBlockReason
+import com.dhama.mybase.core.voice.speakFailure
 import com.dhama.mybase.core.voice.voiceReleaseAction
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VoiceGestureTest {
@@ -38,5 +43,28 @@ class VoiceGestureTest {
             resolveVoiceUrl("https://api.example/", "/uploads/voice/note.wav"),
         )
         assertEquals("file:///tmp/note.m4a", resolveVoiceUrl("https://api.example", "file:///tmp/note.m4a"))
+    }
+
+    @Test
+    fun speakIsOnlyForAFinishedTextReply() {
+        assertEquals(true, canSpeakMessage("ASSISTANT", "TEXT", "SENT", "Hello"))
+        assertEquals(false, canSpeakMessage("USER", "TEXT", "SENT", "Hello"))
+        assertEquals(false, canSpeakMessage("ASSISTANT", "AUDIO", "SENT", "Hello"))
+        assertEquals(false, canSpeakMessage("ASSISTANT", "TEXT", "STREAMING", "Hello"))
+        assertEquals(false, canSpeakMessage("ASSISTANT", "TEXT", "SENT", "  "))
+    }
+
+    @Test
+    fun speakStaysOnTheServer() {
+        assertNull(speakBlockReason("Hello", 4))
+        assertEquals("There's nothing to speak.", speakBlockReason("  ", 4))
+        assertEquals(
+            "That reply is too long to speak.",
+            speakBlockReason("a".repeat(SPEAK_MAX_CHARS + 1), 4),
+        )
+        assertNull(speakBlockReason("a".repeat(SPEAK_MAX_CHARS), 4))
+        assertEquals("Sign in with email to hear her voice.", speakBlockReason("Hello", null))
+        assertEquals("Her voice isn't set up yet.", speakFailure(404))
+        assertEquals("Couldn't speak that.", speakFailure(500))
     }
 }

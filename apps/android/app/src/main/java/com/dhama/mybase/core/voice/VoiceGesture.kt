@@ -44,3 +44,29 @@ fun resolveVoiceUrl(apiOrigin: String, path: String): String {
 const val CANCEL_SLIDE_DP = 72f
 const val TAP_LOCK_MS = 250L
 const val AMPLITUDE_POLL_MS = 60L
+const val SPEAK_MAX_CHARS = 10_000
+
+/** Speak is for a finished text reply. Voice notes already have their own play control. */
+fun canSpeakMessage(role: String, kind: String, delivery: String, text: String): Boolean {
+    return role != "USER" && kind == "TEXT" && delivery == "SENT" && text.isNotBlank()
+}
+
+/**
+ * Null means the text can be sent to `POST /voice/synthesize`. A reason is shown
+ * on the message instead of calling the server or inventing speech on the phone.
+ */
+fun speakBlockReason(text: String, companionServerId: Int?): String? {
+    val body = text.trim()
+    if (body.isEmpty()) return "There's nothing to speak."
+    if (body.length > SPEAK_MAX_CHARS) return "That reply is too long to speak."
+    if (companionServerId == null) return "Sign in with email to hear her voice."
+    return null
+}
+
+fun speakFailure(status: Int): String {
+    return when (status) {
+        401 -> "Sign in with email to hear her voice."
+        404 -> "Her voice isn't set up yet."
+        else -> "Couldn't speak that."
+    }
+}

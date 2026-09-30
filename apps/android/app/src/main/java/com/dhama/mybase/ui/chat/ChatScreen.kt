@@ -79,6 +79,7 @@ import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.core.voice.AMPLITUDE_POLL_MS
 import com.dhama.mybase.core.voice.CANCEL_SLIDE_DP
 import com.dhama.mybase.core.voice.VoicePlayer
+import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.VoiceRecorder
 import com.dhama.mybase.core.voice.VoiceRelease
 import com.dhama.mybase.core.voice.voiceReleaseAction
@@ -108,6 +109,8 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val companion by viewModel.companion.collectAsState()
     val draft by viewModel.draft.collectAsState()
+    val speakingId by viewModel.speakingId.collectAsState()
+    val speakNote by viewModel.speakNote.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val usage = monthUsage(
         messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
@@ -136,6 +139,9 @@ fun ChatScreen(
     var micDenied by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         micDenied = !granted
+    }
+    LaunchedEffect(player) {
+        viewModel.playRequest.collect { path -> player.toggle(path) }
     }
     DisposableEffect(recorder, player) {
         onDispose {
@@ -318,6 +324,7 @@ fun ChatScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         } else {
+                            val note = speakNote?.takeIf { it.first == message.id }?.second
                             MessageRow(
                                 message = message,
                                 senderName = name,
@@ -325,6 +332,12 @@ fun ChatScreen(
                                 onToggleVoice = { player.toggle(message.audioPath) },
                                 onLongClick = { selected = message },
                                 onRetry = { viewModel.retry(message) },
+                                speakCaption = when {
+                                    speakingId == message.id -> "Preparing her voice…"
+                                    note != null -> note
+                                    else -> null
+                                },
+                                speakFailed = speakingId != message.id && note != null,
                             )
                         }
                     }
@@ -408,8 +421,13 @@ fun ChatScreen(
             },
             dismissButton = {
                 Row {
+                    if (canSpeakMessage(message.role, message.kind, message.delivery, message.text)) {
+                        TextButton(onClick = {
+                            viewModel.speak(message)
+                            selected = null
+                        }) { Text("Speak") }
+                    }
                     if (!outgoing && message.kind != ChatMessageEntity.KIND_AUDIO) {
-                        TextButton(onClick = {}, enabled = false) { Text("Speak") }
                         TextButton(onClick = {}, enabled = false) { Text("Regenerate") }
                     }
                     TextButton(
@@ -437,6 +455,8 @@ private fun MessageRow(
     onToggleVoice: () -> Unit,
     onLongClick: () -> Unit,
     onRetry: () -> Unit,
+    speakCaption: String? = null,
+    speakFailed: Boolean = false,
 ) {
     val outgoing = message.role == ChatRepositoryImpl.ROLE_USER
     val streaming = message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING
@@ -514,6 +534,18 @@ private fun MessageRow(
                     "On this phone",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
+                )
+            }
+            if (speakCaption != null) {
+                Text(
+                    speakCaption,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (speakFailed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
                 )
             }
