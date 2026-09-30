@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.ui.chat.ChatScreen
 import com.dhama.mybase.ui.theme.companionColors
 import java.util.Calendar
 
@@ -80,17 +81,18 @@ fun MainShell(
             }
         },
     ) { padding ->
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp),
-        ) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
             when (MainTab.entries[tab]) {
-                MainTab.Home -> HomeTab(companion) { tab = MainTab.Chat.ordinal }
-                MainTab.Chat -> ChatPlaceholder(companion)
-                MainTab.Memory -> MemoryPlaceholder(companion)
-                MainTab.You -> YouTab(companion, onLogout = viewModel::logout)
+                MainTab.Home -> Box(Modifier.padding(horizontal = 20.dp)) {
+                    HomeTab(companion) { tab = MainTab.Chat.ordinal }
+                }
+                MainTab.Chat -> ChatScreen()
+                MainTab.Memory -> Box(Modifier.padding(horizontal = 20.dp)) {
+                    MemoryPlaceholder(companion)
+                }
+                MainTab.You -> Box(Modifier.padding(horizontal = 20.dp)) {
+                    YouTab(companion, onLogout = viewModel::logout)
+                }
             }
         }
     }
@@ -165,22 +167,6 @@ private fun HomeTab(companion: SavedCompanion?, onTalk: () -> Unit) {
         Text(
             "${companion.voiceLabel} voice · ${companion.relationship}",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun ChatPlaceholder(companion: SavedCompanion?) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-        Text(
-            companion?.name ?: "Chat",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.semantics { heading() },
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Her conversation opens here. Messaging isn't connected yet — Home already has the companion you just created.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

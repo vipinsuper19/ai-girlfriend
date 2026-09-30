@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.domain.AuthRepository
+import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -21,6 +22,7 @@ class CompanionHomeViewModel @Inject constructor(
     private val repository: CompanionRepository,
     private val dataStoreRepo: DataStoreRepo,
     private val authRepository: AuthRepository,
+    private val chatRepository: ChatRepository,
 ) : ViewModel() {
 
     val companion: StateFlow<SavedCompanion?> = repository.observe()
@@ -34,6 +36,7 @@ class CompanionHomeViewModel @Inject constructor(
             authRepository.logout()
             dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
             repository.clear()
+            chatRepository.clear()
             _loggedOut.emit(Unit)
         }
     }
