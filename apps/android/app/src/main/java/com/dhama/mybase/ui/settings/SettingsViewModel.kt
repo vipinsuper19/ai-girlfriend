@@ -2,6 +2,7 @@ package com.dhama.mybase.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.chat.personalityUpdatedLine
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.domain.AuthRepository
@@ -145,6 +146,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 companionRepository.saveEdit(current, draft)
+                chatRepository.note(personalityUpdatedLine(draft.normalizedName()))
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {

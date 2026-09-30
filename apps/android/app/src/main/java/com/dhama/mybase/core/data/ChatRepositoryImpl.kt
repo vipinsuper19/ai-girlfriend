@@ -282,6 +282,21 @@ class ChatRepositoryImpl(
         dao.delete(id)
     }
 
+    override suspend fun note(text: String) {
+        val body = text.trim()
+        if (body.isEmpty()) return
+        dao.upsert(
+            ChatMessageEntity(
+                id = UUID.randomUUID().toString(),
+                role = ROLE_SYSTEM,
+                text = body,
+                createdAtEpochMs = System.currentTimeMillis(),
+                delivery = DELIVERY_SENT,
+                kind = ChatMessageEntity.KIND_SYSTEM,
+            ),
+        )
+    }
+
     override suspend fun clear() {
         voiceDir.listFiles()?.forEach { it.delete() }
         dao.clear()
@@ -296,6 +311,7 @@ class ChatRepositoryImpl(
         const val GREETING_ID = "greeting"
         const val ROLE_USER = "USER"
         const val ROLE_ASSISTANT = "ASSISTANT"
+        const val ROLE_SYSTEM = "SYSTEM"
         const val DELIVERY_SENT = "SENT"
         const val DELIVERY_STREAMING = "STREAMING"
         const val DELIVERY_FAILED = "FAILED"

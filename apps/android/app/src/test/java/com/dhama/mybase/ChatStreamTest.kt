@@ -1,6 +1,7 @@
 package com.dhama.mybase
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.personalityUpdatedLine
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.localReply
@@ -56,5 +57,12 @@ class ChatStreamTest {
         assertEquals(reply, chunks.joinToString(""))
         assertTrue(reply.contains("Aria"))
         assertTrue(reply.contains("The demo went well"))
+    }
+
+    @Test
+    fun personalityUpdateIsACentredMarker() {
+        assertEquals("Aria's personality was updated", personalityUpdatedLine("Aria"))
+        assertEquals("Nova's personality was updated", personalityUpdatedLine("  Nova  "))
+        assertEquals("Her personality was updated", personalityUpdatedLine("   "))
     }
 }

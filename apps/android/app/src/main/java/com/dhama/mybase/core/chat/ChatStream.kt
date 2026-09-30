@@ -94,3 +94,9 @@ fun chunkReply(text: String): List<String> {
     return text.split(Regex("(?<=\\s)"))
         .filter { it.isNotEmpty() }
 }
+
+/** Centred chat marker after a personality save. Not a server message row. */
+fun personalityUpdatedLine(name: String): String {
+    val who = name.trim()
+    return if (who.isEmpty()) "Her personality was updated" else "$who's personality was updated"
+}
