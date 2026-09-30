@@ -12,6 +12,9 @@ interface ChatMessageDao {
     @Query("SELECT * FROM chat_messages ORDER BY createdAtEpochMs ASC")
     fun observe(): Flow<List<ChatMessageEntity>>
 
+    @Query("SELECT * FROM chat_messages")
+    suspend fun snapshot(): List<ChatMessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(message: ChatMessageEntity)
 

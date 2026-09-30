@@ -12,6 +12,9 @@ interface MemoryDao {
     @Query("SELECT * FROM memories ORDER BY importance DESC, createdAtEpochMs DESC")
     fun observe(): Flow<List<MemoryEntity>>
 
+    @Query("SELECT * FROM memories")
+    suspend fun snapshot(): List<MemoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(memory: MemoryEntity)
 

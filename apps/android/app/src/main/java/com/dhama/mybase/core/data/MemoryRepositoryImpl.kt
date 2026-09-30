@@ -4,11 +4,14 @@ import com.dhama.mybase.core.db.dao.MemoryDao
 import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.memory.noticeFromMessage
+import com.dhama.mybase.core.network.ApiClient
+import com.dhama.mybase.core.network.serverRecordId
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 class MemoryRepositoryImpl(
     private val dao: MemoryDao,
+    private val api: ApiClient,
 ) : MemoryRepository {
 
     override fun observe(): Flow<List<MemoryEntity>> = dao.observe()
@@ -35,17 +38,26 @@ class MemoryRepositoryImpl(
         val current = dao.find(id) ?: return
         val body = content.trim()
         if (body.isEmpty()) return
+        val importanceValue = importance.coerceIn(0, 100)
+        val serverId = serverRecordId(id)
+        if (serverId != null && api.hasSession()) {
+            api.patchMemory(serverId, body, type, importanceValue)
+        }
         dao.upsert(
             current.copy(
                 content = body,
                 type = type,
-                importance = importance.coerceIn(0, 100),
+                importance = importanceValue,
                 updatedAtEpochMs = System.currentTimeMillis(),
             ),
         )
     }
 
     override suspend fun delete(id: String) {
+        val serverId = serverRecordId(id)
+        if (serverId != null && api.hasSession()) {
+            api.deleteMemory(serverId)
+        }
         dao.delete(id)
     }
 

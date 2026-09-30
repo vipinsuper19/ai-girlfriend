@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class MemoryViewModel @Inject constructor(
@@ -39,9 +40,7 @@ class MemoryViewModel @Inject constructor(
         _pendingDelete.value = memory
         deleteJob = viewModelScope.launch {
             delay(UNDO_MS)
-            repository.delete(memory.id)
-            _hiddenIds.value = _hiddenIds.value - memory.id
-            if (_pendingDelete.value?.id == memory.id) _pendingDelete.value = null
+            finishDelete(memory.id)
         }
     }
 
@@ -76,9 +75,19 @@ class MemoryViewModel @Inject constructor(
         deleteJob = null
         val id = memory.id
         _pendingDelete.value = null
-        viewModelScope.launch {
+        viewModelScope.launch { finishDelete(id) }
+    }
+
+    private suspend fun finishDelete(id: String) {
+        try {
             repository.delete(id)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // The memory is still stored, so show the row again.
+        } finally {
             _hiddenIds.value = _hiddenIds.value - id
+            if (_pendingDelete.value?.id == id) _pendingDelete.value = null
         }
     }
 

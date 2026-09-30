@@ -114,6 +114,11 @@ fun MainShell(
         scope.launch { viewModel.loggedOut.collect { onLoggedOut() } }
         scope.launch { settings.archived.collect { onArchived() } }
         scope.launch { settings.accountDeleted.collect { onLoggedOut() } }
+        scope.launch {
+            settings.archiveFailed.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
+        }
     }
     LaunchedEffect(pendingDelete?.id) {
         val current = pendingDelete ?: return@LaunchedEffect

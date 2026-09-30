@@ -8,5 +8,7 @@ interface CompanionRepository {
     fun observe(): Flow<SavedCompanion?>
     suspend fun save(companion: SavedCompanion)
     suspend fun create(draft: CompanionDraft): SavedCompanion
+    suspend fun saveEdit(current: SavedCompanion, draft: CompanionDraft)
+    suspend fun archive()
     suspend fun clear()
 }

@@ -43,11 +43,20 @@ fun apiStatus(status: Int, body: String, json: Json = apiJson()): ApiStatusExcep
 }
 
 inline fun <reified T> unwrapData(body: String, json: Json = apiJson()): T {
+    return json.decodeFromJsonElement(dataElement(body, json))
+}
+
+inline fun <reified T> decodeDataList(body: String, json: Json = apiJson()): List<T> {
+    val data = dataElement(body, json)
+    if (data is JsonArray && data.isEmpty()) return emptyList()
+    return json.decodeFromJsonElement(data)
+}
+
+fun dataElement(body: String, json: Json = apiJson()): JsonElement {
     val root = json.parseToJsonElement(body) as? JsonObject
         ?: throw ApiStatusException(0, "The server sent an unexpected response.", null)
-    val data = root["data"]
+    return root["data"]
         ?: throw ApiStatusException(0, "The server sent an unexpected response.", null)
-    return json.decodeFromJsonElement(data)
 }
 
 private fun messageText(element: JsonElement?): String? {

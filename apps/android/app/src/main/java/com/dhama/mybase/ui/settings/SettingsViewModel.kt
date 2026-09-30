@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -54,6 +55,9 @@ class SettingsViewModel @Inject constructor(
     private val _accountDeleted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val accountDeleted = _accountDeleted.asSharedFlow()
 
+    private val _archiveFailed = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val archiveFailed = _archiveFailed.asSharedFlow()
+
     fun setThemeMode(mode: String) {
         viewModelScope.launch { dataStoreRepo.saveString(PreferencesKeys.THEME_MODE, mode) }
     }
@@ -68,19 +72,32 @@ class SettingsViewModel @Inject constructor(
 
     fun saveCompanion(current: SavedCompanion, draft: CompanionDraft) {
         viewModelScope.launch {
-            companionRepository.save(draft.toSaved(current.createdAtEpochMs))
+            try {
+                companionRepository.saveEdit(current, draft)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // The phone keeps the companion that was already saved.
+            }
         }
     }
 
     fun archive() {
         viewModelScope.launch {
-            companionRepository.clear()
-            _archived.emit(Unit)
+            try {
+                companionRepository.archive()
+                _archived.emit(Unit)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _archiveFailed.emit("Couldn't archive her. She's still here.")
+            }
         }
     }
 
     fun deleteAccount() {
         viewModelScope.launch {
+            authRepository.deleteRemoteAccount()
             authRepository.logout()
             dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
             dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, "")

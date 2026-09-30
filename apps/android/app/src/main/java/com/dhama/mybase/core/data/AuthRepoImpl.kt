@@ -198,4 +198,15 @@ class AuthRepoImpl(
         auth.signOut()
     }
 
+    override suspend fun deleteRemoteAccount() {
+        if (!api.hasSession()) return
+        try {
+            api.deleteAccount()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Sign-out still clears this phone when the server account cannot be removed.
+        }
+    }
+
 }

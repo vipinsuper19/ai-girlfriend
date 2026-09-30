@@ -24,4 +24,6 @@ interface AuthRepository {
     suspend fun signInWithOtp(verificationId: String, otp: String): Flow<AuthState>
 
     suspend fun logout()
+
+    suspend fun deleteRemoteAccount()
 }

@@ -120,6 +120,59 @@ class ApiClient(
         }
     }
 
+    suspend fun listAvatars(): List<RemoteAvatarSummary> {
+        return withAuth { access -> decodeDataList(execute(authed("GET", "avatars", null, access))) }
+    }
+
+    suspend fun getAvatar(id: Int): RemoteAvatar {
+        return withAuth { access -> unwrapData(execute(authed("GET", "avatars/$id", null, access))) }
+    }
+
+    suspend fun listConversations(): List<RemoteConversation> {
+        return withAuth { access -> decodeDataList(execute(authed("GET", "conversations", null, access))) }
+    }
+
+    suspend fun listMessages(conversationId: Int): List<RemoteMessage> {
+        return withAuth { access ->
+            decodeDataList(execute(authed("GET", "conversations/$conversationId/messages", null, access)))
+        }
+    }
+
+    suspend fun listMemories(companionId: Int): List<RemoteMemory> {
+        return withAuth { access ->
+            decodeDataList(execute(authed("GET", "memories?companionId=$companionId&limit=100", null, access)))
+        }
+    }
+
+    suspend fun patchAvatar(id: Int, request: CreateAvatarRequest) {
+        withAuth { access ->
+            execute(authed("PATCH", "avatars/$id", json.encodeToString(request), access))
+        }
+    }
+
+    suspend fun deleteAvatar(id: Int) {
+        withAuth { access -> execute(authed("DELETE", "avatars/$id", null, access)) }
+    }
+
+    suspend fun deleteMessage(id: Int) {
+        withAuth { access -> execute(authed("DELETE", "messages/$id", null, access)) }
+    }
+
+    suspend fun patchMemory(id: Int, content: String, type: String, importance: Int) {
+        withAuth { access ->
+            val payload = json.encodeToString(MemoryPatch(content, type, importance))
+            execute(authed("PATCH", "memories/$id", payload, access))
+        }
+    }
+
+    suspend fun deleteMemory(id: Int) {
+        withAuth { access -> execute(authed("DELETE", "memories/$id", null, access)) }
+    }
+
+    suspend fun deleteAccount() {
+        withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
+    }
+
     suspend fun respondVoice(conversationId: Int, audioFile: File): VoiceTurn {
         return withAuth { access ->
             val body = MultipartBody.Builder()
@@ -196,11 +249,18 @@ class ApiClient(
             is MessageBody -> json.encodeToString(body)
             else -> error("Unsupported body")
         }
-        val builder = Request.Builder()
-            .url(url(path))
-            .post(payload.toRequestBody(JSON))
+        return authed("POST", path, payload, access)
+    }
+
+    private fun authed(method: String, path: String, payload: String?, access: String?): Request {
+        val builder = Request.Builder().url(url(path))
         if (access != null) builder.header("Authorization", "Bearer $access")
-        return builder.build()
+        val body = if (method == "GET" || method == "DELETE") {
+            null
+        } else {
+            payload.orEmpty().toRequestBody(JSON)
+        }
+        return builder.method(method, body).build()
     }
 
     private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
@@ -247,6 +307,9 @@ private data class MessageBody(val content: String)
 
 @Serializable
 private data class IdPayload(val id: Int)
+
+@Serializable
+private data class MemoryPatch(val content: String, val type: String, val importance: Int)
 
 @Serializable
 data class VoiceTurn(

@@ -8,6 +8,7 @@ import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.voice.resolveVoiceUrl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -269,6 +270,10 @@ class ChatRepositoryImpl(
     }
 
     override suspend fun delete(id: String) {
+        val serverId = serverRecordId(id)
+        if (serverId != null && api.hasSession()) {
+            api.deleteMessage(serverId)
+        }
         dao.find(id)?.let { deleteAudio(it.audioPath) }
         dao.delete(id)
     }

@@ -62,5 +62,6 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideMemoryRepository(dao: MemoryDao): MemoryRepository = MemoryRepositoryImpl(dao)
+    fun provideMemoryRepository(dao: MemoryDao, api: ApiClient): MemoryRepository =
+        MemoryRepositoryImpl(dao, api)
 }

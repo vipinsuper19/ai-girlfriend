@@ -9,6 +9,7 @@ import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.ApiClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -45,6 +46,27 @@ class CompanionRepositoryImpl(
         dataStore.edit { prefs ->
             prefs[KEY] = json.encodeToString(companion)
         }
+    }
+
+    override suspend fun saveEdit(current: SavedCompanion, draft: CompanionDraft) {
+        val next = draft.toSaved(current.createdAtEpochMs).copy(
+            serverId = current.serverId,
+            conversationId = current.conversationId,
+        )
+        val serverId = current.serverId
+        if (serverId != null && api.hasSession()) {
+            api.patchAvatar(serverId, draft.toCreateRequest())
+        }
+        save(next)
+    }
+
+    override suspend fun archive() {
+        val current = observe().first()
+        val serverId = current?.serverId
+        if (serverId != null && api.hasSession()) {
+            api.deleteAvatar(serverId)
+        }
+        clear()
     }
 
     override suspend fun clear() {
