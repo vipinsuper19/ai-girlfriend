@@ -49,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -64,6 +65,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
+import com.dhama.mybase.core.usage.CountedMessage
+import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
+import com.dhama.mybase.core.usage.METERING_ENFORCED
+import com.dhama.mybase.core.usage.UsageLevel
+import com.dhama.mybase.core.usage.monthUsage
+import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.core.usage.usageLevel
+import com.dhama.mybase.ui.usage.OfflineStrip
+import com.dhama.mybase.ui.usage.PaywallCard
+import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.core.voice.AMPLITUDE_POLL_MS
 import com.dhama.mybase.core.voice.CANCEL_SLIDE_DP
 import com.dhama.mybase.core.voice.VoicePlayer
@@ -89,11 +100,22 @@ private const val STAMP_GAP_MS = 5 * 60 * 1000L
 
 @Composable
 fun ChatScreen(
+    onSeePlans: (() -> Unit)? = null,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
     val companion by viewModel.companion.collectAsState()
     val draft by viewModel.draft.collectAsState()
+    val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
+    val usage = monthUsage(
+        messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
+        System.currentTimeMillis(),
+    )
+    val messageLevel = usageLevel(usage.messages, FREE_MESSAGE_LIMIT)
+    val showWarning = METERING_ENFORCED &&
+        messageLevel == UsageLevel.NEARING &&
+        warningDismissed != usage.periodStartEpochMs.toString()
+    val showWall = METERING_ENFORCED && messageLevel == UsageLevel.WALL
     val streaming = messages.any { it.delivery == ChatRepositoryImpl.DELIVERY_STREAMING }
     val listState = rememberLazyListState()
     var selected by remember { mutableStateOf<ChatMessageEntity?>(null) }
@@ -218,6 +240,16 @@ fun ChatScreen(
                     else if (streaming) contentDescription = "$name is typing"
                 },
         )
+        OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        if (showWarning) {
+            UsageWarning(
+                name = name,
+                remaining = (FREE_MESSAGE_LIMIT - usage.messages).coerceAtLeast(0),
+                resetLabel = resetLabel(usage.resetEpochMs),
+                onDismiss = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
         if (messages.size <= 1) {
             Column(
                 Modifier
@@ -232,7 +264,7 @@ fun ChatScreen(
                 prompts.forEach { prompt ->
                     TextButton(
                         onClick = { viewModel.send(prompt) },
-                        enabled = !streaming && companion != null,
+                        enabled = !streaming && companion != null && !showWall,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(prompt, modifier = Modifier.fillMaxWidth())
@@ -277,6 +309,7 @@ fun ChatScreen(
                                 playing = player.playingPath == message.audioPath && message.audioPath.isNotBlank(),
                                 onToggleVoice = { player.toggle(message.audioPath) },
                                 onLongClick = { selected = message },
+                                onRetry = { viewModel.retry(message) },
                             )
                         }
                     }
@@ -291,24 +324,33 @@ fun ChatScreen(
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
-        Composer(
-            value = draft,
-            streaming = streaming,
-            enabled = companion != null,
-            recording = recording,
-            locked = locked,
-            cancelling = cancelling,
-            elapsedMs = elapsedMs,
-            amplitudes = amplitudes,
-            onChange = viewModel::updateDraft,
-            onSend = { viewModel.send() },
-            onStop = viewModel::stop,
-            onMicDown = ::beginRecording,
-            onMicDrag = { cancelling = it <= -CANCEL_SLIDE_DP && !locked },
-            onMicUp = ::finishRecording,
-            onVoiceSend = ::commitLocked,
-            onVoiceCancel = ::discardRecording,
-        )
+        if (showWall) {
+            PaywallCard(
+                name = name,
+                resetLabel = resetLabel(usage.resetEpochMs),
+                onSeePlans = onSeePlans,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        } else {
+            Composer(
+                value = draft,
+                streaming = streaming,
+                enabled = companion != null,
+                recording = recording,
+                locked = locked,
+                cancelling = cancelling,
+                elapsedMs = elapsedMs,
+                amplitudes = amplitudes,
+                onChange = viewModel::updateDraft,
+                onSend = { viewModel.send() },
+                onStop = viewModel::stop,
+                onMicDown = ::beginRecording,
+                onMicDrag = { cancelling = it <= -CANCEL_SLIDE_DP && !locked },
+                onMicUp = ::finishRecording,
+                onVoiceSend = ::commitLocked,
+                onVoiceCancel = ::discardRecording,
+            )
+        }
     }
 
     if (showRationale) {
@@ -379,6 +421,7 @@ private fun MessageRow(
     playing: Boolean,
     onToggleVoice: () -> Unit,
     onLongClick: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val outgoing = message.role == ChatRepositoryImpl.ROLE_USER
     val streaming = message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING
@@ -410,44 +453,43 @@ private fun MessageRow(
             else -> "$senderName. ${message.text}"
         }
         Column(horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
-            when (message.kind) {
-                ChatMessageEntity.KIND_IMAGE -> ImageNote(message.audioPath)
-                ChatMessageEntity.KIND_AUDIO -> VoiceNoteContent(
-                    text = message.text,
-                    durationMs = message.durationMs,
-                    playing = playing,
-                    color = color,
-                    onToggle = onToggleVoice,
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .clip(shape)
-                        .background(background)
-                        .combinedClickable(onClick = {}, onLongClick = onLongClick)
-                        .semantics { contentDescription = spoken }
-                        .padding(vertical = 4.dp, horizontal = 4.dp),
-                )
-                else -> Text(
-                    text = message.text.ifBlank { "…" },
-                    color = color,
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .clip(shape)
-                        .background(background)
-                        .combinedClickable(onClick = {}, onLongClick = onLongClick)
-                        .semantics {
-                            contentDescription = spoken
-                            if (streaming) liveRegion = LiveRegionMode.Polite
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                )
+            Column(Modifier.alpha(if (failed) 0.5f else 1f)) {
+                when (message.kind) {
+                    ChatMessageEntity.KIND_IMAGE -> ImageNote(message.audioPath)
+                    ChatMessageEntity.KIND_AUDIO -> VoiceNoteContent(
+                        text = message.text,
+                        durationMs = message.durationMs,
+                        playing = playing,
+                        color = color,
+                        onToggle = onToggleVoice,
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .clip(shape)
+                            .background(background)
+                            .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                            .semantics { contentDescription = spoken }
+                            .padding(vertical = 4.dp, horizontal = 4.dp),
+                    )
+                    else -> Text(
+                        text = message.text.ifBlank { "…" },
+                        color = color,
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .clip(shape)
+                            .background(background)
+                            .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                            .semantics {
+                                contentDescription = spoken
+                                if (streaming) liveRegion = LiveRegionMode.Polite
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
             }
             if (failed) {
-                Text(
-                    "Not sent",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
-                )
+                TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Not sent · Retry", color = MaterialTheme.colorScheme.error)
+                }
             } else if (message.kind == ChatMessageEntity.KIND_AUDIO && message.text.isBlank()) {
                 Text(
                     "On this phone",

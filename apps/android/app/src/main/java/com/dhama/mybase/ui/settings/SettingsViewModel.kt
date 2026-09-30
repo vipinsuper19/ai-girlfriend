@@ -45,6 +45,9 @@ class SettingsViewModel @Inject constructor(
     val memories = memoryRepository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val messages = chatRepository.observe()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _archived = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val archived = _archived.asSharedFlow()
 

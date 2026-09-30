@@ -9,6 +9,8 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.usage.CountedMessage
+import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -40,8 +42,40 @@ class CompanionHomeViewModel @Inject constructor(
         .map { messages -> messages.any { it.role == ChatRepositoryImpl.ROLE_USER } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    val lastReply = chatRepository.observe()
+        .map { messages ->
+            messages.lastOrNull {
+                it.role == ChatRepositoryImpl.ROLE_ASSISTANT &&
+                    it.id != ChatRepositoryImpl.GREETING_ID &&
+                    it.text.isNotBlank()
+            }?.text
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val usage = chatRepository.observe()
+        .map { messages ->
+            monthUsage(
+                messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
+                System.currentTimeMillis(),
+            )
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            monthUsage(emptyList(), System.currentTimeMillis()),
+        )
+
+    val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
     private val _loggedOut = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val loggedOut = _loggedOut.asSharedFlow()
+
+    fun dismissUsageWarning(periodStartEpochMs: Long) {
+        viewModelScope.launch {
+            dataStoreRepo.saveString(PreferencesKeys.USAGE_WARNING_PERIOD, periodStartEpochMs.toString())
+        }
+    }
 
     fun logout() {
         viewModelScope.launch {

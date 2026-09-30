@@ -62,6 +62,14 @@ import androidx.compose.ui.platform.LocalContext
 import com.dhama.mybase.core.memory.togetherLine
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.usage.CountedMessage
+import com.dhama.mybase.core.usage.FREE_IMAGE_LIMIT
+import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
+import com.dhama.mybase.core.usage.FREE_VOICE_MINUTES
+import com.dhama.mybase.core.usage.monthUsage
+import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.ui.usage.PaywallCard
+import com.dhama.mybase.ui.usage.UsageMeter
 
 private val traitOptions = listOf(
     "Caring", "Playful", "Curious", "Calm", "Confident", "Witty", "Ambitious", "Creative",
@@ -367,6 +375,14 @@ private fun EditBody(saved: SavedCompanion, onBack: () -> Unit, viewModel: Setti
 
 @Composable
 fun SubscriptionScreen(onBack: () -> Unit) {
+    val viewModel = rememberSettingsViewModel()
+    val messages by viewModel.messages.collectAsState()
+    val companion by viewModel.companion.collectAsState()
+    val usage = monthUsage(
+        messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
+        System.currentTimeMillis(),
+    )
+    val name = companion?.name?.ifBlank { null } ?: "her"
     Column(
         Modifier
             .fillMaxSize()
@@ -380,13 +396,29 @@ fun SubscriptionScreen(onBack: () -> Unit) {
             Text("Plan", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         }
         Text(
-            "Usage isn't connected on this phone yet. These are the allowances, with no upgrade from here.",
+            "This month on this phone. The server does not enforce a monthly limit, so chat stays open.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(12.dp))
+        UsageMeter("Messages", usage.messages, FREE_MESSAGE_LIMIT)
+        UsageMeter("Voice minutes", usage.voiceMinutes, FREE_VOICE_MINUTES)
+        UsageMeter("Images", 0, FREE_IMAGE_LIMIT)
+        Spacer(Modifier.height(12.dp))
+        PaywallCard(name = name, resetLabel = resetLabel(usage.resetEpochMs))
         Spacer(Modifier.height(16.dp))
         PlanCard("Free", "Current plan", listOf("100 messages", "10 voice minutes", "5 images"))
-        PlanCard("Premium", "Read only", listOf("Unlimited messages", "300 voice minutes", "100 images"))
-        PlanCard("Premium Plus", "Read only", listOf("Unlimited messages", "300 voice minutes", "100 images", "Calls"))
+        PlanCard("Premium", "Read only", listOf("Unlimited messages", "300 voice minutes", "100 images", "1,200 audio call minutes"))
+        PlanCard(
+            "Premium Plus",
+            "Read only",
+            listOf(
+                "Unlimited messages",
+                "1,000 voice minutes",
+                "300 images",
+                "1,200 audio call minutes",
+                "1,200 video call minutes",
+            ),
+        )
     }
 }
 

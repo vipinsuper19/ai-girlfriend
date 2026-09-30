@@ -60,6 +60,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
+import com.dhama.mybase.core.usage.METERING_ENFORCED
+import com.dhama.mybase.core.usage.MonthUsage
+import com.dhama.mybase.core.usage.UsageLevel
+import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.core.usage.usageLevel
+import com.dhama.mybase.ui.usage.OfflineStrip
+import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.ui.chat.ChatScreen
 import com.dhama.mybase.ui.memory.MemoryDetailScreen
 import com.dhama.mybase.ui.memory.MemoryListScreen
@@ -90,6 +98,9 @@ fun MainShell(
     val companion by viewModel.companion.collectAsState()
     val highlight by viewModel.memoryHighlight.collectAsState()
     val hasTalked by viewModel.hasTalked.collectAsState()
+    val lastReply by viewModel.lastReply.collectAsState()
+    val usage by viewModel.usage.collectAsState()
+    val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val settings = rememberSettingsViewModel()
     val memoryViewModel: MemoryViewModel = hiltViewModel()
     val pendingDelete by memoryViewModel.pendingDelete.collectAsState()
@@ -148,12 +159,16 @@ fun MainShell(
                         companion = companion,
                         highlight = highlight,
                         hasTalked = hasTalked,
+                        lastReply = lastReply,
+                        usage = usage,
+                        warningDismissed = warningDismissed,
+                        onDismissWarning = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
                         onTalk = { tab = MainTab.Chat.ordinal },
                         onMemories = { tab = MainTab.Memory.ordinal },
                         onProfile = { screen = "profile" },
                         onSettings = { tab = MainTab.You.ordinal },
                     )
-                    MainTab.Chat -> ChatScreen()
+                    MainTab.Chat -> ChatScreen(onSeePlans = { screen = "plans" })
                     MainTab.Memory -> MemoryListScreen(
                         companionName = companion?.name.orEmpty(),
                         onOpen = {
@@ -179,6 +194,10 @@ private fun HomeTab(
     companion: SavedCompanion?,
     highlight: MemoryEntity?,
     hasTalked: Boolean,
+    lastReply: String?,
+    usage: MonthUsage,
+    warningDismissed: String,
+    onDismissWarning: () -> Unit,
     onTalk: () -> Unit,
     onMemories: () -> Unit,
     onProfile: () -> Unit,
@@ -209,6 +228,8 @@ private fun HomeTab(
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
+        Spacer(Modifier.height(8.dp))
+        OfflineStrip()
         Spacer(Modifier.height(12.dp))
         Monogram(companion.name)
         Text(
@@ -234,7 +255,7 @@ private fun HomeTab(
         }
         Spacer(Modifier.height(20.dp))
         Text(
-            companion.greeting,
+            lastReply?.takeIf { it.isNotBlank() } ?: companion.greeting,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp))
@@ -252,6 +273,18 @@ private fun HomeTab(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
             Text(if (hasTalked) "Continue talking" else "Say hello")
+        }
+        val nearLimit = METERING_ENFORCED &&
+            usageLevel(usage.messages, FREE_MESSAGE_LIMIT) == UsageLevel.NEARING &&
+            warningDismissed != usage.periodStartEpochMs.toString()
+        if (nearLimit) {
+            Spacer(Modifier.height(12.dp))
+            UsageWarning(
+                name = companion.name,
+                remaining = (FREE_MESSAGE_LIMIT - usage.messages).coerceAtLeast(0),
+                resetLabel = resetLabel(usage.resetEpochMs),
+                onDismiss = onDismissWarning,
+            )
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
