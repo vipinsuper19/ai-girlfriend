@@ -7,6 +7,8 @@ import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.ApiClient
+import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.RemoteConversation
 import com.dhama.mybase.core.network.RestoredMemory
 import com.dhama.mybase.core.network.RestoredMessage
 import com.dhama.mybase.core.network.serverRecordId
@@ -87,6 +89,68 @@ class AccountSync @Inject constructor(
         }
     }
 
+    suspend fun listCompanionConversations(): List<RemoteConversation> {
+        val current = companions.observe().first() ?: return emptyList()
+        val serverId = current.serverId ?: return emptyList()
+        if (!api.hasSession()) return emptyList()
+        return api.listConversations().filter { it.companionId == serverId }
+    }
+
+    suspend fun openConversation(conversationId: Int) {
+        val current = companions.observe().first() ?: return
+        if (current.serverId == null || !api.hasSession()) return
+        replaceThread(current.copy(conversationId = conversationId), conversationId)
+    }
+
+    suspend fun startConversation(): Int {
+        val current = companions.observe().first()
+            ?: throw ApiStatusException(0, "Create her before starting a conversation.", null)
+        val serverId = current.serverId
+        if (serverId == null || !api.hasSession()) {
+            throw ApiStatusException(401, "Sign in with email to start another conversation.", null)
+        }
+        val created = api.createConversation(serverId, current.name)
+        replaceThread(current.copy(conversationId = created), created)
+        return created
+    }
+
+    suspend fun deleteConversation(conversationId: Int) {
+        val current = companions.observe().first() ?: return
+        if (current.serverId == null || !api.hasSession()) {
+            throw ApiStatusException(401, "Sign in with email to delete a conversation.", null)
+        }
+        api.deleteConversation(conversationId)
+        if (current.conversationId != conversationId) return
+        val remaining = api.listConversations()
+            .filter { it.companionId == current.serverId && it.id != conversationId }
+        val next = remaining.firstOrNull()?.id ?: api.createConversation(current.serverId, current.name)
+        replaceThread(current.copy(conversationId = next), next)
+    }
+
+    private suspend fun replaceThread(saved: SavedCompanion, conversationId: Int) {
+        val remoteMessages = api.listMessages(conversationId)
+        val failedLocal = messages.snapshot().filter { message ->
+            message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null
+        }
+        companions.save(saved)
+        messages.clear()
+        remoteMessages.forEach { remote ->
+            messages.upsert(remote.toRestored(api.origin()).toEntity())
+        }
+        if (remoteMessages.isEmpty() && saved.greeting.isNotBlank()) {
+            messages.upsert(
+                ChatMessageEntity(
+                    id = "greeting",
+                    role = "ASSISTANT",
+                    text = saved.greeting,
+                    createdAtEpochMs = System.currentTimeMillis(),
+                    delivery = "SENT",
+                ),
+            )
+        }
+        failedLocal.forEach { messages.upsert(it) }
+    }
+
     private suspend fun pull(local: SavedCompanion?): SavedCompanion? {
         val summaries = api.listAvatars()
         if (summaries.isEmpty()) return local
@@ -94,9 +158,9 @@ class AccountSync @Inject constructor(
             ?: summaries.first().id
         val avatar = api.getAvatar(id)
         val name = avatar.name.ifBlank { "Companion" }
-        val conversationId = api.listConversations()
-            .firstOrNull { it.companionId == id }
-            ?.id
+        val forCompanion = api.listConversations().filter { it.companionId == id }
+        val conversationId = forCompanion.firstOrNull { it.id == local?.conversationId }?.id
+            ?: forCompanion.firstOrNull()?.id
             ?: api.createConversation(id, name)
         val saved = avatar.toSaved(conversationId, System.currentTimeMillis(), api.origin())
         val remoteMessages = api.listMessages(conversationId)

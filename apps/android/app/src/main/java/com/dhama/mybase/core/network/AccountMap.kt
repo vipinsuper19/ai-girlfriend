@@ -62,7 +62,30 @@ data class RemoteConversation(
     val id: Int,
     val companionId: Int = 0,
     val title: String? = null,
+    val lastMessageAt: String? = null,
 )
+
+fun conversationTitle(title: String?, companionName: String): String {
+    val clean = title?.trim().orEmpty()
+    return clean.ifBlank { companionName.trim().ifBlank { "Conversation" } }
+}
+
+fun relativeChatTime(epochMs: Long, nowMs: Long): String {
+    if (epochMs <= 0L) return ""
+    val delta = (nowMs - epochMs).coerceAtLeast(0L)
+    val minute = 60_000L
+    val hour = 60 * minute
+    val day = 24 * hour
+    return when {
+        delta < minute -> "Just now"
+        delta < hour -> "${delta / minute} min ago"
+        delta < day -> "${delta / hour} hr ago"
+        delta < 7 * day -> "${delta / day} d ago"
+        else -> java.time.Instant.ofEpochMilli(epochMs)
+            .atZone(java.time.ZoneOffset.UTC)
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US))
+    }
+}
 
 @Serializable
 data class RemoteMessage(

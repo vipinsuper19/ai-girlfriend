@@ -12,7 +12,9 @@ import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemotePersonality
 import com.dhama.mybase.core.network.RemoteSubscription
 import com.dhama.mybase.core.network.RemoteUser
+import com.dhama.mybase.core.network.conversationTitle
 import com.dhama.mybase.core.network.decodeDataList
+import com.dhama.mybase.core.network.relativeChatTime
 import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.memoryForgetAction
@@ -166,5 +168,17 @@ class AccountMapTest {
             """{"data":{"id":1,"plan":"PREMIUM","status":"ACTIVE","userId":3}}""",
         )
         assertEquals("Premium", planLabel(subscription.plan))
+    }
+
+    @Test
+    fun conversationTitleAndRelativeTime() {
+        assertEquals("Aria", conversationTitle(null, "Aria"))
+        assertEquals("Evening", conversationTitle(" Evening ", "Aria"))
+        assertEquals("Just now", relativeChatTime(1_000L, 1_000L))
+        assertEquals("5 min ago", relativeChatTime(1_000L, 1_000L + 5 * 60_000L))
+        assertEquals("2 hr ago", relativeChatTime(1_000L, 1_000L + 2 * 60 * 60_000L))
+        assertEquals("", relativeChatTime(0L, 5_000L))
+        val day = 1_740_960_000_000L
+        assertEquals("3 Mar", relativeChatTime(day, day + 10L * 24 * 60 * 60 * 1000))
     }
 }

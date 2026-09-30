@@ -102,6 +102,7 @@ private const val STAMP_GAP_MS = 5 * 60 * 1000L
 @Composable
 fun ChatScreen(
     onSeePlans: (() -> Unit)? = null,
+    onHistory: (() -> Unit)? = null,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -229,8 +230,12 @@ fun ChatScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier
                     .padding(start = 12.dp)
+                    .weight(1f)
                     .semantics { heading() },
             )
+            if (companion?.conversationId != null && onHistory != null) {
+                TextButton(onClick = onHistory) { Text("History") }
+            }
         }
         Text(
             when {

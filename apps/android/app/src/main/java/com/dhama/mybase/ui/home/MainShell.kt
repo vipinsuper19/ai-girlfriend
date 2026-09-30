@@ -69,6 +69,7 @@ import com.dhama.mybase.ui.companion.CompanionPortrait
 import com.dhama.mybase.ui.usage.OfflineStrip
 import com.dhama.mybase.ui.usage.UsageWarning
 import com.dhama.mybase.ui.chat.ChatScreen
+import com.dhama.mybase.ui.chat.ConversationHistoryScreen
 import com.dhama.mybase.ui.memory.MemoryDetailScreen
 import com.dhama.mybase.ui.memory.MemoryListScreen
 import com.dhama.mybase.ui.memory.MemoryPrivacyScreen
@@ -160,6 +161,13 @@ fun MainShell(
                 "profile" -> CompanionProfileScreen(onBack = { screen = "tabs" }, onEdit = { screen = "edit" })
                 "edit" -> EditCompanionScreen(onBack = { screen = "profile" })
                 "plans" -> SubscriptionScreen(onBack = { screen = "tabs" })
+                "history" -> ConversationHistoryScreen(
+                    onBack = { screen = "tabs" },
+                    onOpened = {
+                        tab = MainTab.Chat.ordinal
+                        screen = "tabs"
+                    },
+                )
                 else -> when (MainTab.entries[tab]) {
                     MainTab.Home -> HomeTab(
                         companion = companion,
@@ -175,7 +183,10 @@ fun MainShell(
                         onProfile = { screen = "profile" },
                         onSettings = { tab = MainTab.You.ordinal },
                     )
-                    MainTab.Chat -> ChatScreen(onSeePlans = { screen = "plans" })
+                    MainTab.Chat -> ChatScreen(
+                        onSeePlans = { screen = "plans" },
+                        onHistory = { screen = "history" },
+                    )
                     MainTab.Memory -> MemoryListScreen(
                         companionName = companion?.name.orEmpty(),
                         onOpen = {

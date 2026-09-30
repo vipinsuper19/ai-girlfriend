@@ -128,6 +128,10 @@ class ApiClient(
         return withAuth { access -> unwrapData(execute(authed("GET", "avatars/$id", null, access))) }
     }
 
+    suspend fun deleteConversation(id: Int) {
+        withAuth { access -> execute(authed("DELETE", "conversations/$id", null, access)) }
+    }
+
     suspend fun listConversations(): List<RemoteConversation> {
         return withAuth { access -> decodeDataList(execute(authed("GET", "conversations", null, access))) }
     }
