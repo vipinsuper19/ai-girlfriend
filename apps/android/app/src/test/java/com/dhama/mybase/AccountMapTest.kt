@@ -14,6 +14,8 @@ import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemotePersonality
 import com.dhama.mybase.core.network.RemoteSubscription
 import com.dhama.mybase.core.network.RemoteUser
+import com.dhama.mybase.core.network.ARCHIVE_NOTICE
+import com.dhama.mybase.core.network.bringBackLabel
 import com.dhama.mybase.core.network.conversationPreview
 import com.dhama.mybase.core.network.conversationTitle
 import com.dhama.mybase.core.network.decodeDataList
@@ -37,6 +39,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AccountMapTest {
@@ -248,6 +251,13 @@ class AccountMapTest {
         assertEquals("", relativeChatTime(0L, 5_000L))
         val day = 1_740_960_000_000L
         assertEquals("3 Mar", relativeChatTime(day, day + 10L * 24 * 60 * 60 * 1000))
+    }
+
+    @Test
+    fun bringBackNamesHer() {
+        assertEquals("Bring Aria back", bringBackLabel(" Aria "))
+        assertEquals("Bring her back", bringBackLabel("  "))
+        assertTrue(ARCHIVE_NOTICE.contains("bring her back"))
     }
 
     @Test

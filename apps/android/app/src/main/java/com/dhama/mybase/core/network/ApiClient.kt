@@ -125,6 +125,18 @@ class ApiClient(
         return withAuth { access -> decodeDataList(execute(authed("GET", "avatars", null, access))) }
     }
 
+    suspend fun listArchivedAvatars(): List<RemoteAvatarSummary> {
+        return withAuth { access ->
+            decodeDataList(execute(authed("GET", "avatars?status=ARCHIVED", null, access)))
+        }
+    }
+
+    suspend fun restoreAvatar(id: Int): RemoteAvatar {
+        return withAuth { access ->
+            unwrapData(execute(authed("POST", "avatars/$id/restore", null, access)))
+        }
+    }
+
     suspend fun getAvatar(id: Int): RemoteAvatar {
         return withAuth { access -> unwrapData(execute(authed("GET", "avatars/$id", null, access))) }
     }

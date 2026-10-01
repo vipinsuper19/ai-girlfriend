@@ -9,6 +9,7 @@ import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.RemoteAvatarSummary
 import com.dhama.mybase.core.network.RemoteConversation
 import com.dhama.mybase.core.network.RestoredMemory
 import com.dhama.mybase.core.network.RestoredMessage
@@ -41,7 +42,7 @@ class AccountSync @Inject constructor(
         syncPlan()
         syncUsage()
         return try {
-            pull(local)
+            pull(local, null)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
@@ -57,6 +58,20 @@ class AccountSync @Inject constructor(
         }
         syncPlan()
         syncUsage()
+    }
+
+    suspend fun archivedCompanions(): List<RemoteAvatarSummary> {
+        if (!api.hasSession()) return emptyList()
+        return api.listArchivedAvatars()
+    }
+
+    suspend fun unarchive(id: Int): SavedCompanion {
+        if (!api.hasSession()) {
+            throw ApiStatusException(401, "Sign in with email to bring her back.", null)
+        }
+        api.restoreAvatar(id)
+        return pull(companions.observe().first(), id)
+            ?: throw ApiStatusException(0, "Couldn't bring her back.", null)
     }
 
     suspend fun refreshUsage() {
@@ -177,10 +192,11 @@ class AccountSync @Inject constructor(
         failedLocal.forEach { messages.upsert(it) }
     }
 
-    private suspend fun pull(local: SavedCompanion?): SavedCompanion? {
+    private suspend fun pull(local: SavedCompanion?, preferredId: Int?): SavedCompanion? {
         val summaries = api.listAvatars()
         if (summaries.isEmpty()) return local
-        val id = local?.serverId?.takeIf { serverId -> summaries.any { it.id == serverId } }
+        val id = preferredId?.takeIf { preferred -> summaries.any { it.id == preferred } }
+            ?: local?.serverId?.takeIf { serverId -> summaries.any { it.id == serverId } }
             ?: summaries.first().id
         val avatar = api.getAvatar(id)
         val name = avatar.name.ifBlank { "Companion" }

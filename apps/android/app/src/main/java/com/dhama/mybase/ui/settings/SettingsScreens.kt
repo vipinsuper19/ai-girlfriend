@@ -65,6 +65,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalContext
 import com.dhama.mybase.core.memory.togetherLine
+import com.dhama.mybase.core.network.ARCHIVE_NOTICE
 import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
 import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.planCardStatus
@@ -386,7 +387,7 @@ private fun CompanionProfileContent(
         AlertDialog(
             onDismissRequest = { confirmArchive = false },
             title = { Text("Archive ${saved.name}") },
-            text = { Text("She leaves the app. Conversations and memories are kept. There is no way to bring her back from here.") },
+            text = { Text(ARCHIVE_NOTICE) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmArchive = false

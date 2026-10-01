@@ -3,8 +3,10 @@ package com.dhama.mybase.ui.onboarding
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.CompanionDraft
+import com.dhama.mybase.core.network.RemoteAvatarSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,12 +33,14 @@ data class WizardUiState(
     val creating: Boolean = false,
     val error: String? = null,
     val nameError: String? = null,
+    val archived: List<RemoteAvatarSummary> = emptyList(),
 )
 
 @HiltViewModel
 class CompanionWizardViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: CompanionRepository,
+    private val accountSync: AccountSync,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -46,6 +50,33 @@ class CompanionWizardViewModel @Inject constructor(
 
     private val _created = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val created = _created.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            val archived = runCatching { accountSync.archivedCompanions() }.getOrElse { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                emptyList()
+            }
+            _state.update { it.copy(archived = archived) }
+        }
+    }
+
+    fun bringBack(id: Int) {
+        if (_state.value.creating) return
+        viewModelScope.launch {
+            _state.update { it.copy(creating = true, error = null) }
+            try {
+                accountSync.unarchive(id)
+                _state.update { it.copy(creating = false) }
+                _created.emit(Unit)
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _state.update {
+                    it.copy(creating = false, error = "Couldn't bring her back just now.")
+                }
+            }
+        }
+    }
 
     fun update(transform: (CompanionDraft) -> CompanionDraft) {
         _state.update { it.copy(draft = transform(it.draft), nameError = null, error = null) }

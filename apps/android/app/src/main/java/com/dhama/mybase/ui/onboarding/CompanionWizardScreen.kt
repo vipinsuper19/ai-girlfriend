@@ -63,6 +63,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.relationshipOptions
+import com.dhama.mybase.core.network.RemoteAvatarSummary
+import com.dhama.mybase.core.network.bringBackLabel
 
 private val styles = listOf("Realistic", "Illustrated", "Anime")
 private val hairColors = listOf("Black", "Brown", "Auburn", "Blonde", "Copper")
@@ -96,7 +98,13 @@ fun CompanionWizardScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         if (state.step == WizardStep.Intro) {
-            IntroStep(onStart = viewModel::next)
+            IntroStep(
+                archived = state.archived,
+                restoring = state.creating,
+                error = state.error,
+                onStart = viewModel::next,
+                onBringBack = viewModel::bringBack,
+            )
         } else {
             StepHeader(
                 step = state.step,
@@ -124,7 +132,13 @@ fun CompanionWizardScreen(
 }
 
 @Composable
-private fun IntroStep(onStart: () -> Unit) {
+private fun IntroStep(
+    archived: List<RemoteAvatarSummary>,
+    restoring: Boolean,
+    error: String?,
+    onStart: () -> Unit,
+    onBringBack: (Int) -> Unit,
+) {
     Column(Modifier.fillMaxSize()) {
         Spacer(Modifier.weight(1f))
         Text(
@@ -137,7 +151,30 @@ private fun IntroStep(onStart: () -> Unit) {
         Bullet("Her look", "A face and style that feel right to you.")
         Bullet("Her memory", "She keeps what matters. You can read and delete all of it.")
         Spacer(Modifier.weight(1f))
-        PrimaryAction("Start", onStart)
+        if (archived.isNotEmpty()) {
+            Text(
+                "Or bring her back",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            archived.forEach { person ->
+                TextButton(
+                    onClick = { onBringBack(person.id) },
+                    enabled = !restoring,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                ) { Text(bringBackLabel(person.name)) }
+            }
+        }
+        if (!error.isNullOrBlank()) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        PrimaryAction("Start", onStart, loading = restoring)
         Text(
             "Takes about a minute. You can change everything later.",
             style = MaterialTheme.typography.bodySmall,
@@ -549,7 +586,13 @@ private fun PrimaryAction(label: String, onClick: () -> Unit, loading: Boolean =
 private fun WizardIntroPreview() {
     MyBaseTheme {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
-            IntroStep(onStart = {})
+            IntroStep(
+                archived = listOf(RemoteAvatarSummary(id = 4, name = "Aria")),
+                restoring = false,
+                error = null,
+                onStart = {},
+                onBringBack = {},
+            )
         }
     }
 }

@@ -86,6 +86,14 @@ data class RemoteConversation(
 
 private const val PREVIEW_CHARS = 80
 
+const val ARCHIVE_NOTICE =
+    "She leaves the app. Conversations and memories are kept, and you can bring her back."
+
+fun bringBackLabel(name: String): String {
+    val clean = name.trim().ifBlank { "her" }
+    return "Bring $clean back"
+}
+
 fun conversationTitle(title: String?, companionName: String): String {
     val clean = title?.trim().orEmpty()
     return clean.ifBlank { companionName.trim().ifBlank { "Conversation" } }
