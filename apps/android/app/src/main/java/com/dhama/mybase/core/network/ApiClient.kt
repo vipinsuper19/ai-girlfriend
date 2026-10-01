@@ -206,6 +206,12 @@ class ApiClient(
         return withAuth { access -> unwrapData(execute(authed("GET", "users/me", null, access))) }
     }
 
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        withAuth { access ->
+            execute(jsonPost("auth/password", PasswordBody(currentPassword, newPassword), access))
+        }
+    }
+
     suspend fun patchDisplayName(displayName: String): RemoteUser {
         return withAuth { access ->
             val payload = json.encodeToString(DisplayNameBody(displayName))
@@ -304,6 +310,7 @@ class ApiClient(
             is LoginBody -> json.encodeToString(body)
             is RegisterBody -> json.encodeToString(body)
             is RefreshBody -> json.encodeToString(body)
+            is PasswordBody -> json.encodeToString(body)
             is CreateAvatarRequest -> json.encodeToString(body)
             is ConversationBody -> json.encodeToString(body)
             is MessageBody -> json.encodeToString(body)
@@ -358,6 +365,9 @@ private data class RegisterBody(val email: String, val password: String, val dis
 
 @Serializable
 private data class RefreshBody(val refreshToken: String)
+
+@Serializable
+private data class PasswordBody(val currentPassword: String, val newPassword: String)
 
 @Serializable
 private data class ConversationBody(val companionId: Int, val title: String)

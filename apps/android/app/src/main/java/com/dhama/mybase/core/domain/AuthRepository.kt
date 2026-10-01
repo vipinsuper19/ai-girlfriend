@@ -15,6 +15,8 @@ interface AuthRepository {
     suspend fun register(email: String, password: String): Boolean
     suspend fun login(email: String, password: String) : Boolean
 
+    suspend fun changePassword(currentPassword: String, newPassword: String)
+
 
 
     suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean

@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     ConflictException,
     Injectable,
     UnauthorizedException,
@@ -8,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
 
 import { accessTokenExpiresIn } from './access-token.js';
+import { passwordChangeProblem } from './password-change.js';
 import type { LoginDto } from '../dto/login.dto.js';
 import type { RegisterDto } from '../dto/register.dto.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -196,6 +198,58 @@ export class AuthService {
             createdAt: user.createdAt,
         };
 
+    }
+
+    async changePassword(
+        userId: string,
+        sessionId: string,
+        currentPassword: string,
+        newPassword: string,
+    ) {
+        const db = this.prisma.client as any;
+        const user = await db.orm.public.User.where({
+            id: userId,
+        }).first();
+
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+
+        const currentMatches = user.passwordHash
+            ? await bcrypt.compare(currentPassword, user.passwordHash)
+            : false;
+        const problem = passwordChangeProblem(currentPassword, newPassword, {
+            hasPassword: Boolean(user.passwordHash),
+            currentMatches,
+        });
+
+        if (problem) {
+            throw new BadRequestException(problem);
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, 12);
+
+        await db.orm.public.User.where({
+            id: userId,
+        }).update({
+            passwordHash,
+        });
+
+        const sessions = await db.orm.public.Session.where({
+            userId,
+        }).all();
+
+        for (const session of sessions) {
+            if (String(session.id) !== sessionId) {
+                await db.orm.public.Session.where({
+                    id: session.id,
+                }).delete();
+            }
+        }
+
+        return {
+            message: 'Password updated',
+        };
     }
 
     async logout(userId: string, sessionId: string) {

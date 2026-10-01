@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -53,6 +54,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
@@ -107,6 +110,10 @@ fun YouSettingsScreen(
     val plan by viewModel.planLabel.collectAsState()
     val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
+    val passwordNote by viewModel.passwordNote.collectAsState()
+    val passwordFailed by viewModel.passwordFailed.collectAsState()
+    val passwordSaving by viewModel.passwordSaving.collectAsState()
+    val passwordEpoch by viewModel.passwordEpoch.collectAsState()
     val privacy by viewModel.screenPrivacy.collectAsState()
     val theme by viewModel.themeMode.collectAsState()
     val companion by viewModel.companion.collectAsState()
@@ -115,6 +122,10 @@ fun YouSettingsScreen(
         plan = plan,
         nameMessage = nameMessage,
         email = email,
+        passwordNote = passwordNote,
+        passwordFailed = passwordFailed,
+        passwordSaving = passwordSaving,
+        passwordEpoch = passwordEpoch,
         privacy = privacy,
         theme = theme,
         companionName = companion?.name,
@@ -123,6 +134,7 @@ fun YouSettingsScreen(
         onPlans = onPlans,
         onLogout = onLogout,
         onSaveName = viewModel::setDisplayName,
+        onChangePassword = viewModel::changePassword,
         onScreenPrivacy = viewModel::setScreenPrivacy,
         onTheme = viewModel::setThemeMode,
         onDeleteAccount = viewModel::deleteAccount,
@@ -135,6 +147,10 @@ private fun YouSettingsContent(
     plan: String,
     nameMessage: String?,
     email: String,
+    passwordNote: String?,
+    passwordFailed: Boolean,
+    passwordSaving: Boolean,
+    passwordEpoch: Int,
     privacy: Boolean,
     theme: String,
     companionName: String?,
@@ -143,6 +159,7 @@ private fun YouSettingsContent(
     onPlans: () -> Unit,
     onLogout: () -> Unit,
     onSaveName: (String) -> Unit,
+    onChangePassword: (String, String) -> Unit,
     onScreenPrivacy: (Boolean) -> Unit,
     onTheme: (String) -> Unit,
     onDeleteAccount: () -> Unit,
@@ -202,7 +219,17 @@ private fun YouSettingsContent(
             Switch(checked = privacy, onCheckedChange = onScreenPrivacy)
         }
         DisabledRow("Email", email.ifBlank { "No email-change endpoint" })
-        DisabledRow("Change password", "No endpoint yet")
+        if (email.isBlank()) {
+            DisabledRow("Change password", "Sign in with email to change your password.")
+        } else {
+            PasswordChange(
+                note = passwordNote,
+                failed = passwordFailed,
+                saving = passwordSaving,
+                epoch = passwordEpoch,
+                onSave = onChangePassword,
+            )
+        }
         SectionLabel("Subscription")
         SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
         SectionLabel("App")
@@ -696,6 +723,52 @@ private fun SettingsRow(label: String, value: String, onClick: () -> Unit) {
 }
 
 @Composable
+private fun PasswordChange(
+    note: String?,
+    failed: Boolean,
+    saving: Boolean,
+    epoch: Int,
+    onSave: (String, String) -> Unit,
+) {
+    var current by remember(epoch) { mutableStateOf("") }
+    var next by remember(epoch) { mutableStateOf("") }
+    Text("Change password", style = MaterialTheme.typography.labelLarge)
+    OutlinedTextField(
+        value = current,
+        onValueChange = { current = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Current password") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+    )
+    OutlinedTextField(
+        value = next,
+        onValueChange = { next = it },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        label = { Text("New password") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+    )
+    if (current.isNotEmpty() && next.isNotEmpty()) {
+        TextButton(
+            onClick = { onSave(current, next) },
+            enabled = !saving,
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) { Text(if (saving) "Saving…" else "Save password") }
+    }
+    if (!note.isNullOrBlank()) {
+        Text(
+            note,
+            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun DisabledRow(label: String, reason: String) {
     Column(
         Modifier
@@ -810,6 +883,10 @@ private fun YouSettingsPreview() {
             plan = "Free",
             nameMessage = null,
             email = "vipin@example.com",
+            passwordNote = null,
+            passwordFailed = false,
+            passwordSaving = false,
+            passwordEpoch = 0,
             privacy = true,
             theme = "system",
             companionName = "Aria",
@@ -818,6 +895,7 @@ private fun YouSettingsPreview() {
             onPlans = {},
             onLogout = {},
             onSaveName = {},
+            onChangePassword = { _, _ -> },
             onScreenPrivacy = {},
             onTheme = {},
             onDeleteAccount = {},

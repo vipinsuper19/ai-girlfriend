@@ -9,12 +9,14 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.model.AuthState
+import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.ApiClient
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.PhoneAuthCredential
@@ -107,6 +109,35 @@ class AuthRepoImpl(
        }
     }
 
+
+    override suspend fun changePassword(currentPassword: String, newPassword: String) {
+        val user = auth.currentUser
+        val email = user?.email
+        if (user == null || email.isNullOrBlank()) {
+            throw ApiStatusException(401, "Sign in with email to change your password.", null)
+        }
+        val credential = EmailAuthProvider.getCredential(email, currentPassword)
+        try {
+            user.reauthenticate(credential).await()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: FirebaseException) {
+            val wrong = error.message?.contains("password", ignoreCase = true) == true ||
+                error.message?.contains("credential", ignoreCase = true) == true
+            if (wrong) throw ApiStatusException(400, "Current password is wrong.", null)
+            throw ApiStatusException(0, "Couldn't change your password.", null)
+        }
+        user.updatePassword(newPassword).await()
+        try {
+            api.changePassword(currentPassword, newPassword)
+        } catch (error: CancellationException) {
+            runCatching { user.updatePassword(currentPassword).await() }
+            throw error
+        } catch (error: Exception) {
+            runCatching { user.updatePassword(currentPassword).await() }
+            throw error
+        }
+    }
 
     override suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean {
         if(isLoggedIn())

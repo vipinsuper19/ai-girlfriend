@@ -13,6 +13,7 @@ import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.displayNameError
+import com.dhama.mybase.core.network.passwordChangeError
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -71,6 +72,18 @@ class SettingsViewModel @Inject constructor(
     private val _nameMessage = MutableStateFlow<String?>(null)
     val nameMessage = _nameMessage.asStateFlow()
 
+    private val _passwordNote = MutableStateFlow<String?>(null)
+    val passwordNote = _passwordNote.asStateFlow()
+
+    private val _passwordFailed = MutableStateFlow(false)
+    val passwordFailed = _passwordFailed.asStateFlow()
+
+    private val _passwordSaving = MutableStateFlow(false)
+    val passwordSaving = _passwordSaving.asStateFlow()
+
+    private val _passwordEpoch = MutableStateFlow(0)
+    val passwordEpoch = _passwordEpoch.asStateFlow()
+
     private val _photoSaving = MutableStateFlow(false)
     val photoSaving = _photoSaving.asStateFlow()
 
@@ -113,6 +126,32 @@ class SettingsViewModel @Inject constructor(
                 throw error
             } catch (_: Exception) {
                 _nameMessage.value = "Couldn't save your name."
+            }
+        }
+    }
+
+    fun changePassword(current: String, next: String) {
+        val error = passwordChangeError(current, next)
+        if (error != null) {
+            _passwordFailed.value = true
+            _passwordNote.value = error
+            return
+        }
+        viewModelScope.launch {
+            _passwordSaving.value = true
+            _passwordFailed.value = false
+            _passwordNote.value = null
+            try {
+                authRepository.changePassword(current, next)
+                _passwordEpoch.value = _passwordEpoch.value + 1
+                _passwordNote.value = "Password updated."
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _passwordFailed.value = true
+                _passwordNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't change your password."
+            } finally {
+                _passwordSaving.value = false
             }
         }
     }

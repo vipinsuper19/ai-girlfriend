@@ -20,6 +20,7 @@ import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.memoryForgetAction
 import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.core.network.apiJson
+import com.dhama.mybase.core.network.passwordChangeError
 import com.dhama.mybase.core.network.planLabel
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
@@ -159,6 +160,14 @@ class AccountMapTest {
         assertEquals(MemoryForget.Local, memoryForgetAction("uuid", hasSession = true))
         assertEquals(MemoryForget.Server, memoryForgetAction("server-4", hasSession = true))
         assertEquals(MemoryForget.Keep, memoryForgetAction("server-4", hasSession = false))
+    }
+
+    @Test
+    fun passwordRulesMatchTheChangeEndpoint() {
+        assertEquals("Enter your current password.", passwordChangeError("", "new-password"))
+        assertEquals("Use at least 8 characters.", passwordChangeError("old-password", "short"))
+        assertEquals("Choose a different password.", passwordChangeError("same-password", "same-password"))
+        assertNull(passwordChangeError("old-password", "new-password"))
     }
 
     @Test

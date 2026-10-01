@@ -163,6 +163,16 @@ fun memoryForgetAction(localId: String, hasSession: Boolean): MemoryForget {
     return if (hasSession) MemoryForget.Server else MemoryForget.Keep
 }
 
+fun passwordChangeError(current: String, next: String): String? {
+    return when {
+        current.isEmpty() -> "Enter your current password."
+        next.length < 8 -> "Use at least 8 characters."
+        next.length > 128 -> "Keep the password under 128 characters."
+        current == next -> "Choose a different password."
+        else -> null
+    }
+}
+
 fun displayNameError(name: String): String? {
     val length = name.trim().length
     return when {
