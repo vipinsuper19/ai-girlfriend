@@ -10,6 +10,7 @@ import { Public } from '../common/decorators/public.decorator.js';
 
 import { AuthService } from './auth.service.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
+import { ChangePasswordDto } from '../dto/change-password.dto.js';
 import { LoginDto } from '../dto/login.dto.js';
 import { RegisterDto } from '../dto/register.dto.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -38,6 +39,20 @@ export class AuthController {
         return this.authService.login(dto);
     }
 
+    @Post('password')
+    @UseGuards(JwtAuthGuard)
+    changePassword(
+        @CurrentUser() user: JwtPayload,
+        @Body() dto: ChangePasswordDto,
+    ) {
+        return this.authService.changePassword(
+            String(user.sub),
+            String(user.sessionId),
+            dto.currentPassword,
+            dto.newPassword,
+        );
+    }
+
     @Post('logout')
     @UseGuards(JwtAuthGuard)
     async logout(@CurrentUser() user: JwtPayload) {
@@ -48,6 +63,7 @@ export class AuthController {
     }
 
     @Get('me')
+    @UseGuards(JwtAuthGuard)
     me(
         @CurrentUser() user: JwtPayload,
     ) {

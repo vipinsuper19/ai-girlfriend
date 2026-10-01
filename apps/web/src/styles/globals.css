@@ -1,0 +1,259 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --mulberry-10: #3b0b21;
+  --mulberry-20: #571435;
+  --mulberry-30: #752049;
+  --mulberry-40: #932d5e;
+  --mulberry-80: #e7b7ca;
+  --mulberry-90: #f5dce6;
+
+  --champagne-10: #2a1e05;
+  --champagne-20: #43330e;
+  --champagne-30: #5d4a19;
+  --champagne-40: #786224;
+  --champagne-80: #e6d091;
+  --champagne-90: #f5e9c4;
+
+  --dusk-10: #25103a;
+  --dusk-20: #3c1e56;
+  --dusk-30: #542c73;
+  --dusk-40: #6d3d91;
+  --dusk-80: #d6b8e8;
+  --dusk-90: #eddcf6;
+
+  --n-6: #141013;
+  --n-10: #1c171a;
+  --n-12: #211b1f;
+  --n-17: #2b2429;
+  --n-20: #312a2f;
+  --n-22: #362e34;
+  --n-90: #e9dae1;
+  --n-94: #f4e7ec;
+  --n-95: #f7eaef;
+  --n-96: #faedf2;
+  --n-98: #fef7f9;
+  --n-lowest-dark: #0e0b0d;
+  --n-high-light: #efe1e7;
+  --nv-30: #4c424a;
+  --nv-50: #7e7280;
+  --nv-60: #988b99;
+  --nv-80: #d0c2ce;
+  --nv-90: #eddeea;
+
+  --primary: var(--mulberry-40);
+  --on-primary: #ffffff;
+  --primary-container: var(--mulberry-90);
+  --on-primary-container: var(--mulberry-10);
+  --inverse-primary: var(--mulberry-80);
+
+  --secondary: var(--champagne-40);
+  --on-secondary: #ffffff;
+  --secondary-container: var(--champagne-90);
+  --on-secondary-container: var(--champagne-10);
+
+  --tertiary: var(--dusk-40);
+  --on-tertiary: #ffffff;
+  --tertiary-container: var(--dusk-90);
+  --on-tertiary-container: var(--dusk-10);
+
+  --surface: var(--n-98);
+  --on-surface: var(--n-10);
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: var(--n-96);
+  --surface-container: var(--n-94);
+  --surface-container-high: var(--n-high-light);
+  --surface-container-highest: var(--n-90);
+  --surface-variant: var(--nv-90);
+  --on-surface-variant: var(--nv-30);
+
+  --outline: var(--nv-50);
+  --outline-variant: var(--nv-80);
+  --inverse-surface: var(--n-20);
+  --inverse-on-surface: var(--n-95);
+
+  --error: #b3261e;
+  --on-error: #ffffff;
+  --error-container: #f9dedc;
+  --on-error-container: #410e0b;
+  --success: #2e6b4f;
+  --success-container: #cbebd9;
+  --on-success-container: #0b2418;
+  --warning: #8a5300;
+  --warning-container: #ffddb3;
+  --on-warning-container: #2c1700;
+
+  --bubble-outgoing: var(--mulberry-40);
+  --on-bubble-outgoing: #ffffff;
+  --bubble-incoming: var(--n-94);
+  --on-bubble-incoming: var(--n-10);
+  --online-indicator: var(--success);
+
+  --state-hover: rgb(0 0 0 / 0.04);
+  --state-pressed: rgb(0 0 0 / 0.08);
+  --focus-ring: var(--primary);
+  --selection: var(--mulberry-90);
+
+  color-scheme: light;
+}
+
+.dark {
+  --primary: var(--mulberry-80);
+  --on-primary: var(--mulberry-20);
+  --primary-container: var(--mulberry-30);
+  --on-primary-container: var(--mulberry-90);
+  --inverse-primary: var(--mulberry-40);
+
+  --secondary: var(--champagne-80);
+  --on-secondary: var(--champagne-20);
+  --secondary-container: var(--champagne-30);
+  --on-secondary-container: var(--champagne-90);
+
+  --tertiary: var(--dusk-80);
+  --on-tertiary: var(--dusk-20);
+  --tertiary-container: var(--dusk-30);
+  --on-tertiary-container: var(--dusk-90);
+
+  --surface: var(--n-6);
+  --on-surface: var(--n-90);
+  --surface-container-lowest: var(--n-lowest-dark);
+  --surface-container-low: var(--n-10);
+  --surface-container: var(--n-12);
+  --surface-container-high: var(--n-17);
+  --surface-container-highest: var(--n-22);
+  --surface-variant: var(--nv-30);
+  --on-surface-variant: var(--nv-80);
+
+  --outline: var(--nv-60);
+  --outline-variant: var(--nv-30);
+  --inverse-surface: var(--n-90);
+  --inverse-on-surface: var(--n-20);
+
+  --error: #f2b8b5;
+  --on-error: #601410;
+  --error-container: #8c1d18;
+  --on-error-container: #f9dedc;
+  --success: #96d8b4;
+  --success-container: #1e4f35;
+  --on-success-container: #b9e9ce;
+  --warning: #ffb865;
+  --warning-container: #6a3f00;
+  --on-warning-container: #ffddb3;
+
+  --bubble-outgoing: var(--mulberry-30);
+  --on-bubble-outgoing: var(--mulberry-90);
+  --bubble-incoming: var(--n-17);
+  --on-bubble-incoming: var(--n-90);
+  --online-indicator: var(--success);
+
+  --state-hover: rgb(255 255 255 / 0.06);
+  --state-pressed: rgb(255 255 255 / 0.10);
+  --selection: var(--mulberry-30);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+
+  --color-surface: var(--surface);
+  --color-on-surface: var(--on-surface);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
+  --color-on-success-container: var(--on-success-container);
+  --color-warning: var(--warning);
+  --color-warning-container: var(--warning-container);
+  --color-on-warning-container: var(--on-warning-container);
+  --color-bubble-outgoing: var(--bubble-outgoing);
+  --color-on-bubble-outgoing: var(--on-bubble-outgoing);
+  --color-bubble-incoming: var(--bubble-incoming);
+  --color-on-bubble-incoming: var(--on-bubble-incoming);
+  --color-online-indicator: var(--online-indicator);
+
+  --color-background: var(--surface);
+  --color-foreground: var(--on-surface);
+  --color-card: var(--surface-container-low);
+  --color-popover: var(--surface-container-high);
+  --color-muted: var(--surface-container);
+  --color-muted-foreground: var(--on-surface-variant);
+  --color-accent: var(--surface-container-high);
+  --color-destructive: var(--error);
+  --color-border: var(--outline-variant);
+  --color-input: var(--outline-variant);
+  --color-ring: var(--focus-ring);
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --radius-xs: 0.5rem;
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+}
+
+* {
+  border-color: var(--outline-variant);
+}
+
+html,
+body {
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--on-surface);
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--on-surface);
+  box-shadow: 0 0 0 1000px var(--surface-container-low) inset;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

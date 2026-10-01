@@ -7,6 +7,12 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateAvatarDto } from './dto/create-avatar.dto.js';
 import type { UpdateAvatarDto } from './dto/update-avatar.dto.js';
 import { StorageService } from '../storage/storage.service.js';
+import {
+    archiveFields,
+    listStatus,
+    restoreFields,
+    restoreProblem,
+} from './companion-status.js';
 
 @Injectable()
 export class AvatarsService {
@@ -92,11 +98,14 @@ export class AvatarsService {
 
     }
 
-    async findAll(userId: string) {
+    async findAll(
+        userId: string,
+        status?: string | null,
+    ) {
         return this.db.orm.public.Companion
             .where({
                 userId: Number(userId),
-                status: 'ACTIVE',
+                status: listStatus(status),
             })
             .all();
     }
@@ -299,13 +308,50 @@ export class AvatarsService {
                 id: numericCompanionId,
                 userId: numericUserId,
             })
-            .update({
-                status: 'ARCHIVED',
-            });
+            .update(
+                archiveFields(new Date().toISOString()),
+            );
 
         return {
             message: 'Companion archived successfully',
         };
+
+    }
+
+    async restore(
+        userId: string,
+        companionId: string,
+    ) {
+        const numericUserId = Number(userId);
+        const numericCompanionId = Number(companionId);
+
+        const companion =
+            await this.db.orm.public.Companion
+                .where({
+                    id: numericCompanionId,
+                    userId: numericUserId,
+                })
+                .first();
+
+        if (!companion || restoreProblem(companion.status)) {
+            throw new NotFoundException(
+                'Companion not found',
+            );
+        }
+
+        if (companion.status !== 'ACTIVE') {
+            await this.db.orm.public.Companion
+                .where({
+                    id: numericCompanionId,
+                    userId: numericUserId,
+                })
+                .update(restoreFields());
+        }
+
+        return this.findOne(
+            numericUserId,
+            numericCompanionId,
+        );
 
     }
 

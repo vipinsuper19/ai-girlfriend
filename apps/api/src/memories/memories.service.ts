@@ -171,6 +171,42 @@ export class MemoriesService {
 
     }
 
+    async removeAll(
+        userId: string | number,
+        companionId?: number,
+    ) {
+        const where: Record<string, unknown> = {
+            userId: Number(userId),
+            status: 'ACTIVE',
+            deletedAt: null,
+        };
+
+        if (companionId != null) {
+            where.companionId = companionId;
+        }
+
+        const rows =
+            await this.db.orm.public.Memory
+                .where(where)
+                .all();
+
+        if (rows.length === 0) {
+            return { deleted: 0 };
+        }
+
+        const now = new Date().toISOString();
+
+        await this.db.orm.public.Memory
+            .where(where)
+            .update({
+                status: 'DELETED',
+                deletedAt: now,
+                updatedAt: now,
+            });
+
+        return { deleted: rows.length };
+    }
+
     async remove(
         userId: string | number,
         memoryId: string | number,

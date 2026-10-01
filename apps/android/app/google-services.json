@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "168327043193",
+    "project_id": "mybase-9bda0",
+    "storage_bucket": "mybase-9bda0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:168327043193:android:2184307b2ba35907531ca8",
+        "android_client_info": {
+          "package_name": "com.dhama.mybase"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "168327043193-4kf3un623aj6b0832rcqjeps0t56ghov.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dhama.mybase",
+            "certificate_hash": "960c926fac3afd02c43f2aa43020df511dab347c"
+          }
+        },
+        {
+          "client_id": "168327043193-hirsunc4932mg4qq5pujkd2nbafm7dea.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDySYBW9PfzT7WDo_C6Qpp7aAwqrTsBDmI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "168327043193-hirsunc4932mg4qq5pujkd2nbafm7dea.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -5,15 +5,20 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import type { ListMessagesDto } from './dto/list-messages.dto.js';
+import { messagePageLimit, orderMessagePage } from './message-page.js';
 import { AiService } from '../ai/ai.service.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
+import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
+import { UsageService } from '../usage/usage.service.js';
 
 @Injectable()
 export class MessagesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
-        private readonly memoryExtractorService: MemoryExtractorService
+        private readonly memoryExtractorService: MemoryExtractorService,
+        private readonly usageService: UsageService,
     ) { }
 
     private get db(): any {
@@ -38,6 +43,13 @@ export class MessagesService {
         const conversation = await this.getOwnedConversation(
             userId,
             conversationId,
+        );
+
+        await this.usageService.consume(
+            numericUserId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();
@@ -87,8 +99,8 @@ export class MessagesService {
     async findAll(
         userId: string,
         conversationId: string,
+        query: ListMessagesDto = {},
     ) {
-        const numericUserId = Number(userId);
         const numericConversationId = Number(conversationId);
 
         await this.getOwnedConversation(
@@ -96,15 +108,36 @@ export class MessagesService {
             conversationId,
         );
 
-        return this.db.orm.public.Message
+        const limit = messagePageLimit(query.limit);
+        let messages = this.db.orm.public.Message
             .where({
                 conversationId: numericConversationId,
                 deletedAt: null,
-            })
-            .orderBy((message: any) =>
-                message.createdAt.asc(),
-            )
-            .all();
+            });
+
+        if (query.before == null && limit == null) {
+            return messages
+                .orderBy((message: any) =>
+                    message.createdAt.asc(),
+                )
+                .all();
+        }
+
+        if (query.before != null) {
+            messages = messages.where((message: any) =>
+                message.id.lt(query.before),
+            );
+        }
+
+        let page = messages.orderBy((message: any) =>
+            message.id.desc(),
+        );
+
+        if (limit != null) {
+            page = page.limit(limit);
+        }
+
+        return orderMessagePage(await page.all());
     }
 
     async remove(
@@ -209,6 +242,13 @@ export class MessagesService {
         await this.getOwnedConversation(
             userId,
             conversationId,
+        );
+
+        await this.usageService.consume(
+            Number(userId),
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();
