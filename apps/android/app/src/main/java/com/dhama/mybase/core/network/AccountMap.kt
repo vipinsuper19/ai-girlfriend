@@ -68,16 +68,42 @@ data class RemoteAvatarUpload(
 )
 
 @Serializable
+data class RemoteLastMessage(
+    val id: Int = 0,
+    val role: String = "",
+    val type: String = "TEXT",
+    val content: String? = null,
+)
+
+@Serializable
 data class RemoteConversation(
     val id: Int,
     val companionId: Int = 0,
     val title: String? = null,
     val lastMessageAt: String? = null,
+    val lastMessage: RemoteLastMessage? = null,
 )
+
+private const val PREVIEW_CHARS = 80
 
 fun conversationTitle(title: String?, companionName: String): String {
     val clean = title?.trim().orEmpty()
     return clean.ifBlank { companionName.trim().ifBlank { "Conversation" } }
+}
+
+/** One line under the history title. Blank voice and image lines get a short label. */
+fun conversationPreview(message: RemoteLastMessage?): String {
+    if (message == null) return ""
+    val text = message.content?.replace(Regex("\\s+"), " ")?.trim().orEmpty()
+    if (text.isNotEmpty()) {
+        if (text.length <= PREVIEW_CHARS) return text
+        return text.take(PREVIEW_CHARS).trimEnd() + "…"
+    }
+    return when (message.type.trim().uppercase()) {
+        "AUDIO" -> "Voice note"
+        "IMAGE" -> "Photo"
+        else -> ""
+    }
 }
 
 fun relativeChatTime(epochMs: Long, nowMs: Long): String {

@@ -5,6 +5,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateConversationDto } from './dto/create-conversation.dto.js';
+import { lastMessageSnapshot } from './last-message.js';
 
 @Injectable()
 export class ConversationsService {
@@ -52,15 +53,36 @@ export class ConversationsService {
     async findAll(userId: string) {
         const numericUserId = Number(userId);
 
-        return this.db.orm.public.Conversation
-            .where({
-                userId: numericUserId,
-                deletedAt: null,
-            })
-            .orderBy((conversation: any) =>
-                conversation.lastMessageAt.desc(),
-            )
-            .all();
+        const conversations =
+            await this.db.orm.public.Conversation
+                .where({
+                    userId: numericUserId,
+                    deletedAt: null,
+                })
+                .orderBy((conversation: any) =>
+                    conversation.lastMessageAt.desc(),
+                )
+                .all();
+
+        for (const conversation of conversations) {
+            const latest =
+                await this.db.orm.public.Message
+                    .where({
+                        conversationId: conversation.id,
+                        deletedAt: null,
+                    })
+                    .orderBy((message: any) =>
+                        message.createdAt.desc(),
+                    )
+                    .limit(1)
+                    .all();
+
+            conversation.lastMessage = lastMessageSnapshot(
+                latest[0],
+            );
+        }
+
+        return conversations;
 
     }
 

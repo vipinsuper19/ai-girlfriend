@@ -7,11 +7,14 @@ import com.dhama.mybase.core.network.avatarPhotoError
 import com.dhama.mybase.core.network.RemoteAppearance
 import com.dhama.mybase.core.network.RemoteAvatar
 import com.dhama.mybase.core.network.RemoteAvatarSummary
+import com.dhama.mybase.core.network.RemoteConversation
+import com.dhama.mybase.core.network.RemoteLastMessage
 import com.dhama.mybase.core.network.RemoteMemory
 import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemotePersonality
 import com.dhama.mybase.core.network.RemoteSubscription
 import com.dhama.mybase.core.network.RemoteUser
+import com.dhama.mybase.core.network.conversationPreview
 import com.dhama.mybase.core.network.conversationTitle
 import com.dhama.mybase.core.network.decodeDataList
 import com.dhama.mybase.core.network.relativeChatTime
@@ -245,5 +248,37 @@ class AccountMapTest {
         assertEquals("", relativeChatTime(0L, 5_000L))
         val day = 1_740_960_000_000L
         assertEquals("3 Mar", relativeChatTime(day, day + 10L * 24 * 60 * 60 * 1000))
+    }
+
+    @Test
+    fun conversationPreviewUsesTheLatestLine() {
+        assertEquals("", conversationPreview(null))
+        assertEquals(
+            "Tell me about her.",
+            conversationPreview(RemoteLastMessage(content = " Tell me about her. \n")),
+        )
+        assertEquals(
+            "Voice note",
+            conversationPreview(RemoteLastMessage(type = "AUDIO", content = " ")),
+        )
+        assertEquals("Photo", conversationPreview(RemoteLastMessage(type = "IMAGE")))
+        assertEquals(
+            "She said hi",
+            conversationPreview(RemoteLastMessage(type = "AUDIO", content = "She said hi")),
+        )
+        val preview = conversationPreview(RemoteLastMessage(content = "a".repeat(90)))
+        assertEquals(81, preview.length)
+        assertEquals("…", preview.takeLast(1))
+        val decoded = decodeDataList<RemoteConversation>(
+            """{"data":[{"id":8,"userId":3,"companionId":4,"title":"Evening","lastMessageAt":"2026-09-30T07:00:00Z","createdAt":"2026-09-01T00:00:00Z","updatedAt":"2026-09-30T07:00:00Z","lastMessage":{"id":12,"role":"ASSISTANT","type":"TEXT","content":"I'm here.","audioUrl":null}}]}""",
+        )
+        assertEquals("I'm here.", decoded.single().lastMessage?.content)
+        assertEquals("ASSISTANT", decoded.single().lastMessage?.role)
+        assertEquals(
+            null,
+            decodeDataList<RemoteConversation>("""{"data":[{"id":3,"title":"First hello"}]}""")
+                .single()
+                .lastMessage,
+        )
     }
 }

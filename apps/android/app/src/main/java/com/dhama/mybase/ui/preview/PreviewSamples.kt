@@ -4,6 +4,7 @@ import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.network.RemoteConversation
+import com.dhama.mybase.core.network.RemoteLastMessage
 
 internal fun sampleCompanion(): SavedCompanion = SavedCompanion(
     name = "Aria",
@@ -51,8 +52,24 @@ internal fun sampleMemories(): List<MemoryEntity> = listOf(
 )
 
 internal fun sampleConversations(): List<RemoteConversation> = listOf(
-    RemoteConversation(id = 8, companionId = 4, title = "Evening", lastMessageAt = "2026-09-30T07:00:00Z"),
-    RemoteConversation(id = 3, companionId = 4, title = "First hello", lastMessageAt = "2026-09-12T18:00:00Z"),
+    RemoteConversation(
+        id = 8,
+        companionId = 4,
+        title = "Evening",
+        lastMessageAt = "2026-09-30T07:00:00Z",
+        lastMessage = RemoteLastMessage(
+            id = 12,
+            role = "ASSISTANT",
+            content = "Tell me about her. I'm right here.",
+        ),
+    ),
+    RemoteConversation(
+        id = 3,
+        companionId = 4,
+        title = "First hello",
+        lastMessageAt = "2026-09-12T18:00:00Z",
+        lastMessage = RemoteLastMessage(id = 4, role = "USER", type = "AUDIO"),
+    ),
 )
 
 internal fun sampleMessages(): List<ChatMessageEntity> = listOf(

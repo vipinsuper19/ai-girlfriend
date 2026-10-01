@@ -37,10 +37,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.network.RemoteConversation
+import com.dhama.mybase.core.network.conversationPreview
 import com.dhama.mybase.core.network.conversationTitle
 import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.relativeChatTime
@@ -159,6 +161,7 @@ private fun ConversationRow(
         },
     )
     val title = conversationTitle(conversation.title, companionName)
+    val preview = conversationPreview(conversation.lastMessage)
     val whenLabel = relativeChatTime(epochMillis(conversation.lastMessageAt), System.currentTimeMillis())
     SwipeToDismissBox(
         state = dismissState,
@@ -178,7 +181,7 @@ private fun ConversationRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
+                .heightIn(min = 72.dp)
                 .background(
                     if (active) MaterialTheme.colorScheme.surfaceContainerLow
                     else MaterialTheme.colorScheme.surface,
@@ -189,7 +192,18 @@ private fun ConversationRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             CompanionPortrait(companionName, avatarUrl, 40.dp)
-            Text(title, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (preview.isNotEmpty()) {
+                    Text(
+                        preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             if (whenLabel.isNotBlank()) {
                 Text(
                     whenLabel,
