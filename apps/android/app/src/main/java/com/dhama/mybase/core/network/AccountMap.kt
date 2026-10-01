@@ -199,6 +199,17 @@ fun memoryForgetAction(localId: String, hasSession: Boolean): MemoryForget {
     return if (hasSession) MemoryForget.Server else MemoryForget.Keep
 }
 
+/** Local rows always go. Server rows go after the bulk delete succeeds. */
+fun memoriesToForget(ids: List<String>, hasSession: Boolean, serverCleared: Boolean): List<String> {
+    return ids.filter { id ->
+        when (memoryForgetAction(id, hasSession)) {
+            MemoryForget.Local -> true
+            MemoryForget.Keep -> false
+            MemoryForget.Server -> serverCleared
+        }
+    }
+}
+
 fun passwordChangeError(current: String, next: String): String? {
     return when {
         current.isEmpty() -> "Enter your current password."

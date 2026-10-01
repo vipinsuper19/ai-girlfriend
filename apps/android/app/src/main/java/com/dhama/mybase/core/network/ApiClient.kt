@@ -212,6 +212,11 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "memories/$id", null, access)) }
     }
 
+    suspend fun clearMemories(companionId: Int?) {
+        val query = if (companionId != null) "?companionId=$companionId" else ""
+        withAuth { access -> execute(authed("DELETE", "memories$query", null, access)) }
+    }
+
     suspend fun deleteAccount() {
         withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
     }

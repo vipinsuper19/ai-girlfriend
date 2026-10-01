@@ -22,6 +22,7 @@ import com.dhama.mybase.core.network.decodeDataList
 import com.dhama.mybase.core.network.relativeChatTime
 import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.network.epochMillis
+import com.dhama.mybase.core.network.memoriesToForget
 import com.dhama.mybase.core.network.memoryForgetAction
 import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.core.network.apiJson
@@ -167,6 +168,10 @@ class AccountMapTest {
         assertEquals(MemoryForget.Local, memoryForgetAction("uuid", hasSession = true))
         assertEquals(MemoryForget.Server, memoryForgetAction("server-4", hasSession = true))
         assertEquals(MemoryForget.Keep, memoryForgetAction("server-4", hasSession = false))
+        val ids = listOf("local", "server-4", "server-9")
+        assertEquals(listOf("local"), memoriesToForget(ids, hasSession = false, serverCleared = false))
+        assertEquals(listOf("local"), memoriesToForget(ids, hasSession = true, serverCleared = false))
+        assertEquals(ids, memoriesToForget(ids, hasSession = true, serverCleared = true))
     }
 
     @Test

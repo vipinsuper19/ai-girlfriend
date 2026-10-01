@@ -10,6 +10,7 @@ import com.dhama.mybase.core.db.dao.MemoryDao
 import com.dhama.mybase.core.db.dao.NotesDao
 import com.dhama.mybase.core.db.dao.UserDao
 import com.dhama.mybase.core.domain.ChatRepository
+import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiClient
 import dagger.Module
@@ -62,6 +63,9 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideMemoryRepository(dao: MemoryDao, api: ApiClient): MemoryRepository =
-        MemoryRepositoryImpl(dao, api)
+    fun provideMemoryRepository(
+        dao: MemoryDao,
+        api: ApiClient,
+        companions: CompanionRepository,
+    ): MemoryRepository = MemoryRepositoryImpl(dao, api, companions)
 }

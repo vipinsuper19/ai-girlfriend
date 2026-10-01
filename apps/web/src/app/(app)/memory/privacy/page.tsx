@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { Banner } from "@/components/ui/surfaces";
+import { serverApi } from "@/lib/server/api";
 
 export const metadata = { title: "Memory and privacy" };
 
@@ -14,9 +17,19 @@ export default function MemoryPrivacyPage() {
       </Banner>
       <p className="text-sm text-on-surface-variant">
         Pause new memories and export are not available yet — there is no
-        backend for either. Clear-all would issue one delete per memory; that
-        control stays off until a bulk endpoint exists.
+        backend for either.
       </p>
+      <form
+        action={async () => {
+          "use server";
+          await serverApi("/memories", { method: "DELETE" });
+          redirect("/memory");
+        }}
+      >
+        <Button variant="destructive" type="submit">
+          Clear all memories
+        </Button>
+      </form>
       <Link href="/memory" className="font-semibold text-primary">
         Back to memories
       </Link>

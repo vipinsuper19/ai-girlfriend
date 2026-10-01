@@ -58,6 +58,17 @@ export class MemoriesController {
         );
     }
 
+    @Delete()
+    async removeAll(
+        @CurrentUser() user: JwtPayload,
+        @Query() query: ListMemoriesDto,
+    ) {
+        return this.memoriesService.removeAll(
+            String(user.sub),
+            query.companionId,
+        );
+    }
+
     @Delete(':id')
     async remove(
         @CurrentUser() user: JwtPayload,
