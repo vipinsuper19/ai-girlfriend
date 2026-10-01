@@ -117,6 +117,28 @@ fun streamRecovery(userAccepted: Boolean, replyStarted: Boolean, finished: Boole
     return StreamRecovery.Failed
 }
 
+/** The server already stored the user's line, so the bubble must not be posted again. */
+const val DROPPED_DELIVERY = "DROPPED"
+
+fun replyFailureDelivery(userAccepted: Boolean, replyStarted: Boolean, finished: Boolean): String {
+    return if (streamRecovery(userAccepted, replyStarted, finished) == StreamRecovery.Failed) {
+        DROPPED_DELIVERY
+    } else {
+        "FAILED"
+    }
+}
+
+fun retriesByReload(delivery: String): Boolean = delivery == DROPPED_DELIVERY
+
+fun retryCaption(delivery: String): String {
+    return if (retriesByReload(delivery)) "Reply didn't finish · Retry" else "Not sent · Retry"
+}
+
+/** Phone-only notes and lines the server never accepted stay when the thread is reloaded. */
+fun keptOnReload(delivery: String, kind: String): Boolean {
+    return kind == "SYSTEM" || delivery == "FAILED"
+}
+
 /** Shown once, under a reply that arrived from the non-streaming route. */
 fun droppedStreamLine(): String {
     return "The live connection dropped, so this reply arrived all at once."

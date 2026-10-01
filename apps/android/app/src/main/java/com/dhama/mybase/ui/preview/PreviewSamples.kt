@@ -77,4 +77,18 @@ internal fun sampleMessages(): List<ChatMessageEntity> = listOf(
         createdAtEpochMs = 1_735_689_661_000L,
         delivery = "SENT",
     ),
+    ChatMessageEntity(
+        id = "user-2",
+        role = "USER",
+        text = "Are you still there?",
+        createdAtEpochMs = 1_735_689_720_000L,
+        delivery = "SENT",
+    ),
+    ChatMessageEntity(
+        id = "assistant-2",
+        role = "ASSISTANT",
+        text = "I am —",
+        createdAtEpochMs = 1_735_689_721_000L,
+        delivery = "DROPPED",
+    ),
 )

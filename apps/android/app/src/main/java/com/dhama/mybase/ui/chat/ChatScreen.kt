@@ -65,6 +65,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.usage.CountedMessage
@@ -489,7 +490,8 @@ private fun MessageRow(
         } else {
             MaterialTheme.companionColors.onBubbleIncoming
         }
-        val failed = message.delivery == ChatRepositoryImpl.DELIVERY_FAILED
+        val failed = message.delivery == ChatRepositoryImpl.DELIVERY_FAILED ||
+            message.delivery == ChatRepositoryImpl.DELIVERY_DROPPED
         val spoken = when {
             message.kind == ChatMessageEntity.KIND_AUDIO -> "$senderName. Voice note ${message.durationMs / 1000} seconds"
             message.kind == ChatMessageEntity.KIND_IMAGE -> "$senderName. Photo"
@@ -534,7 +536,7 @@ private fun MessageRow(
             }
             if (failed) {
                 TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Not sent · Retry", color = MaterialTheme.colorScheme.error)
+                    Text(retryCaption(message.delivery), color = MaterialTheme.colorScheme.error)
                 }
             } else if (
                 message.kind == ChatMessageEntity.KIND_AUDIO &&

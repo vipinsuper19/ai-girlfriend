@@ -4,7 +4,10 @@ import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.chat.StreamRecovery
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.droppedStreamLine
+import com.dhama.mybase.core.chat.DROPPED_DELIVERY
+import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.localReply
+import com.dhama.mybase.core.chat.replyFailureDelivery
 import com.dhama.mybase.core.chat.streamRecovery
 import com.dhama.mybase.core.db.dao.ChatMessageDao
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
@@ -202,7 +205,13 @@ class ChatRepositoryImpl(
             when (streamRecovery(userAccepted, built.isNotEmpty(), finished)) {
                 StreamRecovery.Finished -> Unit
                 StreamRecovery.Fallback -> deliverBlocking(conversationId, text, userLocalId, assistantId, now)
-                StreamRecovery.Failed -> markReplyFailed(assistantId, built.toString(), now, "Something went wrong.")
+                StreamRecovery.Failed -> markReplyFailed(
+                    assistantId,
+                    built.toString(),
+                    now,
+                    "Something went wrong.",
+                    replyFailureDelivery(userAccepted, built.isNotEmpty(), finished),
+                )
             }
         } catch (error: CancellationException) {
             dao.delete(assistantId)
@@ -215,10 +224,22 @@ class ChatRepositoryImpl(
                     dao.delete(assistantId)
                     throw cancelled
                 } catch (fallback: Exception) {
-                    markReplyFailed(assistantId, "", now, fallback.message ?: "Something went wrong.")
+                    markReplyFailed(
+                        assistantId,
+                        "",
+                        now,
+                        fallback.message ?: "Something went wrong.",
+                        replyFailureDelivery(userAccepted, built.isNotEmpty(), finished),
+                    )
                 }
             } else {
-                markReplyFailed(assistantId, built.toString(), now, error.message ?: "Something went wrong.")
+                markReplyFailed(
+                    assistantId,
+                    built.toString(),
+                    now,
+                    error.message ?: "Something went wrong.",
+                    replyFailureDelivery(userAccepted, built.isNotEmpty(), finished),
+                )
             }
         }
     }
@@ -274,16 +295,43 @@ class ChatRepositoryImpl(
         )
     }
 
-    private suspend fun markReplyFailed(assistantId: String, text: String, now: Long, fallback: String) {
+    private suspend fun markReplyFailed(
+        assistantId: String,
+        text: String,
+        now: Long,
+        fallback: String,
+        delivery: String,
+    ) {
         dao.upsert(
             ChatMessageEntity(
                 id = assistantId,
                 role = ROLE_ASSISTANT,
                 text = text.ifBlank { fallback },
                 createdAtEpochMs = now + 1,
-                delivery = DELIVERY_FAILED,
+                delivery = delivery,
             ),
         )
+    }
+
+    override suspend fun reload(conversationId: Int) {
+        val remote = api.listMessages(conversationId)
+        val kept = dao.snapshot().filter { keptOnReload(it.delivery, it.kind) }
+        dao.clear()
+        remote.forEach { message ->
+            val restored = message.toRestored(api.origin())
+            dao.upsert(
+                ChatMessageEntity(
+                    id = restored.id,
+                    role = restored.role,
+                    text = restored.text,
+                    createdAtEpochMs = restored.createdAtEpochMs,
+                    delivery = DELIVERY_SENT,
+                    kind = restored.kind,
+                    audioPath = restored.audioPath,
+                ),
+            )
+        }
+        kept.forEach { dao.upsert(it) }
     }
 
     private suspend fun sendVoiceRemote(path: String, durationMs: Long, conversationId: Int) {
@@ -392,5 +440,6 @@ class ChatRepositoryImpl(
         const val DELIVERY_SENT = "SENT"
         const val DELIVERY_STREAMING = "STREAMING"
         const val DELIVERY_FAILED = "FAILED"
+        const val DELIVERY_DROPPED = DROPPED_DELIVERY
     }
 }

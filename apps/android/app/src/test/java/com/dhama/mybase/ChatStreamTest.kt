@@ -5,10 +5,15 @@ import com.dhama.mybase.core.chat.StreamRecovery
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.droppedStreamLine
+import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.localReply
 import com.dhama.mybase.core.chat.personalityUpdatedLine
+import com.dhama.mybase.core.chat.replyFailureDelivery
+import com.dhama.mybase.core.chat.retryCaption
+import com.dhama.mybase.core.chat.retriesByReload
 import com.dhama.mybase.core.chat.streamRecovery
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,6 +77,22 @@ class ChatStreamTest {
             "The live connection dropped, so this reply arrived all at once.",
             droppedStreamLine(),
         )
+        assertEquals("FAILED", replyFailureDelivery(userAccepted = false, replyStarted = false, finished = false))
+        assertEquals("DROPPED", replyFailureDelivery(userAccepted = true, replyStarted = false, finished = false))
+        assertEquals("DROPPED", replyFailureDelivery(userAccepted = true, replyStarted = true, finished = false))
+        assertEquals("FAILED", replyFailureDelivery(userAccepted = true, replyStarted = true, finished = true))
+    }
+
+    @Test
+    fun retryAfterAcceptanceReloadsTheThread() {
+        assertTrue(retriesByReload("DROPPED"))
+        assertFalse(retriesByReload("FAILED"))
+        assertEquals("Reply didn't finish · Retry", retryCaption("DROPPED"))
+        assertEquals("Not sent · Retry", retryCaption("FAILED"))
+        assertTrue(keptOnReload("FAILED", "TEXT"))
+        assertTrue(keptOnReload("SENT", "SYSTEM"))
+        assertFalse(keptOnReload("DROPPED", "TEXT"))
+        assertFalse(keptOnReload("SENT", "TEXT"))
     }
 
     @Test

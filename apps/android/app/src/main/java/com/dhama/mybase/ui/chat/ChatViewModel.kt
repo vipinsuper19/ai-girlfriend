@@ -2,6 +2,7 @@ package com.dhama.mybase.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.chat.retriesByReload
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
@@ -164,6 +165,19 @@ class ChatViewModel @Inject constructor(
     fun retry(failed: ChatMessageEntity) {
         val saved = companion.value ?: return
         if (sendJob?.isActive == true) return
+        if (retriesByReload(failed.delivery)) {
+            val conversationId = saved.conversationId ?: return
+            sendJob = viewModelScope.launch {
+                try {
+                    chatRepository.reload(conversationId)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // The dropped reply stays, so Retry can be tapped again.
+                }
+            }
+            return
+        }
         val thread = messages.value
         val index = thread.indexOfFirst { it.id == failed.id }
         if (index < 0) return
