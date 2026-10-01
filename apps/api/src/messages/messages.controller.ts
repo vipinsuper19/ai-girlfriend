@@ -6,6 +6,7 @@ import {
     Header,
     Param,
     Post,
+    Query,
     Res,
     UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import { ListMessagesDto } from './dto/list-messages.dto.js';
 import { MessagesService } from './messages.service.js';
 import { formatSseEvent, writeServerSentEvents } from './sse-stream.js';
 
@@ -30,10 +32,12 @@ export class MessagesController {
     async findAll(
         @CurrentUser() user: JwtPayload,
         @Param('id') conversationId: string,
+        @Query() query: ListMessagesDto,
     ) {
         return this.messagesService.findAll(
             String(user.sub),
             conversationId,
+            query,
         );
     }
 

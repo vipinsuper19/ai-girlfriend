@@ -5,6 +5,7 @@ import com.dhama.mybase.core.chat.StreamRecovery
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.droppedStreamLine
 import com.dhama.mybase.core.chat.DROPPED_DELIVERY
+import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.localReply
 import com.dhama.mybase.core.chat.replyFailureDelivery
@@ -14,6 +15,7 @@ import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.voice.resolveVoiceUrl
@@ -328,24 +330,20 @@ class ChatRepositoryImpl(
     }
 
     override suspend fun reload(conversationId: Int) {
-        val remote = api.listMessages(conversationId)
-        val kept = dao.snapshot().filter { keptOnReload(it.delivery, it.kind) }
-        dao.clear()
-        remote.forEach { message ->
-            val restored = message.toRestored(api.origin())
-            dao.upsert(
-                ChatMessageEntity(
-                    id = restored.id,
-                    role = restored.role,
-                    text = restored.text,
-                    createdAtEpochMs = restored.createdAtEpochMs,
-                    delivery = DELIVERY_SENT,
-                    kind = restored.kind,
-                    audioPath = restored.audioPath,
-                ),
-            )
-        }
-        kept.forEach { dao.upsert(it) }
+        val remote = api.listMessages(conversationId, limit = MESSAGE_PAGE)
+        val snapshot = dao.snapshot()
+        snapshot
+            .filter { message ->
+                !keptOnReload(message.delivery, message.kind) && serverRecordId(message.id) == null
+            }
+            .forEach { dao.delete(it.id) }
+        remote.forEach { dao.upsert(it.toStored(api.origin())) }
+    }
+
+    override suspend fun loadOlder(conversationId: Int, beforeId: Int): Int {
+        val remote = api.listMessages(conversationId, before = beforeId, limit = MESSAGE_PAGE)
+        remote.forEach { dao.upsert(it.toStored(api.origin())) }
+        return remote.size
     }
 
     private suspend fun sendVoiceRemote(path: String, durationMs: Long, conversationId: Int) {
@@ -440,6 +438,19 @@ class ChatRepositoryImpl(
     override suspend fun clear() {
         voiceDir.listFiles()?.forEach { it.delete() }
         dao.clear()
+    }
+
+    private fun RemoteMessage.toStored(origin: String): ChatMessageEntity {
+        val restored = toRestored(origin)
+        return ChatMessageEntity(
+            id = restored.id,
+            role = restored.role,
+            text = restored.text,
+            createdAtEpochMs = restored.createdAtEpochMs,
+            delivery = DELIVERY_SENT,
+            kind = restored.kind,
+            audioPath = restored.audioPath,
+        )
     }
 
     private fun deleteAudio(path: String) {

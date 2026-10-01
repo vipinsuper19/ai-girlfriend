@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.chat.retryCaption
+import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.usage.UsageLevel
@@ -119,6 +121,8 @@ fun ChatScreen(
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val planUsage by viewModel.planUsage.collectAsState()
     val usageBlocked by viewModel.usageBlocked.collectAsState()
+    val hasOlder by viewModel.hasOlder.collectAsState()
+    val loadingOlder by viewModel.loadingOlder.collectAsState()
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
@@ -132,6 +136,8 @@ fun ChatScreen(
     val resetAt = allowance?.resetEpochMs?.takeIf { it > 0L } ?: utcMonthReset(System.currentTimeMillis())
     val streaming = messages.any { it.delivery == ChatRepositoryImpl.DELIVERY_STREAMING }
     val listState = rememberLazyListState()
+    var hasScrolled by remember { mutableStateOf(false) }
+    var armOlder by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<ChatMessageEntity?>(null) }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -224,9 +230,21 @@ fun ChatScreen(
         cancelling = false
     }
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
+    val newest = messages.lastOrNull()
+    LaunchedEffect(newest?.id, newest?.text) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.lastIndex)
+            val tail = messages.lastIndex + if (hasOlder && messages.size > 1) 1 else 0
+            listState.animateScrollToItem(tail)
+        }
+    }
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, hasOlder, loadingOlder) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            hasScrolled = true
+            armOlder = true
+        }
+        if (armOlder && shouldLoadOlder(hasOlder, loadingOlder, hasScrolled, listState.firstVisibleItemIndex)) {
+            armOlder = false
+            viewModel.loadOlder()
         }
     }
 
@@ -320,6 +338,17 @@ fun ChatScreen(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (hasOlder) {
+                    item(key = "earlier") {
+                        TextButton(
+                            onClick = { viewModel.loadOlder() },
+                            enabled = !loadingOlder,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (loadingOlder) "Loading earlier messages…" else "Earlier messages")
+                        }
+                    }
+                }
                 itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                     val previous = messages.getOrNull(index - 1)
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -696,6 +725,11 @@ private fun ChatScreenPreview() {
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                item(key = "earlier") {
+                    TextButton(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                        Text("Earlier messages")
+                    }
+                }
                 itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                     val previous = messages.getOrNull(index - 1)
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

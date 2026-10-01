@@ -1,5 +1,6 @@
 package com.dhama.mybase.core.data
 
+import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.db.dao.ChatMessageDao
 import com.dhama.mybase.core.db.dao.MemoryDao
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
@@ -153,7 +154,7 @@ class AccountSync @Inject constructor(
     }
 
     private suspend fun replaceThread(saved: SavedCompanion, conversationId: Int) {
-        val remoteMessages = api.listMessages(conversationId)
+        val remoteMessages = api.listMessages(conversationId, limit = MESSAGE_PAGE)
         val failedLocal = messages.snapshot().filter { message ->
             message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null
         }
@@ -188,7 +189,7 @@ class AccountSync @Inject constructor(
             ?: forCompanion.firstOrNull()?.id
             ?: api.createConversation(id, name)
         val saved = avatar.toSaved(conversationId, System.currentTimeMillis(), api.origin())
-        val remoteMessages = api.listMessages(conversationId)
+        val remoteMessages = api.listMessages(conversationId, limit = MESSAGE_PAGE)
         val remoteMemories = api.listMemories(id)
         val failedLocal = messages.snapshot().filter { message ->
             message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null

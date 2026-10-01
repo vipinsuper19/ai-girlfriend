@@ -2,6 +2,8 @@ package com.dhama.mybase.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.olderMessageCursor
 import com.dhama.mybase.core.chat.retriesByReload
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -15,6 +17,7 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.utils.PreferencesKeys
 import com.dhama.mybase.core.voice.canSpeakMessage
 import com.dhama.mybase.core.voice.speakBlockReason
@@ -31,6 +34,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
@@ -64,6 +69,14 @@ class ChatViewModel @Inject constructor(
     private val _usageBlocked = MutableStateFlow(false)
     val usageBlocked = _usageBlocked.asStateFlow()
 
+    private val _loadingOlder = MutableStateFlow(false)
+    val loadingOlder = _loadingOlder.asStateFlow()
+
+    private val _olderExhausted = MutableStateFlow(false)
+    val hasOlder = combine(messages, _olderExhausted) { thread, exhausted ->
+        !exhausted && olderMessageCursor(thread.mapNotNull { serverRecordId(it.id) }) != null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private var sendJob: Job? = null
     private val spokenUrls = mutableMapOf<String, String>()
 
@@ -91,6 +104,30 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch { refreshUsage() }
+        viewModelScope.launch {
+            companion.map { it?.conversationId }.distinctUntilChanged().collect {
+                _olderExhausted.value = false
+            }
+        }
+    }
+
+    fun loadOlder() {
+        if (_loadingOlder.value || _olderExhausted.value) return
+        val conversationId = companion.value?.conversationId ?: return
+        val before = olderMessageCursor(messages.value.mapNotNull { serverRecordId(it.id) }) ?: return
+        _loadingOlder.value = true
+        viewModelScope.launch {
+            try {
+                val count = chatRepository.loadOlder(conversationId, before)
+                if (count < MESSAGE_PAGE) _olderExhausted.value = true
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // The lines already on screen stay, and Earlier messages can be tapped again.
+            } finally {
+                _loadingOlder.value = false
+            }
+        }
     }
 
     fun updateDraft(value: String) {

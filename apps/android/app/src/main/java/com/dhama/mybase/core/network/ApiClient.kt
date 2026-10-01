@@ -2,6 +2,7 @@ package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.chat.consumeSse
+import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -136,9 +137,16 @@ class ApiClient(
         return withAuth { access -> decodeDataList(execute(authed("GET", "conversations", null, access))) }
     }
 
-    suspend fun listMessages(conversationId: Int): List<RemoteMessage> {
+    suspend fun listMessages(
+        conversationId: Int,
+        before: Int? = null,
+        limit: Int? = null,
+    ): List<RemoteMessage> {
+        val query = messageListQuery(before, limit)
         return withAuth { access ->
-            decodeDataList(execute(authed("GET", "conversations/$conversationId/messages", null, access)))
+            decodeDataList(
+                execute(authed("GET", "conversations/$conversationId/messages$query", null, access)),
+            )
         }
     }
 

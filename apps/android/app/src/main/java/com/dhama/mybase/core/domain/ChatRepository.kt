@@ -18,6 +18,7 @@ interface ChatRepository {
     suspend fun delete(id: String)
     suspend fun discard(id: String)
     suspend fun reload(conversationId: Int)
+    suspend fun loadOlder(conversationId: Int, beforeId: Int): Int
     suspend fun note(text: String)
     suspend fun clear()
 }
