@@ -73,6 +73,7 @@ import com.dhama.mybase.core.model.lookStyles
 import com.dhama.mybase.core.model.relationshipOptions
 import com.dhama.mybase.core.model.skinTones
 import com.dhama.mybase.core.model.voiceChoices
+import com.dhama.mybase.core.model.present
 import com.dhama.mybase.core.model.voiceIdFor
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.model.companionGender
@@ -341,7 +342,7 @@ private fun CompanionProfileContent(
         Meter("Flirtiness", saved.flirtLevel)
         Meter("Romance", saved.romanceLevel)
         Spacer(Modifier.height(16.dp))
-        GroupLine("Look", "${saved.style} · ${saved.hairColor} hair · ${saved.eyeColor} eyes · ${saved.skinTone} skin")
+        GroupLine("Look", saved.lookLine())
         GroupLine("Gender", genderLabel(saved.gender))
         GroupLine("Voice", "${saved.voiceLabel} voice")
         GroupLine("Memory", "$memoryCount things remembered")
@@ -410,6 +411,11 @@ private fun EditBody(
     var hair by remember(saved.hairColor, revision) { mutableStateOf(saved.hairColor) }
     var eyes by remember(saved.eyeColor, revision) { mutableStateOf(saved.eyeColor) }
     var skin by remember(saved.skinTone, revision) { mutableStateOf(saved.skinTone) }
+    var ethnicity by remember(saved.ethnicity, revision) { mutableStateOf(saved.ethnicity.orEmpty()) }
+    var build by remember(saved.bodyType, revision) { mutableStateOf(saved.bodyType.orEmpty()) }
+    var height by remember(saved.height, revision) { mutableStateOf(saved.height.orEmpty()) }
+    var clothing by remember(saved.clothingStyle, revision) { mutableStateOf(saved.clothingStyle.orEmpty()) }
+    var hairStyle by remember(saved.hairStyle, revision) { mutableStateOf(saved.hairStyle.orEmpty()) }
     var voiceLabel by remember(saved.voiceLabel, revision) { mutableStateOf(saved.voiceLabel) }
     val changes = listOf(
         name.trim() != saved.name,
@@ -419,6 +425,11 @@ private fun EditBody(
         hair != saved.hairColor,
         eyes != saved.eyeColor,
         skin != saved.skinTone,
+        ethnicity.trim() != saved.ethnicity.orEmpty(),
+        build.trim() != saved.bodyType.orEmpty(),
+        height.trim() != saved.height.orEmpty(),
+        clothing.trim() != saved.clothingStyle.orEmpty(),
+        hairStyle.trim() != saved.hairStyle.orEmpty(),
         voiceLabel != saved.voiceLabel,
         traits != saved.traits,
         warmth.toInt() != saved.empathyLevel,
@@ -496,6 +507,11 @@ private fun EditBody(
             ChoiceChips(eyeColors, eyes) { eyes = it }
             Text("Skin", style = MaterialTheme.typography.labelLarge)
             ChoiceChips(skinTones, skin) { skin = it }
+            LookField("Ethnicity", ethnicity) { ethnicity = it }
+            LookField("Build", build) { build = it }
+            LookField("Height", height) { height = it }
+            LookField("Clothing", clothing) { clothing = it }
+            LookField("Hair style", hairStyle) { hairStyle = it }
             Text("Voice", style = MaterialTheme.typography.labelLarge)
             ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
             Level("Warmth", warmth) { warmth = it }
@@ -523,6 +539,11 @@ private fun EditBody(
                             hairColor = hair,
                             eyeColor = eyes,
                             skinTone = skin,
+                            ethnicity = ethnicity.present(),
+                            bodyType = build.present(),
+                            height = height.present(),
+                            clothingStyle = clothing.present(),
+                            hairStyle = hairStyle.present(),
                             traits = traits,
                             empathyLevel = warmth.toInt(),
                             humorLevel = humour.toInt(),
@@ -739,6 +760,19 @@ private fun GroupLine(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+private fun LookField(label: String, value: String, onValue: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValue,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        label = { Text(label) },
+        singleLine = true,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

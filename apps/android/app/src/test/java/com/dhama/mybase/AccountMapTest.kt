@@ -19,12 +19,14 @@ import com.dhama.mybase.core.network.displayNameError
 import com.dhama.mybase.core.network.epochMillis
 import com.dhama.mybase.core.network.memoryForgetAction
 import com.dhama.mybase.core.network.planCardStatus
+import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.planLabel
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.network.toSaved
 import com.dhama.mybase.core.network.unwrapData
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -68,10 +70,39 @@ class AccountMapTest {
         assertEquals(58, saved.romanceLevel)
         assertEquals("Warm", saved.voiceLabel)
         assertEquals("Black", saved.hairColor)
+        assertNull(saved.ethnicity)
+        assertNull(saved.bodyType)
+        assertNull(saved.height)
+        assertNull(saved.clothingStyle)
+        assertNull(saved.hairStyle)
         assertEquals(4, saved.serverId)
         assertEquals(9, saved.conversationId)
         assertEquals("FEMALE", saved.gender)
         assertEquals("Hi — I'm Aria.", saved.greeting)
+    }
+
+    @Test
+    fun restoredLookFieldsStayOnTheCompanion() {
+        val avatar = apiJson().decodeFromString<RemoteAvatar>(
+            """{"id":4,"name":"Aria","appearance":{"ethnicity":" South Asian ","bodyType":"Athletic","height":"5 ft 6 in","clothingStyle":"Casual","hairStyle":"Wavy","hairColor":"Brown","eyeColor":"Blue","skinTone":"Warm"}}""",
+        )
+        val saved = avatar.toSaved(conversationId = 9, nowEpochMs = 1L)
+        assertEquals("South Asian", saved.ethnicity)
+        assertEquals("Athletic", saved.bodyType)
+        assertEquals("5 ft 6 in", saved.height)
+        assertEquals("Casual", saved.clothingStyle)
+        assertEquals("Wavy", saved.hairStyle)
+        assertEquals(
+            "Realistic · Brown hair · Blue eyes · Warm skin · South Asian · Athletic build · 5 ft 6 in · Casual · Wavy hair",
+            saved.lookLine(),
+        )
+        val blank = RemoteAvatar(
+            id = 4,
+            name = "Aria",
+            appearance = RemoteAppearance(ethnicity = "  ", hairStyle = ""),
+        ).toSaved(1, 1L)
+        assertNull(blank.ethnicity)
+        assertNull(blank.hairStyle)
     }
 
     @Test

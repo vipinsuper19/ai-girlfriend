@@ -117,6 +117,11 @@ data class CompanionDraft(
             hairColor = hairColor,
             eyeColor = eyeColor,
             skinTone = skinTone,
+            ethnicity = ethnicity.present(),
+            bodyType = bodyType.present(),
+            height = height.present(),
+            clothingStyle = clothingStyle.present(),
+            hairStyle = hairStyle.present(),
             empathyLevel = empathyLevel,
             humorLevel = humorLevel,
             flirtLevel = flirtLevel,
@@ -151,7 +156,14 @@ data class SavedCompanion(
     val conversationId: Int? = null,
     val avatarUrl: String = "",
     val gender: String = "FEMALE",
-)
+    val ethnicity: String? = null,
+    val bodyType: String? = null,
+    val height: String? = null,
+    val clothingStyle: String? = null,
+    val hairStyle: String? = null,
+) {
+    fun lookLine(): String = lookLine(style, hairColor, eyeColor, skinTone, ethnicity, bodyType, height, clothingStyle, hairStyle)
+}
 
 @Serializable
 data class CreateAvatarRequest(
@@ -232,3 +244,27 @@ fun genderPhrase(value: String?): String = when (companionGender(value)) {
     "OTHER" -> "a person"
     else -> "a woman"
 }
+
+fun lookLine(
+    style: String,
+    hairColor: String,
+    eyeColor: String,
+    skinTone: String,
+    ethnicity: String?,
+    bodyType: String?,
+    height: String?,
+    clothingStyle: String?,
+    hairStyle: String?,
+): String {
+    val base = "$style · $hairColor hair · $eyeColor eyes · $skinTone skin"
+    val extras = listOfNotNull(
+        ethnicity.present(),
+        bodyType.present()?.let { "$it build" },
+        height.present(),
+        clothingStyle.present(),
+        hairStyle.present()?.let { "$it hair" },
+    )
+    return if (extras.isEmpty()) base else "$base · ${extras.joinToString(" · ")}"
+}
+
+internal fun String?.present(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

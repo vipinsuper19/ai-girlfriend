@@ -2,6 +2,7 @@ package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.model.companionGender
+import com.dhama.mybase.core.model.present
 import com.dhama.mybase.core.voice.resolveVoiceUrl
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -35,6 +36,11 @@ data class RemoteAppearance(
     val hairColor: String? = null,
     val eyeColor: String? = null,
     val skinTone: String? = null,
+    val ethnicity: String? = null,
+    val bodyType: String? = null,
+    val height: String? = null,
+    val clothingStyle: String? = null,
+    val hairStyle: String? = null,
     val avatarUrl: String? = null,
     val metadata: JsonObject? = null,
 )
@@ -238,6 +244,11 @@ fun RemoteAvatar.toSaved(conversationId: Int, nowEpochMs: Long, origin: String =
         hairColor = appearance?.hairColor?.takeIf { it.isNotBlank() } ?: "Brown",
         eyeColor = appearance?.eyeColor?.takeIf { it.isNotBlank() } ?: "Blue",
         skinTone = appearance?.skinTone?.takeIf { it.isNotBlank() } ?: "Warm",
+        ethnicity = appearance?.ethnicity.present(),
+        bodyType = appearance?.bodyType.present(),
+        height = appearance?.height.present(),
+        clothingStyle = appearance?.clothingStyle.present(),
+        hairStyle = appearance?.hairStyle.present(),
         empathyLevel = personality?.empathyLevel ?: 82,
         humorLevel = personality?.humorLevel ?: 64,
         flirtLevel = personality?.flirtLevel ?: 45,
