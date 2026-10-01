@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.memory.RankedMemory
 import com.dhama.mybase.core.memory.pickMemoryHighlight
+import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.domain.AuthRepository
@@ -11,8 +12,7 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.model.SavedCompanion
-import com.dhama.mybase.core.usage.CountedMessage
-import com.dhama.mybase.core.usage.monthUsage
+import com.dhama.mybase.core.network.parseUsageSummary
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,6 +31,7 @@ class CompanionHomeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val chatRepository: ChatRepository,
     private val memoryRepository: MemoryRepository,
+    private val accountSync: AccountSync,
 ) : ViewModel() {
 
     val companion: StateFlow<SavedCompanion?> = repository.observe()
@@ -62,18 +63,21 @@ class CompanionHomeViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val usage = chatRepository.observe()
-        .map { messages ->
-            monthUsage(
-                messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
-                System.currentTimeMillis(),
-            )
+    val usage = dataStoreRepo.getString(PreferencesKeys.USAGE_SUMMARY, false)
+        .map { parseUsageSummary(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        viewModelScope.launch {
+            try {
+                accountSync.refreshUsage()
+            } catch (error: kotlin.coroutines.cancellation.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // The last saved allowance stays on screen.
+            }
         }
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5_000),
-            monthUsage(emptyList(), System.currentTimeMillis()),
-        )
+    }
 
     val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
@@ -98,6 +102,7 @@ class CompanionHomeViewModel @Inject constructor(
             chatRepository.clear()
             memoryRepository.clear()
             dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
+            dataStoreRepo.saveString(PreferencesKeys.USAGE_SUMMARY, "")
             _loggedOut.emit(Unit)
         }
     }

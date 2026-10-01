@@ -8,10 +8,10 @@ import java.time.format.DateTimeFormatter
  * Allowances from apps/api/src/usage/usage-limits.ts. Null means unlimited.
  * The period is the UTC calendar month, matching UsageService.getCurrentPeriod.
  *
- * Metering is not enforced: MessagesService never calls UsageService.consume().
- * The limit card is ready, and chat stays open until that check is wired.
+ * A server snapshot comes from GET /usage/summary. Message sends and voice
+ * replies call UsageService.consume(), and a limit error closes that action.
  */
-const val METERING_ENFORCED = false
+const val USAGE_LIMIT_CODE = "USAGE_LIMIT_EXCEEDED"
 
 const val FREE_MESSAGE_LIMIT = 100
 const val FREE_VOICE_MINUTES = 10
@@ -36,6 +36,62 @@ data class MonthUsage(
     val periodStartEpochMs: Long,
     val resetEpochMs: Long,
 )
+
+data class PlanUsage(
+    val messagesUsed: Int,
+    val messagesLimit: Int?,
+    val voiceUsed: Int,
+    val voiceLimit: Int?,
+    val imagesUsed: Int,
+    val imagesLimit: Int?,
+    val periodStartEpochMs: Long,
+    val resetEpochMs: Long,
+    val fromServer: Boolean,
+)
+
+fun phonePlanUsage(usage: MonthUsage): PlanUsage {
+    return PlanUsage(
+        messagesUsed = usage.messages,
+        messagesLimit = FREE_MESSAGE_LIMIT,
+        voiceUsed = usage.voiceMinutes,
+        voiceLimit = FREE_VOICE_MINUTES,
+        imagesUsed = 0,
+        imagesLimit = FREE_IMAGE_LIMIT,
+        periodStartEpochMs = usage.periodStartEpochMs,
+        resetEpochMs = usage.resetEpochMs,
+        fromServer = false,
+    )
+}
+
+fun planCaption(fromServer: Boolean): String {
+    return if (fromServer) "This month on your plan." else "This month on this phone."
+}
+
+fun messageAllowanceClosed(usage: PlanUsage?): Boolean {
+    val limit = usage?.messagesLimit ?: return false
+    return usage.messagesUsed >= limit
+}
+
+fun voiceAllowanceClosed(usage: PlanUsage?): Boolean {
+    val limit = usage?.voiceLimit ?: return false
+    return usage.voiceUsed >= limit
+}
+
+fun showMessageWall(usage: PlanUsage?, blocked: Boolean): Boolean {
+    return blocked || messageAllowanceClosed(usage)
+}
+
+fun usageLimitNotice(message: String): String {
+    return when {
+        "VOICE_MINUTES" in message -> "You've used your voice minutes for this month."
+        "IMAGE" in message -> "You've used your images for this month."
+        else -> "You've used your messages for this month."
+    }
+}
+
+fun usageLimitBlocksMessages(message: String): Boolean {
+    return "VOICE_MINUTES" !in message && "IMAGE" !in message
+}
 
 fun utcMonthStart(nowEpochMs: Long): Long {
     val date = Instant.ofEpochMilli(nowEpochMs).atZone(ZoneOffset.UTC).toLocalDate()

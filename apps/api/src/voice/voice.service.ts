@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AiService } from '../ai/ai.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
+import { UsageService } from '../usage/usage.service.js';
 
 import {
     SPEECH_TO_TEXT_PROVIDER,
@@ -25,6 +27,7 @@ export class VoiceService {
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
         private readonly storageService: StorageService,
+        private readonly usageService: UsageService,
 
         @Inject(SPEECH_TO_TEXT_PROVIDER)
         private readonly speechToText:
@@ -132,6 +135,12 @@ export class VoiceService {
             );
         }
 
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+        );
+
         /*
          * Generate TTS audio.
          */
@@ -154,6 +163,13 @@ export class VoiceService {
                 speech.audio,
                 '.wav',
             );
+
+        await this.usageService.consume(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+            { companionId, source: 'synthesize' },
+        );
 
         return {
             audioUrl,
@@ -278,6 +294,18 @@ export class VoiceService {
             );
         }
 
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+        );
+        await this.usageService.consume(
+            userId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId, source: 'voice' },
+        );
+
         /*
          * ------------------------------------------------------
          * 5. Store user's original audio
@@ -387,6 +415,13 @@ export class VoiceService {
                 speech.audio,
                 '.wav',
             );
+
+        await this.usageService.consume(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+            { conversationId, source: 'voice' },
+        );
 
         /*
          * ------------------------------------------------------

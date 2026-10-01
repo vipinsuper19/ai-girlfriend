@@ -3,7 +3,12 @@ package com.dhama.mybase.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.chat.retriesByReload
+import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.ChatRepositoryImpl
+import com.dhama.mybase.core.network.parseUsageSummary
+import com.dhama.mybase.core.usage.USAGE_LIMIT_CODE
+import com.dhama.mybase.core.usage.messageAllowanceClosed
+import com.dhama.mybase.core.usage.usageLimitBlocksMessages
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
@@ -23,8 +28,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
@@ -34,6 +41,7 @@ class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val memoryRepository: MemoryRepository,
     private val dataStoreRepo: DataStoreRepo,
+    private val accountSync: AccountSync,
     companionRepository: CompanionRepository,
 ) : ViewModel() {
 
@@ -48,6 +56,13 @@ class ChatViewModel @Inject constructor(
 
     val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    val planUsage = dataStoreRepo.getString(PreferencesKeys.USAGE_SUMMARY, false)
+        .map { parseUsageSummary(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _usageBlocked = MutableStateFlow(false)
+    val usageBlocked = _usageBlocked.asStateFlow()
 
     private var sendJob: Job? = null
     private val spokenUrls = mutableMapOf<String, String>()
@@ -70,6 +85,12 @@ class ChatViewModel @Inject constructor(
                 if (saved != null) chatRepository.ensureGreeting(saved.greeting)
             }
         }
+        viewModelScope.launch {
+            planUsage.collect { usage ->
+                if (usage != null && !messageAllowanceClosed(usage)) _usageBlocked.value = false
+            }
+        }
+        viewModelScope.launch { refreshUsage() }
     }
 
     fun updateDraft(value: String) {
@@ -82,8 +103,15 @@ class ChatViewModel @Inject constructor(
         if (text.isEmpty() || sendJob?.isActive == true) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
-            chatRepository.send(text, saved.name, saved.relationship, saved.traits, saved.conversationId)
-            memoryRepository.notice(text)
+            try {
+                chatRepository.send(text, saved.name, saved.relationship, saved.traits, saved.conversationId)
+                memoryRepository.notice(text)
+                refreshUsage()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ApiStatusException) {
+                noteUsageLimit(error)
+            }
         }
     }
 
@@ -106,6 +134,11 @@ class ChatViewModel @Inject constructor(
             }
             try {
                 chatRepository.sendVoice(path, durationMs, conversationId)
+                refreshUsage()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ApiStatusException) {
+                noteUsageLimit(error)
             } finally {
                 ticker?.cancel()
                 _voiceStage.value = null
@@ -147,7 +180,8 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                _speakNote.value = message.id to speakFailure(error.status)
+                if (error.code == USAGE_LIMIT_CODE) noteUsageLimit(error)
+                _speakNote.value = message.id to speakFailure(error.status, error.code, error.message ?: "")
             } catch (_: Exception) {
                 _speakNote.value = message.id to speakFailure(0)
             } finally {
@@ -189,12 +223,35 @@ class ChatViewModel @Inject constructor(
         sendJob = viewModelScope.launch {
             chatRepository.discard(failed.id)
             if (source.id != failed.id) chatRepository.discard(source.id)
-            if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
-                chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
-            } else if (source.text.isNotBlank()) {
-                chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
-                memoryRepository.notice(source.text)
+            try {
+                if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
+                    chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
+                } else if (source.text.isNotBlank()) {
+                    chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
+                    memoryRepository.notice(source.text)
+                }
+                refreshUsage()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ApiStatusException) {
+                noteUsageLimit(error)
             }
         }
+    }
+
+    private suspend fun refreshUsage() {
+        try {
+            accountSync.refreshUsage()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // The last saved allowance stays on screen.
+        }
+    }
+
+    private suspend fun noteUsageLimit(error: ApiStatusException) {
+        if (error.code != USAGE_LIMIT_CODE) return
+        if (usageLimitBlocksMessages(error.message ?: "")) _usageBlocked.value = true
+        refreshUsage()
     }
 }

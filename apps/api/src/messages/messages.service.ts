@@ -7,13 +7,16 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import { AiService } from '../ai/ai.service.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
+import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
+import { UsageService } from '../usage/usage.service.js';
 
 @Injectable()
 export class MessagesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
-        private readonly memoryExtractorService: MemoryExtractorService
+        private readonly memoryExtractorService: MemoryExtractorService,
+        private readonly usageService: UsageService,
     ) { }
 
     private get db(): any {
@@ -38,6 +41,13 @@ export class MessagesService {
         const conversation = await this.getOwnedConversation(
             userId,
             conversationId,
+        );
+
+        await this.usageService.consume(
+            numericUserId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();
@@ -209,6 +219,13 @@ export class MessagesService {
         await this.getOwnedConversation(
             userId,
             conversationId,
+        );
+
+        await this.usageService.consume(
+            Number(userId),
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();

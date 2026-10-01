@@ -3,8 +3,10 @@ package com.dhama.mybase.core.network
 import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.present
+import com.dhama.mybase.core.usage.PlanUsage
 import com.dhama.mybase.core.voice.resolveVoiceUrl
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -193,6 +195,50 @@ data class RemoteSubscription(
     val plan: String = "FREE",
     val status: String = "",
 )
+
+@Serializable
+data class RemoteUsageLine(
+    val feature: String = "",
+    val used: Int = 0,
+    val limit: Int? = null,
+    val remaining: Int? = null,
+)
+
+@Serializable
+data class RemoteUsagePeriod(
+    val start: String? = null,
+    val end: String? = null,
+)
+
+@Serializable
+data class RemoteUsageSummary(
+    val plan: String = "FREE",
+    val period: RemoteUsagePeriod? = null,
+    val usage: List<RemoteUsageLine> = emptyList(),
+)
+
+fun planUsage(summary: RemoteUsageSummary): PlanUsage {
+    fun line(feature: String) = summary.usage.firstOrNull { it.feature == feature }
+    val messages = line("MESSAGES")
+    val voice = line("VOICE_MINUTES")
+    val images = line("IMAGE_GENERATIONS")
+    return PlanUsage(
+        messagesUsed = messages?.used ?: 0,
+        messagesLimit = messages?.limit,
+        voiceUsed = voice?.used ?: 0,
+        voiceLimit = voice?.limit,
+        imagesUsed = images?.used ?: 0,
+        imagesLimit = images?.limit,
+        periodStartEpochMs = epochMillis(summary.period?.start),
+        resetEpochMs = epochMillis(summary.period?.end),
+        fromServer = true,
+    )
+}
+
+fun parseUsageSummary(raw: String): PlanUsage? {
+    if (raw.isBlank()) return null
+    return runCatching { planUsage(apiJson().decodeFromString<RemoteUsageSummary>(raw)) }.getOrNull()
+}
 
 fun planLabel(plan: String): String = when (plan.trim().uppercase()) {
     "PREMIUM" -> "Premium"

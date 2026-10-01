@@ -21,6 +21,7 @@ import com.dhama.mybase.core.network.memoryForgetAction
 import com.dhama.mybase.core.network.planCardStatus
 import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.passwordChangeError
+import com.dhama.mybase.core.network.parseUsageSummary
 import com.dhama.mybase.core.network.planLabel
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
@@ -202,6 +203,22 @@ class AccountMapTest {
             appearance = RemoteAppearance(avatarUrl = "/uploads/companions/4.jpg"),
         ).toSaved(conversationId = 9, nowEpochMs = 1L, origin = "http://10.0.2.2:3001")
         assertEquals("http://10.0.2.2:3001/uploads/companions/4.jpg", saved.avatarUrl)
+    }
+
+    @Test
+    fun usageSummaryKeepsLimitsAndANullUnlimitedValue() {
+        val usage = parseUsageSummary(
+            """{"plan":"FREE","period":{"start":"2025-03-01T00:00:00Z","end":"2025-04-01T00:00:00Z"},"usage":[{"feature":"MESSAGES","used":12,"limit":100,"remaining":88},{"feature":"VOICE_MINUTES","used":1,"limit":10,"remaining":9},{"feature":"IMAGE_GENERATIONS","used":0,"limit":5,"remaining":5},{"feature":"TEXT_TOKENS","used":40,"limit":null,"remaining":null}]}""",
+        )
+        assertEquals(12, usage?.messagesUsed)
+        assertEquals(100, usage?.messagesLimit)
+        assertEquals(1, usage?.voiceUsed)
+        assertEquals(10, usage?.voiceLimit)
+        assertEquals(0, usage?.imagesUsed)
+        assertEquals(5, usage?.imagesLimit)
+        assertEquals(true, usage?.fromServer)
+        assertEquals(epochMillis("2025-04-01T00:00:00Z"), usage?.resetEpochMs)
+        assertEquals(null, parseUsageSummary(""))
     }
 
     @Test

@@ -89,7 +89,14 @@ fun speakBlockReason(text: String, companionServerId: Int?): String? {
     return null
 }
 
-fun speakFailure(status: Int): String {
+fun speakFailure(status: Int, code: String? = null, message: String = ""): String {
+    if (code == "USAGE_LIMIT_EXCEEDED") {
+        return if ("VOICE_MINUTES" in message) {
+            "You've used your voice minutes for this month."
+        } else {
+            "You've used your messages for this month."
+        }
+    }
     return when (status) {
         401 -> "Sign in with email to hear her voice."
         404 -> "Her voice isn't set up yet."

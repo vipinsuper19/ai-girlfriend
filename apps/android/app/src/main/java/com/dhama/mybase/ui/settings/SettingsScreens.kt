@@ -82,10 +82,10 @@ import com.dhama.mybase.core.model.SavedCompanion
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.genderLabel
 import com.dhama.mybase.core.usage.CountedMessage
-import com.dhama.mybase.core.usage.FREE_IMAGE_LIMIT
-import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
-import com.dhama.mybase.core.usage.FREE_VOICE_MINUTES
-import com.dhama.mybase.core.usage.MonthUsage
+import com.dhama.mybase.core.usage.PlanUsage
+import com.dhama.mybase.core.network.parseUsageSummary
+import com.dhama.mybase.core.usage.phonePlanUsage
+import com.dhama.mybase.core.usage.planCaption
 import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
 import com.dhama.mybase.ui.preview.sampleCompanion
@@ -597,11 +597,15 @@ fun SubscriptionScreen(onBack: () -> Unit) {
     val viewModel = rememberSettingsViewModel()
     val messages by viewModel.messages.collectAsState()
     val plan by viewModel.planLabel.collectAsState()
+    val usageRaw by viewModel.usageSummary.collectAsState()
     LaunchedEffect(Unit) { viewModel.refreshPlan() }
     val companion by viewModel.companion.collectAsState()
-    val usage = monthUsage(
-        messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
-        System.currentTimeMillis(),
+    val serverUsage = parseUsageSummary(usageRaw)
+    val usage = serverUsage ?: phonePlanUsage(
+        monthUsage(
+            messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
+            System.currentTimeMillis(),
+        ),
     )
     val name = companion?.name?.ifBlank { null } ?: "her"
     SubscriptionContent(name, usage, plan, onBack)
@@ -610,7 +614,7 @@ fun SubscriptionScreen(onBack: () -> Unit) {
 @Composable
 private fun SubscriptionContent(
     name: String,
-    usage: MonthUsage,
+    usage: PlanUsage,
     plan: String,
     onBack: () -> Unit,
 ) {
@@ -627,13 +631,13 @@ private fun SubscriptionContent(
             Text("Plan", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         }
         Text(
-            "This month on this phone. The server does not enforce a monthly limit, so chat stays open.",
+            planCaption(usage.fromServer),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
-        UsageMeter("Messages", usage.messages, FREE_MESSAGE_LIMIT)
-        UsageMeter("Voice minutes", usage.voiceMinutes, FREE_VOICE_MINUTES)
-        UsageMeter("Images", 0, FREE_IMAGE_LIMIT)
+        UsageMeter("Messages", usage.messagesUsed, usage.messagesLimit)
+        UsageMeter("Voice minutes", usage.voiceUsed, usage.voiceLimit)
+        UsageMeter("Images", usage.imagesUsed, usage.imagesLimit)
         Spacer(Modifier.height(12.dp))
         PaywallCard(name = name, resetLabel = resetLabel(usage.resetEpochMs))
         Spacer(Modifier.height(16.dp))
@@ -935,9 +939,11 @@ private fun SubscriptionPreview() {
     MyBaseTheme {
         SubscriptionContent(
             name = "Aria",
-            usage = monthUsage(
-                listOf(CountedMessage("USER", now, 60_000)),
-                now,
+            usage = phonePlanUsage(
+                monthUsage(
+                    listOf(CountedMessage("USER", now, 60_000)),
+                    now,
+                ),
             ),
             plan = "Free",
             onBack = {},

@@ -63,10 +63,7 @@ import com.dhama.mybase.core.home.presenceLine
 import com.dhama.mybase.core.memory.MemoryHighlight
 import com.dhama.mybase.core.memory.highlightLine
 import com.dhama.mybase.core.model.SavedCompanion
-import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
-import com.dhama.mybase.core.usage.METERING_ENFORCED
-import com.dhama.mybase.core.usage.MonthUsage
-import com.dhama.mybase.core.usage.monthUsage
+import com.dhama.mybase.core.usage.PlanUsage
 import com.dhama.mybase.core.usage.UsageLevel
 import com.dhama.mybase.core.usage.resetLabel
 import com.dhama.mybase.core.usage.usageLevel
@@ -186,7 +183,9 @@ fun MainShell(
                         warningDismissed = warningDismissed,
                         planLabel = planLabel,
                         displayName = displayName,
-                        onDismissWarning = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
+                        onDismissWarning = {
+                            usage?.periodStartEpochMs?.let(viewModel::dismissUsageWarning)
+                        },
                         onTalk = { tab = MainTab.Chat.ordinal },
                         onMemories = { tab = MainTab.Memory.ordinal },
                         onProfile = { screen = "profile" },
@@ -222,7 +221,7 @@ private fun HomeTab(
     highlight: MemoryHighlight?,
     hasTalked: Boolean,
     lastReply: String?,
-    usage: MonthUsage,
+    usage: PlanUsage?,
     warningDismissed: String,
     planLabel: String,
     displayName: String,
@@ -312,14 +311,16 @@ private fun HomeTab(
         ) {
             Text(if (hasTalked) "Continue talking" else "Say hello")
         }
-        val nearLimit = METERING_ENFORCED &&
-            usageLevel(usage.messages, FREE_MESSAGE_LIMIT) == UsageLevel.NEARING &&
+        val messageLimit = usage?.messagesLimit
+        val nearLimit = usage != null &&
+            messageLimit != null &&
+            usageLevel(usage.messagesUsed, messageLimit) == UsageLevel.NEARING &&
             warningDismissed != usage.periodStartEpochMs.toString()
-        if (nearLimit) {
+        if (nearLimit && usage != null && messageLimit != null) {
             Spacer(Modifier.height(12.dp))
             UsageWarning(
                 name = companion.name,
-                remaining = (FREE_MESSAGE_LIMIT - usage.messages).coerceAtLeast(0),
+                remaining = (messageLimit - usage.messagesUsed).coerceAtLeast(0),
                 resetLabel = resetLabel(usage.resetEpochMs),
                 onDismiss = onDismissWarning,
             )
@@ -379,7 +380,17 @@ private fun HomeTabPreview() {
                     highlight = MemoryHighlight("You mentioned your sister", thisWeek = true),
                     hasTalked = true,
                     lastReply = "Tell me about her. I'm right here.",
-                    usage = monthUsage(emptyList(), System.currentTimeMillis()),
+                    usage = PlanUsage(
+                        messagesUsed = 12,
+                        messagesLimit = 100,
+                        voiceUsed = 1,
+                        voiceLimit = 10,
+                        imagesUsed = 0,
+                        imagesLimit = 5,
+                        periodStartEpochMs = 1_735_689_600_000L,
+                        resetEpochMs = 1_738_368_000_000L,
+                        fromServer = true,
+                    ),
                     warningDismissed = "",
                     planLabel = "Free",
                     displayName = "Vipin",

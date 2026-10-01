@@ -4,9 +4,10 @@ import { AiModule } from '../ai/ai.module.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
 import { MemoriesModule } from '../memories/memories.module.js';
+import { UsageModule } from '../usage/usage.module.js';
 
 @Module({
-  imports: [AiModule, MemoriesModule],
+  imports: [AiModule, MemoriesModule, UsageModule],
   controllers: [MessagesController],
   providers: [MessagesService],
 })

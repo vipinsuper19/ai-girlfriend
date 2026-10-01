@@ -68,13 +68,12 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
-import com.dhama.mybase.core.usage.CountedMessage
-import com.dhama.mybase.core.usage.FREE_MESSAGE_LIMIT
-import com.dhama.mybase.core.usage.METERING_ENFORCED
 import com.dhama.mybase.core.usage.UsageLevel
-import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.core.usage.showMessageWall
 import com.dhama.mybase.core.usage.usageLevel
+import com.dhama.mybase.core.usage.utcMonthReset
+import com.dhama.mybase.core.usage.voiceAllowanceClosed
 import com.dhama.mybase.ui.usage.OfflineStrip
 import com.dhama.mybase.ui.usage.PaywallCard
 import com.dhama.mybase.ui.usage.UsageWarning
@@ -118,15 +117,19 @@ fun ChatScreen(
     val speakNote by viewModel.speakNote.collectAsState()
     val voiceStage by viewModel.voiceStage.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
-    val usage = monthUsage(
-        messages.map { CountedMessage(it.role, it.createdAtEpochMs, it.durationMs) },
-        System.currentTimeMillis(),
-    )
-    val messageLevel = usageLevel(usage.messages, FREE_MESSAGE_LIMIT)
-    val showWarning = METERING_ENFORCED &&
-        messageLevel == UsageLevel.NEARING &&
-        warningDismissed != usage.periodStartEpochMs.toString()
-    val showWall = METERING_ENFORCED && messageLevel == UsageLevel.WALL
+    val planUsage by viewModel.planUsage.collectAsState()
+    val usageBlocked by viewModel.usageBlocked.collectAsState()
+    val allowance = planUsage
+    val onServer = companion?.conversationId != null
+    val showWall = onServer && showMessageWall(allowance, usageBlocked)
+    val voiceClosed = onServer && voiceAllowanceClosed(allowance)
+    val messageLimit = allowance?.messagesLimit
+    val showWarning = allowance != null &&
+        messageLimit != null &&
+        usageLevel(allowance.messagesUsed, messageLimit) == UsageLevel.NEARING &&
+        !showWall &&
+        warningDismissed != allowance.periodStartEpochMs.toString()
+    val resetAt = allowance?.resetEpochMs?.takeIf { it > 0L } ?: utcMonthReset(System.currentTimeMillis())
     val streaming = messages.any { it.delivery == ChatRepositoryImpl.DELIVERY_STREAMING }
     val listState = rememberLazyListState()
     var selected by remember { mutableStateOf<ChatMessageEntity?>(null) }
@@ -169,7 +172,7 @@ fun ChatScreen(
     }
 
     fun beginRecording() {
-        if (recording || streaming) return
+        if (recording || streaming || voiceClosed) return
         if (!micGranted()) {
             showRationale = true
             return
@@ -270,13 +273,21 @@ fun ChatScreen(
         if (companion?.conversationId == null) {
             OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         }
-        if (showWarning) {
+        if (showWarning && allowance != null && messageLimit != null) {
             UsageWarning(
                 name = name,
-                remaining = (FREE_MESSAGE_LIMIT - usage.messages).coerceAtLeast(0),
-                resetLabel = resetLabel(usage.resetEpochMs),
-                onDismiss = { viewModel.dismissUsageWarning(usage.periodStartEpochMs) },
+                remaining = (messageLimit - allowance.messagesUsed).coerceAtLeast(0),
+                resetLabel = resetLabel(allowance.resetEpochMs),
+                onDismiss = { viewModel.dismissUsageWarning(allowance.periodStartEpochMs) },
                 modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
+        if (voiceClosed && !showWall) {
+            Text(
+                "You've used your voice minutes for this month.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         }
         if (messages.size <= 1) {
@@ -363,7 +374,7 @@ fun ChatScreen(
         if (showWall) {
             PaywallCard(
                 name = name,
-                resetLabel = resetLabel(usage.resetEpochMs),
+                resetLabel = resetLabel(resetAt),
                 onSeePlans = onSeePlans,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )

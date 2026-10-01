@@ -217,6 +217,11 @@ class ChatRepositoryImpl(
             dao.delete(assistantId)
             throw error
         } catch (error: Exception) {
+            if (isUsageLimit(error)) {
+                dao.delete(assistantId)
+                dao.delete(userLocalId)
+                throw error
+            }
             if (streamRecovery(userAccepted, built.isNotEmpty(), finished) == StreamRecovery.Fallback) {
                 try {
                     deliverBlocking(conversationId, text, userLocalId, assistantId, now)
@@ -224,6 +229,11 @@ class ChatRepositoryImpl(
                     dao.delete(assistantId)
                     throw cancelled
                 } catch (fallback: Exception) {
+                    if (isUsageLimit(fallback)) {
+                        dao.delete(assistantId)
+                        dao.delete(userLocalId)
+                        throw fallback
+                    }
                     markReplyFailed(
                         assistantId,
                         "",
@@ -242,6 +252,10 @@ class ChatRepositoryImpl(
                 )
             }
         }
+    }
+
+    private fun isUsageLimit(error: Throwable): Boolean {
+        return error is ApiStatusException && error.code == "USAGE_LIMIT_EXCEEDED"
     }
 
     private suspend fun deliverBlocking(
@@ -369,7 +383,8 @@ class ChatRepositoryImpl(
             }
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            if (isUsageLimit(error)) throw error
             dao.upsert(
                 ChatMessageEntity(
                     id = UUID.randomUUID().toString(),

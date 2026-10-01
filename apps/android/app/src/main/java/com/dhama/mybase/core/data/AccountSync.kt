@@ -12,8 +12,10 @@ import com.dhama.mybase.core.network.RemoteConversation
 import com.dhama.mybase.core.network.RestoredMemory
 import com.dhama.mybase.core.network.RestoredMessage
 import com.dhama.mybase.core.network.serverRecordId
+import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.planLabel
 import com.dhama.mybase.core.network.toRestored
+import kotlinx.serialization.encodeToString
 import com.dhama.mybase.core.network.toSaved
 import com.dhama.mybase.core.utils.PreferencesKeys
 import kotlinx.coroutines.flow.first
@@ -31,10 +33,12 @@ class AccountSync @Inject constructor(
         val local = companions.observe().first()
         if (!api.hasSession()) {
             dataStore.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
+            dataStore.saveString(PreferencesKeys.USAGE_SUMMARY, "")
             return local
         }
         syncProfile()
         syncPlan()
+        syncUsage()
         return try {
             pull(local)
         } catch (error: CancellationException) {
@@ -47,15 +51,36 @@ class AccountSync @Inject constructor(
     suspend fun refreshPlan() {
         if (!api.hasSession()) {
             dataStore.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
+            dataStore.saveString(PreferencesKeys.USAGE_SUMMARY, "")
             return
         }
         syncPlan()
+        syncUsage()
+    }
+
+    suspend fun refreshUsage() {
+        if (!api.hasSession()) {
+            dataStore.saveString(PreferencesKeys.USAGE_SUMMARY, "")
+            return
+        }
+        syncUsage()
     }
 
     suspend fun saveDisplayName(name: String): String {
         if (!api.hasSession()) return name
         val updated = api.patchDisplayName(name)
         return updated.displayName?.trim().orEmpty().ifBlank { name }
+    }
+
+    private suspend fun syncUsage() {
+        try {
+            val summary = api.usageSummary()
+            dataStore.saveString(PreferencesKeys.USAGE_SUMMARY, apiJson().encodeToString(summary))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // The last saved allowance stays on screen.
+        }
     }
 
     private suspend fun syncPlan() {
