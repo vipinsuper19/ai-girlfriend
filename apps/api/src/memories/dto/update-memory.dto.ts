@@ -1,12 +1,17 @@
 import {
     IsIn,
     IsInt,
+    IsISO8601,
     IsNumber,
     IsOptional,
     IsString,
     Max,
+    MaxLength,
     Min,
+    ValidateIf,
 } from 'class-validator';
+
+import { MEMORY_CONTENT_MAX } from '../memory-list.js';
 
 const MEMORY_TYPES = [
     'PROFILE',
@@ -19,6 +24,7 @@ const MEMORY_TYPES = [
 export class UpdateMemoryDto {
     @IsOptional()
     @IsString()
+    @MaxLength(MEMORY_CONTENT_MAX)
     content?: string;
 
     @IsOptional()
@@ -38,6 +44,7 @@ export class UpdateMemoryDto {
     confidence?: number;
 
     @IsOptional()
-    @IsString()
+    @ValidateIf((dto: UpdateMemoryDto) => dto.expiresAt !== '')
+    @IsISO8601()
     expiresAt?: string;
 }

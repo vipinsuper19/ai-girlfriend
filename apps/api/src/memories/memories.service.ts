@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -6,13 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ListMemoriesDto } from './dto/list-memories.dto.js';
 import { UpdateMemoryDto } from './dto/update-memory.dto.js';
-import { MemorySearchService } from './memory-search.service.js';
+import { MemoryEmbeddingService } from './memory-embedding.service.js';
+import { memoryListWhere, needsReembedding } from './memory-list.js';
 
 @Injectable()
 export class MemoriesService {
     constructor(
         private readonly prisma: PrismaService,
-        private readonly memorySearchService: MemorySearchService,
+        private readonly memoryEmbeddingService: MemoryEmbeddingService,
     ) { }
 
     private get db(): any {
@@ -23,58 +25,13 @@ export class MemoriesService {
         userId: string | number,
         query: ListMemoriesDto,
     ) {
-        const numericUserId = Number(userId);
-
-        const embMemories =
-            await this.memorySearchService.searchRelevantMemories(
-                numericUserId,
-                query.companionId ?? 1,
-                'Where should I travel for a mountain vacation?',
-            );
-
-        console.log(embMemories);
-
-
-        const memories =
-            await this.db.orm.public.Memory
-                .where({
-                    userId: numericUserId,
-                    status: 'ACTIVE',
-                    deletedAt: null,
-                })
-                .orderBy((memory: any) =>
-                    memory.importance.desc(),
-                )
-                .limit(query.limit ?? 50)
-                .all();
-
-        return memories.filter((memory: any) => {
-            if (
-                query.type &&
-                memory.type !== query.type
-            ) {
-                return false;
-            }
-
-            if (
-                query.companionId &&
-                memory.companionId !==
-                Number(query.companionId)
-            ) {
-                return false;
-            }
-
-            if (
-                query.conversationId &&
-                memory.conversationId !==
-                Number(query.conversationId)
-            ) {
-                return false;
-            }
-
-            return true;
-        });
-
+        return this.db.orm.public.Memory
+            .where(memoryListWhere(userId, query))
+            .orderBy((memory: any) =>
+                memory.importance.desc(),
+            )
+            .limit(query.limit ?? 50)
+            .all();
     }
 
     async findOne(
@@ -112,7 +69,7 @@ export class MemoriesService {
         const numericUserId = Number(userId);
         const numericMemoryId = Number(memoryId);
 
-        await this.findOne(
+        const existing = await this.findOne(
             numericUserId,
             numericMemoryId,
         );
@@ -123,7 +80,7 @@ export class MemoriesService {
             const content = dto.content.trim();
 
             if (!content) {
-                throw new NotFoundException(
+                throw new BadRequestException(
                     'Memory content cannot be empty',
                 );
             }
@@ -157,7 +114,7 @@ export class MemoriesService {
 
         const now = new Date().toISOString();
 
-        return this.db.orm.public.Memory
+        const updated = await this.db.orm.public.Memory
             .where({
                 id: numericMemoryId,
                 userId: numericUserId,
@@ -169,6 +126,16 @@ export class MemoriesService {
                 updatedAt: now,
             });
 
+        const content = data['content'] as string | undefined;
+        if (needsReembedding(existing.content, content)) {
+            void this.memoryEmbeddingService.generateForMemory(
+                numericMemoryId,
+                content as string,
+                { replace: true },
+            );
+        }
+
+        return updated;
     }
 
     async removeAll(
