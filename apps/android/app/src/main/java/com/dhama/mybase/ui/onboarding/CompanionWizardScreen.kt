@@ -298,7 +298,7 @@ private fun AppearanceStep(
                 MoreField("Clothing", draft.clothingStyle.orEmpty()) { value -> onChange { it.copy(clothingStyle = value.ifBlank { null }) } }
                 MoreField("Hair style", draft.hairStyle.orEmpty()) { value -> onChange { it.copy(hairStyle = value.ifBlank { null }) } }
                 Spacer(Modifier.height(12.dp))
-                PrimaryAction("Done") { more = false }
+                PrimaryAction("Done", onClick = { more = false })
                 Spacer(Modifier.height(24.dp))
             }
         }
