@@ -76,6 +76,7 @@ import com.dhama.mybase.ui.memory.MemoryDetailScreen
 import com.dhama.mybase.ui.memory.MemoryListScreen
 import com.dhama.mybase.ui.memory.MemoryPrivacyScreen
 import com.dhama.mybase.ui.memory.MemoryViewModel
+import com.dhama.mybase.ui.gallery.GalleryScreen
 import com.dhama.mybase.ui.settings.CompanionProfileScreen
 import com.dhama.mybase.ui.settings.EditCompanionScreen
 import com.dhama.mybase.ui.settings.SubscriptionScreen
@@ -166,6 +167,7 @@ fun MainShell(
                 "profile" -> CompanionProfileScreen(onBack = { screen = "tabs" }, onEdit = { screen = "edit" })
                 "edit" -> EditCompanionScreen(onBack = { screen = "profile" })
                 "plans" -> SubscriptionScreen(onBack = { screen = "tabs" })
+                "gallery" -> GalleryScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
                 "history" -> ConversationHistoryScreen(
                     onBack = { screen = "tabs" },
                     onOpened = {
@@ -190,6 +192,7 @@ fun MainShell(
                         onMemories = { tab = MainTab.Memory.ordinal },
                         onProfile = { screen = "profile" },
                         onSettings = { tab = MainTab.You.ordinal },
+                        onPhotos = { screen = "gallery" },
                     )
                     MainTab.Chat -> ChatScreen(
                         onSeePlans = { screen = "plans" },
@@ -230,6 +233,7 @@ private fun HomeTab(
     onMemories: () -> Unit,
     onProfile: () -> Unit,
     onSettings: () -> Unit,
+    onPhotos: () -> Unit = {},
 ) {
     if (companion == null) {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.Center) {
@@ -330,6 +334,9 @@ private fun HomeTab(
             QuickAction("Talk", onTalk, Modifier.weight(1f))
             QuickAction("Memories", onMemories, Modifier.weight(1f))
             QuickAction("Profile", onProfile, Modifier.weight(1f))
+            if (companion.conversationId != null) {
+                QuickAction("Photos", onPhotos, Modifier.weight(1f))
+            }
         }
         if (highlight != null) {
             Spacer(Modifier.height(16.dp))
