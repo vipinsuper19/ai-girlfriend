@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
     formatSseEvent,
     SSE_KEEPALIVE,
+    streamErrorPayload,
     writeServerSentEvents,
 } from './sse-stream.js';
+import { UsageLimitExceededException } from '../usage/usage.exceptions.js';
 
 test('formats an event the client can split on a blank line', () => {
     assert.equal(
@@ -38,4 +40,17 @@ test('writes a ping comment while the next event is still pending', async (t) =>
     await done;
 
     assert.ok(chunks.some((chunk) => chunk.startsWith('event: delta')));
+});
+
+test('a stream error keeps the usage limit code', () => {
+    const error = new UsageLimitExceededException('MESSAGES', 100, 100, 1);
+    assert.deepEqual(streamErrorPayload(error), {
+        message: 'Usage limit exceeded for MESSAGES',
+        code: 'USAGE_LIMIT_EXCEEDED',
+    });
+});
+
+test('a plain stream error has only a message', () => {
+    assert.deepEqual(streamErrorPayload(new Error('boom')), { message: 'boom' });
+    assert.deepEqual(streamErrorPayload('nope'), { message: 'Streaming failed' });
 });

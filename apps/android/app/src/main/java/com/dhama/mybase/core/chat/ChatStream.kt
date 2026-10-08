@@ -7,7 +7,7 @@ sealed interface ChatStreamEvent {
     data class UserMessage(val content: String) : ChatStreamEvent
     data class Delta(val content: String) : ChatStreamEvent
     data class Done(val content: String) : ChatStreamEvent
-    data class Error(val message: String) : ChatStreamEvent
+    data class Error(val message: String, val code: String? = null) : ChatStreamEvent
 }
 
 @Serializable
@@ -25,6 +25,7 @@ private data class SseMessageBody(
 @Serializable
 private data class ErrorEnvelope(
     val message: String? = null,
+    val code: String? = null,
 )
 
 /**
@@ -70,8 +71,11 @@ private fun parseBlock(block: String): ChatStreamEvent? {
         "delta" -> ChatStreamEvent.Delta(text)
         "done" -> ChatStreamEvent.Done(text.ifBlank { payload?.message?.content.orEmpty() })
         "error" -> {
-            val fromString = runCatching { json.decodeFromString<ErrorEnvelope>(raw) }.getOrNull()?.message
-            ChatStreamEvent.Error(fromString ?: text.ifBlank { "Streaming failed" })
+            val envelope = runCatching { json.decodeFromString<ErrorEnvelope>(raw) }.getOrNull()
+            ChatStreamEvent.Error(
+                envelope?.message ?: text.ifBlank { "Streaming failed" },
+                envelope?.code,
+            )
         }
         else -> null
     }

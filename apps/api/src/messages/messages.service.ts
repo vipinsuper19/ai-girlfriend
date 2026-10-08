@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
@@ -19,6 +20,7 @@ export class MessagesService {
         private readonly aiService: AiService,
         private readonly memoryExtractorService: MemoryExtractorService,
         private readonly usageService: UsageService,
+        private readonly storageService: StorageService,
     ) { }
 
     private get db(): any {
@@ -32,13 +34,6 @@ export class MessagesService {
     ) {
         const numericUserId = Number(userId);
         const numericConversationId = Number(conversationId);
-
-        console.log({
-            jwtUserId: userId,
-            numericUserId: Number(userId),
-            conversationId,
-            numericConversationId: Number(conversationId),
-        });
 
         const conversation = await this.getOwnedConversation(
             userId,
@@ -58,11 +53,11 @@ export class MessagesService {
             await this.db.orm.public.Message.create({
                 conversationId: numericConversationId,
                 role: 'USER',
-                type: dto.type ?? 'TEXT',
+                type: 'TEXT',
                 content: dto.content.trim(),
                 metadata: dto.metadata ?? null,
-                audioUrl: dto.audioUrl ?? null,
-                imageUrl: dto.imageUrl ?? null,
+                audioUrl: null,
+                imageUrl: null,
                 updatedAt: now,
             });
 
@@ -187,6 +182,11 @@ export class MessagesService {
                 updatedAt: now,
             });
 
+        await this.storageService.removeVoiceFile(
+            numericUserId,
+            message.audioUrl,
+        );
+
         return {
             message: 'Message deleted successfully',
         };
@@ -257,11 +257,11 @@ export class MessagesService {
             await this.db.orm.public.Message.create({
                 conversationId: numericConversationId,
                 role: 'USER',
-                type: dto.type ?? 'TEXT',
+                type: 'TEXT',
                 content: dto.content.trim(),
                 metadata: dto.metadata ?? null,
-                audioUrl: dto.audioUrl ?? null,
-                imageUrl: dto.imageUrl ?? null,
+                audioUrl: null,
+                imageUrl: null,
                 updatedAt: now,
             });
 

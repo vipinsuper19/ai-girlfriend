@@ -30,3 +30,18 @@ export async function writeServerSentEvents(
         await iterator.return?.();
     }
 }
+
+export type StreamErrorPayload = {
+    message: string;
+    code?: string;
+};
+
+/** Headers are already sent, so the error code rides in the event instead of the status. */
+export function streamErrorPayload(error: unknown): StreamErrorPayload {
+    const message = error instanceof Error ? error.message : 'Streaming failed';
+    const response = (error as { getResponse?: () => unknown } | null)?.getResponse?.();
+    const code = typeof response === 'object' && response !== null
+        ? (response as { code?: unknown }).code
+        : undefined;
+    return typeof code === 'string' ? { message, code } : { message };
+}

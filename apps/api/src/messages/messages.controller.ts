@@ -19,7 +19,7 @@ import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import { ListMessagesDto } from './dto/list-messages.dto.js';
 import { MessagesService } from './messages.service.js';
-import { formatSseEvent, writeServerSentEvents } from './sse-stream.js';
+import { formatSseEvent, streamErrorPayload, writeServerSentEvents } from './sse-stream.js';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -99,12 +99,7 @@ export class MessagesController {
             );
         } catch (error) {
             response.write(
-                formatSseEvent('error', {
-                    message:
-                        error instanceof Error
-                            ? error.message
-                            : 'Streaming failed',
-                }),
+                formatSseEvent('error', streamErrorPayload(error)),
             );
         } finally {
             response.end();

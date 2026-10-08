@@ -55,6 +55,16 @@ class ChatStreamTest {
     }
 
     @Test
+    fun streamErrorKeepsTheUsageLimitCode() {
+        val raw = "event: error\ndata: {\"message\":\"Usage limit exceeded for MESSAGES\",\"code\":\"USAGE_LIMIT_EXCEEDED\"}\n\n"
+        val (events, _) = consumeSse(raw)
+        assertEquals(
+            listOf(ChatStreamEvent.Error("Usage limit exceeded for MESSAGES", "USAGE_LIMIT_EXCEEDED")),
+            events,
+        )
+    }
+
+    @Test
     fun parsesErrorWhenMessageIsAString() {
         val raw = "event: error\ndata: {\"message\":\"The model stalled\"}\n\n"
         val (events, rest) = consumeSse(raw)

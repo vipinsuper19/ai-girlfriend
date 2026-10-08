@@ -200,7 +200,7 @@ class ChatRepositoryImpl(
                             ),
                         )
                     }
-                    is ChatStreamEvent.Error -> throw ApiStatusException(0, event.message, null)
+                    is ChatStreamEvent.Error -> throw ApiStatusException(0, event.message, event.code)
                     is ChatStreamEvent.UserMessage -> userAccepted = true
                 }
             }
