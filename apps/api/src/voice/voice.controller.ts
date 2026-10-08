@@ -33,6 +33,7 @@ export class VoiceController {
         }),
     )
     async transcribe(
+        @CurrentUser() user: JwtPayload,
         @UploadedFile()
         file: Express.Multer.File,
     ) {
@@ -43,6 +44,7 @@ export class VoiceController {
         }
 
         return this.voiceService.transcribe(
+            Number(user.sub),
             file.buffer,
             file.mimetype,
         );
@@ -79,9 +81,16 @@ export class VoiceController {
             );
         }
 
+        const id = Number(conversationId);
+        if (!Number.isInteger(id) || id <= 0) {
+            throw new BadRequestException(
+                'conversationId is required',
+            );
+        }
+
         return this.voiceService.respond(
             Number(user.sub),
-            Number(conversationId),
+            id,
             file.buffer,
             file.mimetype,
         );

@@ -46,6 +46,7 @@ export class VoiceService {
      * Convert uploaded audio into text.
      */
     async transcribe(
+        userId: number,
         audio: Buffer,
         mimeType: string,
     ) {
@@ -61,6 +62,12 @@ export class VoiceService {
             );
         }
 
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+        );
+
         const text =
             await this.speechToText.transcribe({
                 audio,
@@ -75,6 +82,13 @@ export class VoiceService {
                 'Could not detect speech in audio',
             );
         }
+
+        await this.usageService.consume(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+            { source: 'transcribe' },
+        );
 
         return {
             text: cleanText,
@@ -274,6 +288,17 @@ export class VoiceService {
             );
         }
 
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.MESSAGES,
+            1,
+        );
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.VOICE_MINUTES,
+            1,
+        );
+
         /*
          * ------------------------------------------------------
          * 4. Speech-to-text
@@ -294,11 +319,6 @@ export class VoiceService {
             );
         }
 
-        await this.usageService.check(
-            userId,
-            UsageFeatureDto.VOICE_MINUTES,
-            1,
-        );
         await this.usageService.consume(
             userId,
             UsageFeatureDto.MESSAGES,
