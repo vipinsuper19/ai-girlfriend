@@ -589,7 +589,7 @@ App Router apps, where a store and the URL disagree after a back-button press.
 /account/subscription          plan and usage
 /account/appearance            theme
 /account/privacy               privacy & data
-/gallery                       flagged off — no backend (see 05 §6)
+/gallery                       flagged off — `/images` API ready, web screen not built (see 05 §6)
 ```
 
 **Back-button behaviour.** Android maintains a separate back stack per tab. The browser has one
