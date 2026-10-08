@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -35,6 +36,10 @@ class ApiClient(
     private val streamHttp = http.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+    private val imageHttp = http.newBuilder()
+        .readTimeout(90, TimeUnit.SECONDS)
+        .build()
+    private val prettyJson = Json(json) { prettyPrint = true }
 
     fun origin(): String = apiOrigin(baseUrl)
 
@@ -290,6 +295,87 @@ class ApiClient(
         }
     }
 
+    /** Trades a Firebase Google ID token for an API session. Returns false when the API refuses it. */
+    suspend fun establishWithGoogle(idToken: String): Boolean {
+        val payload = json.encodeToString(GoogleBody(idToken))
+        val tokens = attempt { unwrapData<SessionTokens>(execute(authed("POST", "auth/google", payload, null)), json) }
+        if (tokens != null) store.write(tokens) else store.clear()
+        return tokens != null
+    }
+
+    suspend fun regenerate(messageId: Int): RegeneratedReply {
+        return withAuth { access ->
+            unwrapData(execute(authed("POST", "messages/$messageId/regenerate", "{}", access)), json)
+        }
+    }
+
+    suspend fun createMemory(companionId: Int, content: String, type: String): RemoteMemory {
+        return withAuth { access ->
+            val payload = json.encodeToString(NewMemoryBody(companionId, content, type))
+            unwrapData(execute(authed("POST", "memories", payload, access)), json)
+        }
+    }
+
+    suspend fun patchPrivacy(memoryPaused: Boolean? = null, notificationsEnabled: Boolean? = null): RemoteUser {
+        return withAuth { access ->
+            val payload = json.encodeToString(PrivacyBody(memoryPaused, notificationsEnabled))
+            unwrapData(execute(authed("PATCH", "users/me", payload, access)), json)
+        }
+    }
+
+    /** The export as indented JSON, ready to save. */
+    suspend fun exportMe(): String {
+        return withAuth { access ->
+            val data = dataElement(execute(authed("GET", "users/me/export", null, access)), json)
+            prettyJson.encodeToString(JsonElement.serializer(), data)
+        }
+    }
+
+    suspend fun listImages(companionId: Int): List<RemoteImage> {
+        return withAuth { access ->
+            decodeDataList(execute(authed("GET", "images?companionId=$companionId", null, access)), json)
+        }
+    }
+
+    suspend fun createImage(companionId: Int, prompt: String): RemoteImage {
+        return withAuth { access ->
+            val payload = json.encodeToString(NewImageBody(companionId, prompt.trim().ifBlank { null }))
+            unwrapData(execute(imageHttp, authed("POST", "images", payload, access)), json)
+        }
+    }
+
+    suspend fun deleteImage(id: Int) {
+        withAuth { access -> execute(authed("DELETE", "images/$id", null, access)) }
+    }
+
+    suspend fun notificationStatus(): RemoteNotificationStatus {
+        return withAuth { access -> unwrapData(execute(authed("GET", "notifications/status", null, access)), json) }
+    }
+
+    suspend fun registerDevice(token: String) {
+        withAuth { access ->
+            val payload = json.encodeToString(DeviceBody(token, "ANDROID"))
+            execute(authed("POST", "notifications/devices", payload, access))
+        }
+    }
+
+    suspend fun removeDevice(token: String) {
+        withAuth { access ->
+            execute(authed("DELETE", "notifications/devices/${encodePath(token)}", null, access))
+        }
+    }
+
+    suspend fun googlePlayConfig(): RemotePlayConfig {
+        return withAuth { access -> unwrapData(execute(authed("GET", "subscriptions/google-play", null, access)), json) }
+    }
+
+    suspend fun verifyGooglePlay(productId: String, purchaseToken: String): RemoteSubscription {
+        return withAuth { access ->
+            val payload = json.encodeToString(PlayPurchaseBody(productId, purchaseToken))
+            unwrapData(execute(authed("POST", "subscriptions/google-play", payload, access)), json)
+        }
+    }
+
     private suspend fun login(email: String, password: String): SessionTokens {
         return unwrapData(execute(jsonPost("auth/login", LoginBody(email, password))), json)
     }
@@ -361,8 +447,10 @@ class ApiClient(
         return builder.method(method, body).build()
     }
 
-    private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
-        http.newCall(request).execute().use { response ->
+    private suspend fun execute(request: Request): String = execute(http, request)
+
+    private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
+        client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
             raw
@@ -417,6 +505,27 @@ private data class DisplayNameBody(val displayName: String)
 
 @Serializable
 private data class SynthesizeBody(val companionId: Int, val text: String)
+
+@Serializable
+private data class GoogleBody(val idToken: String)
+
+@Serializable
+private data class NewMemoryBody(val companionId: Int, val content: String, val type: String)
+
+@Serializable
+private data class PrivacyBody(val memoryPaused: Boolean? = null, val notificationsEnabled: Boolean? = null)
+
+@Serializable
+private data class NewImageBody(val companionId: Int, val prompt: String? = null)
+
+@Serializable
+private data class DeviceBody(val token: String, val platform: String)
+
+@Serializable
+private data class PlayPurchaseBody(val productId: String, val purchaseToken: String)
+
+private fun encodePath(segment: String): String =
+    java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
 
 @Serializable
 private data class SynthesizedSpeech(val audioUrl: String = "")

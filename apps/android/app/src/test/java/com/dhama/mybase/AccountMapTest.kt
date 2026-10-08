@@ -34,6 +34,13 @@ import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.network.toSaved
 import com.dhama.mybase.core.network.unwrapData
+import com.dhama.mybase.core.network.RemoteImage
+import com.dhama.mybase.core.network.RemotePlayConfig
+import com.dhama.mybase.core.network.RegeneratedReply
+import com.dhama.mybase.core.network.galleryUrl
+import com.dhama.mybase.core.network.phoneImportance
+import com.dhama.mybase.core.network.regenerableReplyId
+import com.dhama.mybase.core.network.serverImportance
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -138,7 +145,7 @@ class AccountMapTest {
     }
 
     @Test
-    fun memoryKeepsTheServerImportance() {
+    fun memoryShowsTheServerImportanceOutOfHundred() {
         val restored = RemoteMemory(
             id = 3,
             type = "PREFERENCE",
@@ -147,7 +154,7 @@ class AccountMapTest {
             confidence = 1.5,
         ).toRestored(1_000)
         assertEquals("server-3", restored.id)
-        assertEquals(8, restored.importance)
+        assertEquals(80, restored.importance)
         assertEquals(1f, restored.confidence)
         assertEquals(1_000L, restored.createdAtEpochMs)
     }
@@ -295,5 +302,53 @@ class AccountMapTest {
                 .single()
                 .lastMessage,
         )
+    }
+
+    @Test
+    fun importanceConvertsBetweenTheServerAndPhoneScales() {
+        assertEquals(70, phoneImportance(7))
+        assertEquals(100, phoneImportance(14))
+        assertEquals(0, phoneImportance(-1))
+        assertEquals(7, serverImportance(70))
+        assertEquals(8, serverImportance(75))
+        assertEquals(1, serverImportance(0))
+        assertEquals(10, serverImportance(100))
+        assertEquals(9, serverImportance(phoneImportance(9)))
+    }
+
+    private data class Line(val id: String, val role: String, val kind: String = "TEXT")
+
+    private fun pick(vararg lines: Line) = regenerableReplyId(lines.toList(), { it.id }, { it.role }, { it.kind })
+
+    @Test
+    fun onlyHerNewestServerReplyCanBeRegenerated() {
+        assertEquals("server-12", pick(Line("server-11", "USER"), Line("server-12", "ASSISTANT"), Line("note", "SYSTEM")))
+        assertNull(pick(Line("server-12", "ASSISTANT"), Line("server-13", "USER")))
+        assertNull(pick(Line("server-12", "ASSISTANT", "AUDIO")))
+        assertNull(pick(Line("local", "ASSISTANT")))
+        assertNull(pick())
+    }
+
+    @Test
+    fun newApiPayloadsDecode() {
+        val user = unwrapData<RemoteUser>("""{"data":{"email":"a@b.c","memoryPaused":true}}""")
+        assertTrue(user.memoryPaused)
+        assertEquals(false, user.notificationsEnabled)
+        val reply = unwrapData<RegeneratedReply>(
+            """{"data":{"replacedId":4,"assistantMessage":{"id":9,"role":"ASSISTANT","content":"again"}}}""",
+        )
+        assertEquals(4, reply.replacedId)
+        assertEquals("again", reply.assistantMessage?.content)
+        val config = unwrapData<RemotePlayConfig>(
+            """{"data":{"configured":true,"products":[{"productId":"premium_monthly","plan":"PREMIUM"}],"accountId":"abc"}}""",
+        )
+        assertEquals("premium_monthly", config.products.single().productId)
+        val off = unwrapData<RemotePlayConfig>("""{"data":{"configured":false,"products":[],"accountId":null}}""")
+        assertEquals(false, off.configured)
+        val image = decodeDataList<RemoteImage>(
+            """{"data":[{"id":1,"imageUrl":"/uploads/images/3/x.png","status":"COMPLETED"}]}""",
+        ).single()
+        assertEquals("http://10.0.2.2:3001/uploads/images/3/x.png", image.galleryUrl("http://10.0.2.2:3001"))
+        assertNull(RemoteImage(id = 2).galleryUrl("http://x"))
     }
 }

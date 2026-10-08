@@ -233,7 +233,67 @@ fun displayNameError(name: String): String? {
 data class RemoteUser(
     val email: String? = null,
     val displayName: String? = null,
+    val memoryPaused: Boolean = false,
+    val notificationsEnabled: Boolean = false,
 )
+
+@Serializable
+data class RegeneratedReply(
+    val replacedId: Int = 0,
+    val assistantMessage: RemoteMessage? = null,
+)
+
+@Serializable
+data class RemoteImage(
+    val id: Int,
+    val companionId: Int? = null,
+    val prompt: String = "",
+    val imageUrl: String? = null,
+    val status: String = "",
+    val createdAt: String? = null,
+)
+
+@Serializable
+data class RemotePlayProduct(
+    val productId: String = "",
+    val plan: String = "",
+)
+
+@Serializable
+data class RemotePlayConfig(
+    val configured: Boolean = false,
+    val products: List<RemotePlayProduct> = emptyList(),
+    val accountId: String? = null,
+)
+
+@Serializable
+data class RemoteNotificationStatus(
+    val pushConfigured: Boolean = false,
+)
+
+/** The API ranks memories 1–10; the phone shows 0–100. */
+fun phoneImportance(server: Int): Int = (server * 10).coerceIn(0, 100)
+
+fun serverImportance(phone: Int): Int = ((phone.coerceIn(0, 100) + 5) / 10).coerceIn(1, 10)
+
+/** Only her newest reply on the server can be regenerated; the API refuses anything older. */
+fun <T> regenerableReplyId(
+    messages: List<T>,
+    id: (T) -> String,
+    role: (T) -> String,
+    kind: (T) -> String,
+): String? {
+    val newest = messages.maxByOrNull { serverRecordId(id(it)) ?: Int.MIN_VALUE } ?: return null
+    if (serverRecordId(id(newest)) == null) return null
+    return id(newest).takeIf { role(newest) == "ASSISTANT" && kind(newest) == "TEXT" }
+}
+
+fun RemoteImage.galleryUrl(origin: String): String? {
+    val url = imageUrl?.takeIf { it.isNotBlank() } ?: return null
+    return resolveVoiceUrl(origin, url)
+}
+
+const val IMAGE_PROMPT_MAX = 500
 
 @Serializable
 data class RemoteSubscription(
@@ -391,7 +451,7 @@ fun RemoteMemory.toRestored(nowEpochMs: Long): RestoredMemory {
         id = serverLocalId(id),
         type = type.ifBlank { "FACT" },
         content = content,
-        importance = importance.coerceIn(0, 100),
+        importance = phoneImportance(importance),
         confidence = confidence.toFloat().coerceIn(0f, 1f),
         source = source.ifBlank { "USER_INPUT" },
         createdAtEpochMs = created,
