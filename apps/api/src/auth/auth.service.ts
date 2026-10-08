@@ -10,6 +10,7 @@ import type { StringValue } from 'ms';
 
 import { accessTokenExpiresIn } from './access-token.js';
 import { passwordChangeProblem } from './password-change.js';
+import { accountCanSignIn, sessionExpired } from './session-state.js';
 import type { LoginDto } from '../dto/login.dto.js';
 import type { RegisterDto } from '../dto/register.dto.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -73,7 +74,7 @@ export class AuthService {
             })
             .first();
 
-        if (!user?.passwordHash) {
+        if (!user?.passwordHash || !accountCanSignIn(user.status)) {
             throw new UnauthorizedException(
                 'Invalid email or password',
             );
@@ -116,7 +117,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid refresh token');
         }
 
-        if (session.expiresAt <= new Date()) {
+        if (sessionExpired(session.expiresAt, new Date())) {
             await db.orm.public.Session.where({
                 id: session.id,
             }).delete();
@@ -128,7 +129,7 @@ export class AuthService {
             id: payload.sub,
         }).first();
 
-        if (!user) {
+        if (!user || !accountCanSignIn(user.status)) {
             await db.orm.public.Session.where({
                 id: session.id,
             }).delete();
