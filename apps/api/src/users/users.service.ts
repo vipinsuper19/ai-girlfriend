@@ -4,12 +4,14 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 
 @Injectable()
 export class UsersService {
     constructor(
         private readonly prisma: PrismaService,
+        private readonly storage: StorageService,
     ) { }
 
     async findMe(userId: string) {
@@ -95,9 +97,19 @@ export class UsersService {
             }).delete();
         }
 
+        const companions =
+            await db.orm.public.Companion.where({
+                userId: Number(userId),
+            }).all();
+
         await db.orm.public.User.where({
             id: userId,
         }).delete();
+
+        await this.storage.removeUserFiles(
+            Number(userId),
+            companions.map((companion: { id: number }) => Number(companion.id)),
+        );
 
         return {
             message: 'Account deleted successfully',
