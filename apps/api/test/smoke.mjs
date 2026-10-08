@@ -22,6 +22,9 @@ const { EMBEDDING_PROVIDER } = await load('ai/interfaces/embedding.provider.js')
 const { HttpExceptionFilter } = await load('common/filters/http-exception.filter.js');
 const { ResponseInterceptor } = await load('common/interceptors/response.interceptor.js');
 const { MailService } = await load('mail/mail.service.js');
+const { GooglePlayService } = await load('subscriptions/google-play.service.js');
+const { PrismaService } = await load('prisma/prisma.service.js');
+const { BadRequestException } = await import('@nestjs/common');
 
 let replies = 0;
 const chat = {
@@ -221,6 +224,52 @@ await step('notification devices', async () => {
     assert.equal((await call('POST', '/notifications/test', { token })).status, 503);
     assert.equal((await call('DELETE', `/notifications/devices/${device}`, { token })).status, 200);
     assert.equal((await call('DELETE', `/notifications/devices/${device}`, { token })).status, 404);
+});
+
+await step('google play purchase is verified before the plan changes', async () => {
+    const off = await call('GET', '/subscriptions/google-play', { token });
+    assert.equal(off.data.configured, false);
+    const body = { productId: 'premium_monthly', purchaseToken: `play-${stamp}` };
+    assert.equal((await call('POST', '/subscriptions/google-play', { token, body })).status, 503);
+
+    const play = moduleRef.get(GooglePlayService);
+    play.play = { auth: null, packageName: 'com.example.app', products: new Map([['premium_monthly', 'PREMIUM']]) };
+    const config = await call('GET', '/subscriptions/google-play', { token });
+    const purchases = new Map();
+    const acknowledged = [];
+    play.publisher = async (_play, method, path) => {
+        if (method === 'POST') { acknowledged.push(path); return {}; }
+        const found = purchases.get(decodeURIComponent(path.split('/').at(-1)));
+        if (!found) throw new BadRequestException('Google Play refused this purchase');
+        return found;
+    };
+    const expiry = new Date(Date.now() + 30 * 86400000).toISOString();
+    purchases.set(body.purchaseToken, {
+        subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE',
+        acknowledgementState: 'ACKNOWLEDGEMENT_STATE_PENDING',
+        lineItems: [{ productId: 'premium_monthly', expiryTime: expiry }],
+        externalAccountIdentifiers: { obfuscatedExternalAccountId: 'someone-else' },
+    });
+    assert.equal((await call('POST', '/subscriptions/google-play', { token, body })).status, 400);
+    assert.equal((await call('GET', '/subscriptions/current', { token })).data.plan, 'FREE');
+
+    purchases.get(body.purchaseToken).externalAccountIdentifiers.obfuscatedExternalAccountId = config.data.accountId;
+    const ok = await call('POST', '/subscriptions/google-play', { token, body });
+    assert.equal(ok.status, 201, JSON.stringify(ok.raw));
+    assert.equal(ok.data.plan, 'PREMIUM');
+    assert.equal(acknowledged.length, 1);
+    const cur = await call('GET', '/subscriptions/current', { token });
+    assert.equal(cur.data.plan, 'PREMIUM');
+    assert.equal((await call('POST', '/subscriptions/google-play', { token, body: { ...body, purchaseToken: 'unknown' } })).status, 400);
+
+    const other = await call('POST', '/auth/register', { body: { email: `other${stamp}@example.com`, password: 'password-one', displayName: 'Other' } });
+    assert.equal((await call('POST', '/subscriptions/google-play', { token: other.data.accessToken, body })).status, 409);
+
+    await moduleRef.get(PrismaService).client.orm.public.Subscription
+        .where({ providerSubscriptionId: body.purchaseToken })
+        .update({ expiresAt: new Date(Date.now() - 1000).toISOString() });
+    assert.equal((await call('GET', '/subscriptions/current', { token })).data.plan, 'FREE');
+    play.play = null;
 });
 
 await step('export leaves out secrets', async () => {
