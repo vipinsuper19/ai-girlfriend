@@ -82,6 +82,13 @@ class AccountSync @Inject constructor(
         syncUsage()
     }
 
+    suspend fun exportData(): String {
+        if (!api.hasSession()) {
+            throw ApiStatusException(401, "Sign in with email to export what's stored on the server.", null)
+        }
+        return api.exportMe()
+    }
+
     suspend fun saveDisplayName(name: String): String {
         if (!api.hasSession()) return name
         val updated = api.patchDisplayName(name)
@@ -123,6 +130,8 @@ class AccountSync @Inject constructor(
             if (email.isNotBlank()) {
                 dataStore.saveString(PreferencesKeys.USER_EMAIL, email)
             }
+            dataStore.saveBoolean(PreferencesKeys.MEMORY_PAUSED, me.memoryPaused)
+            dataStore.saveBoolean(PreferencesKeys.NOTIFICATIONS_ENABLED, me.notificationsEnabled)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {

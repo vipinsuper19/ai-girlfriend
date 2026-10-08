@@ -38,4 +38,6 @@ object PreferencesKeys {
     val USAGE_WARNING_PERIOD = stringPreferencesKey("usage_warning_period")
     val SUBSCRIPTION_PLAN = stringPreferencesKey("subscription_plan")
     val USAGE_SUMMARY = stringPreferencesKey("usage_summary")
+    val MEMORY_PAUSED = booleanPreferencesKey("memory_paused")
+    val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
 }

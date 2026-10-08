@@ -2,12 +2,15 @@ package com.dhama.mybase.ui.memory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.db.entity.MemoryEntity
 import com.dhama.mybase.core.domain.MemoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -18,10 +21,100 @@ import kotlin.coroutines.cancellation.CancellationException
 @HiltViewModel
 class MemoryViewModel @Inject constructor(
     private val repository: MemoryRepository,
+    private val accountSync: AccountSync,
 ) : ViewModel() {
 
     val memories = repository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val paused = repository.observePaused()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _pauseSaving = MutableStateFlow(false)
+    val pauseSaving = _pauseSaving.asStateFlow()
+
+    private val _privacyNote = MutableStateFlow<String?>(null)
+    val privacyNote = _privacyNote.asStateFlow()
+
+    private val _adding = MutableStateFlow(false)
+    val adding = _adding.asStateFlow()
+
+    private val _addNote = MutableStateFlow<String?>(null)
+    val addNote = _addNote.asStateFlow()
+
+    private val _added = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val added = _added.asSharedFlow()
+
+    private val _exporting = MutableStateFlow(false)
+    val exporting = _exporting.asStateFlow()
+
+    private val _exportJson = MutableStateFlow<String?>(null)
+    val exportJson = _exportJson.asStateFlow()
+
+    fun setPaused(paused: Boolean) {
+        if (_pauseSaving.value) return
+        viewModelScope.launch {
+            _pauseSaving.value = true
+            _privacyNote.value = null
+            try {
+                repository.setPaused(paused)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _privacyNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't update this setting."
+            } finally {
+                _pauseSaving.value = false
+            }
+        }
+    }
+
+    fun add(content: String, type: String) {
+        if (content.isBlank()) {
+            _addNote.value = "Write what she should remember."
+            return
+        }
+        if (_adding.value) return
+        viewModelScope.launch {
+            _adding.value = true
+            _addNote.value = null
+            try {
+                repository.add(content, type)
+                _added.emit(Unit)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _addNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't save that memory."
+            } finally {
+                _adding.value = false
+            }
+        }
+    }
+
+    fun clearAddNote() {
+        _addNote.value = null
+    }
+
+    fun prepareExport() {
+        if (_exporting.value) return
+        viewModelScope.launch {
+            _exporting.value = true
+            _privacyNote.value = null
+            try {
+                _exportJson.value = accountSync.exportData()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _privacyNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't prepare your export."
+            } finally {
+                _exporting.value = false
+            }
+        }
+    }
+
+    fun exportFinished(note: String?) {
+        _exportJson.value = null
+        _privacyNote.value = note
+    }
 
     private val _hiddenIds = MutableStateFlow<Set<String>>(emptySet())
     val hiddenIds = _hiddenIds.asStateFlow()

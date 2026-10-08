@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.dhama.mybase.core.db.AppDatabase
 import com.dhama.mybase.core.data.ChatRepositoryImpl
+import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.MemoryRepositoryImpl
 import com.dhama.mybase.core.db.dao.ChatMessageDao
 import com.dhama.mybase.core.db.dao.MemoryDao
@@ -67,5 +68,6 @@ object DatabaseModule {
         dao: MemoryDao,
         api: ApiClient,
         companions: CompanionRepository,
-    ): MemoryRepository = MemoryRepositoryImpl(dao, api, companions)
+        dataStore: DataStoreRepo,
+    ): MemoryRepository = MemoryRepositoryImpl(dao, api, companions, dataStore)
 }

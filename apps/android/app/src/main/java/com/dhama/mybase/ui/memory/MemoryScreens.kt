@@ -20,7 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +36,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -55,10 +62,12 @@ import com.dhama.mybase.ui.preview.sampleMemories
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val memoryTypes = listOf("PROFILE", "PREFERENCE", "RELATIONSHIP", "CONVERSATION", "FACT")
+private val addableTypes = listOf("PROFILE", "PREFERENCE", "RELATIONSHIP", "FACT")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -69,7 +78,30 @@ fun MemoryListScreen(
 ) {
     val memories by viewModel.memories.collectAsState()
     val hidden by viewModel.hiddenIds.collectAsState()
-    MemoryListContent(companionName, memories.filter { it.id !in hidden }, onOpen)
+    val adding by viewModel.adding.collectAsState()
+    val addNote by viewModel.addNote.collectAsState()
+    var addOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(viewModel) {
+        viewModel.added.collect { addOpen = false }
+    }
+    MemoryListContent(
+        companionName = companionName,
+        memories = memories.filter { it.id !in hidden },
+        onOpen = onOpen,
+        onAdd = {
+            viewModel.clearAddNote()
+            addOpen = true
+        },
+    )
+    if (addOpen) {
+        AddMemoryDialog(
+            companionName = companionName,
+            saving = adding,
+            note = addNote,
+            onDismiss = { addOpen = false },
+            onSave = viewModel::add,
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -78,6 +110,7 @@ private fun MemoryListContent(
     companionName: String,
     memories: List<MemoryEntity>,
     onOpen: (String) -> Unit,
+    onAdd: () -> Unit,
 ) {
     var filter by remember { mutableStateOf<String?>(null) }
     val visible = memories.filter { filter == null || it.type == filter }
@@ -96,12 +129,16 @@ private fun MemoryListContent(
         Spacer(Modifier.height(8.dp))
         Text(
             if (memories.isEmpty()) {
-                "$name hasn't kept anything yet. Memories come from talking to her — she keeps what matters, not the whole conversation."
+                "$name hasn't kept anything yet. Memories come from talking to her, or from anything you tell her to remember."
             } else {
                 "${memories.size} things $name remembers about you. Edit or delete anything here — she'll forget it immediately."
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(onClick = onAdd, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Tell ${companionName.ifBlank { "her" }} something to remember")
+        }
         Spacer(Modifier.height(16.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("All") })
@@ -116,7 +153,7 @@ private fun MemoryListContent(
         Spacer(Modifier.height(16.dp))
         if (visible.isEmpty()) {
             Text(
-                if (memories.isEmpty()) "Nothing to edit until she notices something."
+                if (memories.isEmpty()) "Nothing here yet."
                 else "No ${memoryTypeLabel(filter.orEmpty()).lowercase()} memories.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -270,14 +307,40 @@ fun MemoryPrivacyScreen(
     val clearing by viewModel.clearing.collectAsState()
     val clearProgress by viewModel.clearProgress.collectAsState()
     val clearNotice by viewModel.clearNotice.collectAsState()
+    val paused by viewModel.paused.collectAsState()
+    val pauseSaving by viewModel.pauseSaving.collectAsState()
+    val exporting by viewModel.exporting.collectAsState()
+    val exportJson by viewModel.exportJson.collectAsState()
+    val privacyNote by viewModel.privacyNote.collectAsState()
+    val context = LocalContext.current
+    val saveExport = rememberLauncherForActivityResult(CreateDocument("application/json")) { uri ->
+        val json = exportJson
+        if (uri == null || json == null) {
+            viewModel.exportFinished(null)
+            return@rememberLauncherForActivityResult
+        }
+        val written = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) } != null
+        }.getOrDefault(false)
+        viewModel.exportFinished(if (written) "Your data is saved." else "Couldn't save the file.")
+    }
+    LaunchedEffect(exportJson) {
+        if (exportJson != null) saveExport.launch("my-data-${LocalDate.now()}.json")
+    }
     MemoryPrivacyContent(
         companionName = companionName,
         memories = memories,
         clearing = clearing,
         clearProgress = clearProgress,
         clearNotice = clearNotice,
+        paused = paused,
+        pauseSaving = pauseSaving,
+        exporting = exporting,
+        privacyNote = privacyNote,
         onBack = onBack,
         onClearAll = viewModel::clearAll,
+        onPause = viewModel::setPaused,
+        onExport = viewModel::prepareExport,
     )
 }
 
@@ -288,8 +351,14 @@ private fun MemoryPrivacyContent(
     clearing: Boolean,
     clearProgress: Pair<Int, Int>?,
     clearNotice: String?,
+    paused: Boolean,
+    pauseSaving: Boolean,
+    exporting: Boolean,
+    privacyNote: String?,
     onBack: () -> Unit,
     onClearAll: () -> Unit,
+    onPause: (Boolean) -> Unit,
+    onExport: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf(false) }
     val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
@@ -328,8 +397,41 @@ private fun MemoryPrivacyContent(
             StatTile("Importance", average.toString(), Modifier.weight(1f))
         }
         Spacer(Modifier.height(20.dp))
-        DisabledControl("Pause new memories", "No endpoint yet")
-        DisabledControl("Export my data", "No endpoint yet")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .semantics(mergeDescendants = true) {},
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Save new memories")
+                Text(
+                    if (paused) "Paused. $name keeps what she knows and saves nothing new."
+                    else "On. $name saves a few important facts from your chats.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = !paused, onCheckedChange = { on -> onPause(!on) }, enabled = !pauseSaving)
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onExport,
+            enabled = !exporting,
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+            Text(if (exporting) "Preparing…" else "Export my data")
+        }
+        Text(
+            "A JSON file with your profile, companions, conversations, memories, images, and usage. Passwords and tokens stay out.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!privacyNote.isNullOrBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(privacyNote.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.height(12.dp))
         val progress = clearProgress
         if (clearing && progress != null && progress.second > 0) {
@@ -364,6 +466,57 @@ private fun MemoryPrivacyContent(
             },
         )
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddMemoryDialog(
+    companionName: String,
+    saving: Boolean,
+    note: String?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit,
+) {
+    var content by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf("FACT") }
+    val name = companionName.ifBlank { "her" }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tell $name something to remember") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it.take(MEMORY_CONTENT_MAX) },
+                    label = { Text("What should $name remember?") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+                Spacer(Modifier.height(12.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    addableTypes.forEach { option ->
+                        FilterChip(
+                            selected = type == option,
+                            onClick = { type = option },
+                            label = { Text(memoryTypeLabel(option)) },
+                        )
+                    }
+                }
+                if (!note.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(note.orEmpty(), color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(content, type) }, enabled = !saving) {
+                Text(if (saving) "Saving…" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
@@ -405,19 +558,6 @@ private fun StatTile(label: String, value: String, modifier: Modifier = Modifier
     ) {
         Text(value, style = MaterialTheme.typography.titleLarge)
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun DisabledControl(label: String, reason: String) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .semantics(mergeDescendants = true) {},
-    ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
-        Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -479,7 +619,7 @@ private fun rememberedOn(epochMs: Long): String {
 @Composable
 private fun MemoryListPreview() {
     MyBaseTheme {
-        MemoryListContent("Aria", sampleMemories(), onOpen = {})
+        MemoryListContent("Aria", sampleMemories(), onOpen = {}, onAdd = {})
     }
 }
 
@@ -509,8 +649,14 @@ private fun MemoryPrivacyPreview() {
             clearing = false,
             clearProgress = null,
             clearNotice = null,
+            paused = false,
+            pauseSaving = false,
+            exporting = false,
+            privacyNote = null,
             onBack = {},
             onClearAll = {},
+            onPause = {},
+            onExport = {},
         )
     }
 }
