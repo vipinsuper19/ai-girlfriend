@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { avatarExtension, companionFilesIn, ownVoiceFile } from './file-types.js';
+import {
+    avatarExtension,
+    companionFilesIn,
+    generatedImageExtension,
+    ownUserFile,
+    ownVoiceFile,
+} from './file-types.js';
 
 test('avatar extensions follow the image type', () => {
     assert.equal(avatarExtension('image/jpeg'), '.jpg');
@@ -32,4 +38,12 @@ test('a deleted voice message removes only her own stored file', () => {
     assert.equal(ownVoiceFile(url, 4), null);
     assert.equal(ownVoiceFile('/uploads/voice/3/../4/x.m4a', 3), null);
     assert.equal(ownVoiceFile(null, 3), null);
+});
+
+test('a gallery image is found only in her own folder', () => {
+    const url = '/uploads/images/3/0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.png';
+    assert.equal(ownUserFile(url, 'images', 3), '0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.png');
+    assert.equal(ownUserFile(url, 'voice', 3), null);
+    assert.equal(generatedImageExtension('image/jpeg'), '.jpg');
+    assert.equal(generatedImageExtension(undefined), '.png');
 });

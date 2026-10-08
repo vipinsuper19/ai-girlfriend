@@ -3,6 +3,7 @@
 // Chat and embedding providers are replaced so no AI key is needed.
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -39,6 +40,16 @@ const embedding = {
         return { embedding: Array(1536).fill(0.01), provider: 'GEMINI', model: 'smoke', dimensions: 1536 };
     },
 };
+const { IMAGE_PROVIDER } = await load('images/image.provider.js');
+const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+);
+const images = {
+    async generateImage() {
+        return { bytes: PNG, mimeType: 'image/png', provider: 'GEMINI', model: 'smoke' };
+    },
+};
 const outbox = [];
 const mail = {
     configured: true,
@@ -52,6 +63,7 @@ const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(CHAT_PROVIDER).useValue(chat)
     .overrideProvider(EMBEDDING_PROVIDER).useValue(embedding)
     .overrideProvider(MailService).useValue(mail)
+    .overrideProvider(IMAGE_PROVIDER).useValue(images)
     .compile();
 
 const app = moduleRef.createNestApplication({ logger: ['error'] });
@@ -171,6 +183,32 @@ await step('message, then regenerate her latest reply', async () => {
     assert.equal(media.status, 400);
 });
 
+await step('images: create, list, open, delete', async () => {
+    const made = await call('POST', '/images', { token, body: { companionId, prompt: 'on a beach at sunset' } });
+    assert.equal(made.status, 201, JSON.stringify(made.raw));
+    assert.equal(made.data.status, 'COMPLETED');
+    assert.match(made.data.imageUrl, /^\/uploads\/images\//);
+    const onDisk = join(process.cwd(), made.data.imageUrl);
+    assert.equal(existsSync(onDisk), true);
+    const listed = await call('GET', `/images?companionId=${companionId}`, { token });
+    assert.deepEqual(listed.data.map((i) => i.id), [made.data.id]);
+    assert.equal((await call('GET', `/images/${made.data.id}`, { token })).status, 200);
+    const usage = await call('GET', '/usage/summary', { token });
+    assert.ok(JSON.stringify(usage.data).includes('IMAGE_GENERATIONS'), JSON.stringify(usage.raw));
+    assert.equal((await call('DELETE', `/images/${made.data.id}`, { token })).status, 200);
+    assert.equal((await call('GET', `/images/${made.data.id}`, { token })).status, 404);
+    assert.equal(existsSync(onDisk), false);
+
+    const young = await call('POST', '/avatars', {
+        token,
+        body: { name: 'Teen', gender: 'FEMALE', appearance: { age: 16 } },
+    });
+    assert.equal(young.status, 201, JSON.stringify(young.raw));
+    const refused = await call('POST', '/images', { token, body: { companionId: young.data.id } });
+    assert.equal(refused.status, 400);
+    assert.equal((await call('DELETE', `/avatars/${young.data.id}`, { token })).status, 200);
+});
+
 await step('export leaves out secrets', async () => {
     const r = await call('GET', '/users/me/export', { token });
     assert.equal(r.status, 200, JSON.stringify(r.raw));
@@ -178,7 +216,8 @@ await step('export leaves out secrets', async () => {
     assert.equal(text.includes('passwordHash'), false);
     assert.equal(r.data.memories.length, 1);
     assert.equal(r.data.messages.length, 2);
-    assert.equal(r.data.companions.length, 1);
+    assert.deepEqual(r.data.companions.filter((c) => c.status === 'ACTIVE').map((c) => c.id), [companionId]);
+    assert.equal(r.data.images.length, 0);
 });
 
 await step('forgot and reset password, once', async () => {

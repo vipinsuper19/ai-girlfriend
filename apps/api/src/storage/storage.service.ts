@@ -14,7 +14,13 @@ import {
 
 import { join } from 'path';
 
-import { avatarExtension, companionFilesIn, ownVoiceFile } from './file-types.js';
+import {
+    avatarExtension,
+    companionFilesIn,
+    generatedImageExtension,
+    ownUserFile,
+    ownVoiceFile,
+} from './file-types.js';
 
 export interface StorageSaveOptions {
     directory: string;
@@ -121,16 +127,18 @@ export class StorageService {
 
     /**
      * Uploads are public by URL, so deleting an account also deletes the
-     * voice notes and portraits it stored.
+     * voice notes, gallery images, and portraits it stored.
      */
     async removeUserFiles(
         userId: number,
         companionIds: readonly number[],
     ): Promise<void> {
-        await rm(
-            join(this.uploadRoot, 'voice', String(userId)),
-            { recursive: true, force: true },
-        );
+        for (const dir of ['voice', 'images']) {
+            await rm(
+                join(this.uploadRoot, dir, String(userId)),
+                { recursive: true, force: true },
+            );
+        }
 
         const portraits = join(this.uploadRoot, 'companions');
         const names = await readdir(portraits).catch(() => [] as string[]);
@@ -145,6 +153,26 @@ export class StorageService {
         if (!name) return;
         await rm(
             join(this.uploadRoot, 'voice', String(userId), name),
+            { force: true },
+        );
+    }
+
+    async saveGeneratedImage(
+        userId: number,
+        image: Buffer,
+        mimeType: string,
+    ): Promise<string> {
+        return this.save(image, {
+            directory: `images/${userId}`,
+            fileName: `${randomUUID()}${generatedImageExtension(mimeType)}`,
+        });
+    }
+
+    async removeImageFile(userId: number, url: unknown): Promise<void> {
+        const name = ownUserFile(url, 'images', userId);
+        if (!name) return;
+        await rm(
+            join(this.uploadRoot, 'images', String(userId), name),
             { force: true },
         );
     }

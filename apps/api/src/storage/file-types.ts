@@ -25,11 +25,25 @@ export function companionFilesIn(
     );
 }
 
-/** The file name of a voice note this API stored for this user, or null for any other path. */
-export function ownVoiceFile(url: unknown, userId: number): string | null {
+/** The file name of a file this API stored for this user under `dir`, or null for any other path. */
+export function ownUserFile(url: unknown, dir: 'voice' | 'images', userId: number): string | null {
     if (typeof url !== 'string') return null;
-    const prefix = `/uploads/voice/${userId}/`;
+    const prefix = `/uploads/${dir}/${userId}/`;
     if (!url.startsWith(prefix)) return null;
     const name = url.slice(prefix.length);
     return /^[0-9a-f-]+\.[a-z0-9]+$/i.test(name) ? name : null;
+}
+
+export function ownVoiceFile(url: unknown, userId: number): string | null {
+    return ownUserFile(url, 'voice', userId);
+}
+
+const IMAGE_EXTENSIONS: Record<string, string> = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/webp': '.webp',
+};
+
+export function generatedImageExtension(mimeType: string | null | undefined): string {
+    return IMAGE_EXTENSIONS[mimeType ?? ''] ?? '.png';
 }

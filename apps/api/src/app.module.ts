@@ -14,6 +14,7 @@ import { VoiceModule } from './voice/voice.module.js';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 import { UsageModule } from "./usage/usage.module.js";
 import { MailModule } from './mail/mail.module.js';
+import { ImagesModule } from './images/images.module.js';
 @Module({
   imports: [
     CommonModule,
@@ -30,6 +31,7 @@ import { MailModule } from './mail/mail.module.js';
     SubscriptionsModule,
     UsageModule,
     MailModule,
+    ImagesModule,
   ],
 })
 export class AppModule { }
