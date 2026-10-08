@@ -126,6 +126,35 @@ FAILED     = "FAILED"
 CANCELLED  = "CANCELLED"
 }
 
+enum SubscriptionPlan {
+@@type("pg/text@1")
+
+FREE         = "FREE"
+PREMIUM      = "PREMIUM"
+PREMIUM_PLUS = "PREMIUM_PLUS"
+}
+
+enum SubscriptionStatus {
+@@type("pg/text@1")
+
+ACTIVE    = "ACTIVE"
+TRIALING  = "TRIALING"
+PAST_DUE  = "PAST_DUE"
+CANCELED  = "CANCELED"
+EXPIRED   = "EXPIRED"
+}
+
+enum UsageFeature {
+@@type("pg/text@1")
+
+TEXT_TOKENS          = "TEXT_TOKENS"
+MESSAGES             = "MESSAGES"
+IMAGE_GENERATIONS    = "IMAGE_GENERATIONS"
+VOICE_MINUTES        = "VOICE_MINUTES"
+AUDIO_CALL_MINUTES   = "AUDIO_CALL_MINUTES"
+VIDEO_CALL_MINUTES   = "VIDEO_CALL_MINUTES"
+}
+
 
 
 
@@ -146,6 +175,11 @@ createdAt    TimestamptzString   @default(now())
 updatedAt    temporal.updatedAtString()
 deletedAt    TimestamptzString?
 
+// Set while the user has paused new memories.
+memoryPausedAt         TimestamptzString?
+// Set while the user wants push notifications.
+notificationsEnabledAt TimestamptzString?
+
 accounts     Account[]
 sessions     Session[]
 companions   Companion[]
@@ -153,6 +187,9 @@ conversations Conversation[]
 memories      Memory[]
 imageGenerations ImageGeneration[]
 calls Call[]
+subscriptions Subscription[]
+usageRecords UsageRecord[]
+deviceTokens DeviceToken[]
 
 @@index([status])
 @@index([createdAt])
@@ -187,6 +224,26 @@ onDelete: Cascade
 // ============================================================
 // USER SESSIONS
 // ============================================================
+
+model DeviceToken {
+id        Int                 @id @default(autoincrement())
+userId    Int
+
+// FCM registration token for one installed app.
+token     String              @unique
+platform  String
+
+createdAt TimestamptzString   @default(now())
+updatedAt temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([userId])
+}
 
 model Session {
 id           Int                 @id @default(autoincrement())
@@ -650,3 +707,60 @@ onDelete: SetNull
 @@index([createdAt])
 @@index([startedAt])
 }
+
+// ============================================================
+// SUBSCRIPTION
+// ============================================================
+
+model Subscription {
+id                     Int                 @id @default(autoincrement())
+userId                 Int
+
+plan                   SubscriptionPlan    @default(FREE)
+provider               String?
+providerSubscriptionId String?
+status                 SubscriptionStatus  @default(ACTIVE)
+
+startedAt              TimestamptzString   @default(now())
+expiresAt              TimestamptzString?
+
+createdAt              TimestamptzString   @default(now())
+updatedAt              temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([userId])
+@@index([userId, status])
+@@index([providerSubscriptionId])
+@@index([expiresAt])
+}
+
+// ============================================================
+// USAGE RECORD
+// ============================================================
+
+model UsageRecord {
+id        Int           @id @default(autoincrement())
+userId    Int
+
+feature   UsageFeature
+quantity  Int
+metadata  Json?
+
+createdAt TimestamptzString @default(now())
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([userId, feature])
+@@index([userId, createdAt])
+@@index([feature, createdAt])
+}
+

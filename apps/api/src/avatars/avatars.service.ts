@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,19 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateAvatarDto } from './dto/create-avatar.dto.js';
 import type { UpdateAvatarDto } from './dto/update-avatar.dto.js';
 import { StorageService } from '../storage/storage.service.js';
+import {
+    appearanceFields,
+    type FieldPick,
+    ownAvatarUrl,
+    personalityFields,
+    voiceFields,
+} from './companion-fields.js';
+import {
+    archiveFields,
+    listStatus,
+    restoreFields,
+    restoreProblem,
+} from './companion-status.js';
 
 @Injectable()
 export class AvatarsService {
@@ -24,6 +38,9 @@ export class AvatarsService {
         dto: CreateAvatarDto,
     ) {
         const numericUserId = Number(userId);
+        const appearance = checked(appearanceFields(dto.appearance));
+        const personality = checked(personalityFields(dto.personality));
+        const voice = checked(voiceFields(dto.voice));
 
         /*
          * Prisma Next generated contract API.
@@ -41,47 +58,47 @@ export class AvatarsService {
         if (dto.appearance) {
             await this.db.orm.public.CompanionAppearance.create({
                 companionId: companion.id,
-                age: dto.appearance.age ?? null,
-                ethnicity: dto.appearance.ethnicity ?? null,
-                skinTone: dto.appearance.skinTone ?? null,
-                hairColor: dto.appearance.hairColor ?? null,
-                hairStyle: dto.appearance.hairStyle ?? null,
-                eyeColor: dto.appearance.eyeColor ?? null,
-                bodyType: dto.appearance.bodyType ?? null,
-                height: dto.appearance.height ?? null,
-                clothingStyle: dto.appearance.clothingStyle ?? null,
-                avatarUrl: dto.appearance.avatarUrl ?? null,
-                imagePrompt: dto.appearance.imagePrompt ?? null,
-                metadata: dto.appearance.metadata ?? null,
+                age: appearance.age ?? null,
+                ethnicity: appearance.ethnicity ?? null,
+                skinTone: appearance.skinTone ?? null,
+                hairColor: appearance.hairColor ?? null,
+                hairStyle: appearance.hairStyle ?? null,
+                eyeColor: appearance.eyeColor ?? null,
+                bodyType: appearance.bodyType ?? null,
+                height: appearance.height ?? null,
+                clothingStyle: appearance.clothingStyle ?? null,
+                avatarUrl: null,
+                imagePrompt: appearance.imagePrompt ?? null,
+                metadata: appearance.metadata ?? null,
             });
         }
 
         if (dto.personality) {
             await this.db.orm.public.CompanionPersonality.create({
                 companionId: companion.id,
-                traits: dto.personality.traits ?? [],
-                interests: dto.personality.interests ?? [],
-                likes: dto.personality.likes ?? null,
-                dislikes: dto.personality.dislikes ?? null,
-                humorLevel: dto.personality.humorLevel ?? 5,
-                flirtLevel: dto.personality.flirtLevel ?? 5,
-                empathyLevel: dto.personality.empathyLevel ?? 7,
-                romanceLevel: dto.personality.romanceLevel ?? 5,
+                traits: personality.traits ?? [],
+                interests: personality.interests ?? [],
+                likes: personality.likes ?? null,
+                dislikes: personality.dislikes ?? null,
+                humorLevel: personality.humorLevel ?? 5,
+                flirtLevel: personality.flirtLevel ?? 5,
+                empathyLevel: personality.empathyLevel ?? 7,
+                romanceLevel: personality.romanceLevel ?? 5,
                 communicationStyle:
-                    dto.personality.communicationStyle ?? null,
-                metadata: dto.personality.metadata ?? null,
+                    personality.communicationStyle ?? null,
+                metadata: personality.metadata ?? null,
             });
         }
 
-        if (dto.voice?.provider && dto.voice?.voiceId) {
+        if (voice.provider && voice.voiceId) {
             await this.db.orm.public.CompanionVoice.create({
                 companionId: companion.id,
-                provider: dto.voice.provider,
-                voiceId: dto.voice.voiceId,
-                language: dto.voice.language ?? 'en',
-                speed: dto.voice.speed ?? 1,
-                pitch: dto.voice.pitch ?? 1,
-                settings: dto.voice.settings ?? null,
+                provider: voice.provider,
+                voiceId: voice.voiceId,
+                language: voice.language ?? 'en',
+                speed: voice.speed ?? 1,
+                pitch: voice.pitch ?? 1,
+                settings: voice.settings ?? null,
             });
         }
 
@@ -92,11 +109,14 @@ export class AvatarsService {
 
     }
 
-    async findAll(userId: string) {
+    async findAll(
+        userId: string,
+        status?: string | null,
+    ) {
         return this.db.orm.public.Companion
             .where({
                 userId: Number(userId),
-                status: 'ACTIVE',
+                status: listStatus(status),
             })
             .all();
     }
@@ -164,6 +184,19 @@ export class AvatarsService {
             numericCompanionId,
         );
 
+        const appearance = dto.appearance
+            ? checked(appearanceFields(dto.appearance))
+            : null;
+        if (appearance && 'avatarUrl' in appearance) {
+            appearance.avatarUrl = ownAvatarUrl(appearance.avatarUrl, numericCompanionId);
+        }
+        const personality = dto.personality
+            ? checked(personalityFields(dto.personality))
+            : null;
+        const voice = dto.voice
+            ? checked(voiceFields(dto.voice))
+            : null;
+
         const companionData: Record<string, unknown> = {};
 
         if (dto.name !== undefined) {
@@ -191,7 +224,7 @@ export class AvatarsService {
                 .update(companionData);
         }
 
-        if (dto.appearance) {
+        if (appearance) {
             const existingAppearance =
                 await this.db.orm.public.CompanionAppearance
                     .where({
@@ -200,20 +233,22 @@ export class AvatarsService {
                     .first();
 
             if (existingAppearance) {
-                await this.db.orm.public.CompanionAppearance
-                    .where({
-                        companionId: numericCompanionId,
-                    })
-                    .update(dto.appearance);
+                if (Object.keys(appearance).length > 0) {
+                    await this.db.orm.public.CompanionAppearance
+                        .where({
+                            companionId: numericCompanionId,
+                        })
+                        .update(appearance);
+                }
             } else {
                 await this.db.orm.public.CompanionAppearance.create({
                     companionId: numericCompanionId,
-                    ...dto.appearance,
+                    ...appearance,
                 });
             }
         }
 
-        if (dto.personality) {
+        if (personality) {
             const existingPersonality =
                 await this.db.orm.public.CompanionPersonality
                     .where({
@@ -222,30 +257,32 @@ export class AvatarsService {
                     .first();
 
             if (existingPersonality) {
-                await this.db.orm.public.CompanionPersonality
-                    .where({
-                        companionId: numericCompanionId,
-                    })
-                    .update(dto.personality);
+                if (Object.keys(personality).length > 0) {
+                    await this.db.orm.public.CompanionPersonality
+                        .where({
+                            companionId: numericCompanionId,
+                        })
+                        .update(personality);
+                }
             } else {
                 await this.db.orm.public.CompanionPersonality.create({
                     companionId: numericCompanionId,
-                    traits: dto.personality.traits ?? [],
-                    interests: dto.personality.interests ?? [],
-                    likes: dto.personality.likes ?? null,
-                    dislikes: dto.personality.dislikes ?? null,
-                    humorLevel: dto.personality.humorLevel ?? 5,
-                    flirtLevel: dto.personality.flirtLevel ?? 5,
-                    empathyLevel: dto.personality.empathyLevel ?? 7,
-                    romanceLevel: dto.personality.romanceLevel ?? 5,
+                    traits: personality.traits ?? [],
+                    interests: personality.interests ?? [],
+                    likes: personality.likes ?? null,
+                    dislikes: personality.dislikes ?? null,
+                    humorLevel: personality.humorLevel ?? 5,
+                    flirtLevel: personality.flirtLevel ?? 5,
+                    empathyLevel: personality.empathyLevel ?? 7,
+                    romanceLevel: personality.romanceLevel ?? 5,
                     communicationStyle:
-                        dto.personality.communicationStyle ?? null,
-                    metadata: dto.personality.metadata ?? null,
+                        personality.communicationStyle ?? null,
+                    metadata: personality.metadata ?? null,
                 });
             }
         }
 
-        if (dto.voice) {
+        if (voice) {
             const existingVoice =
                 await this.db.orm.public.CompanionVoice
                     .where({
@@ -254,23 +291,25 @@ export class AvatarsService {
                     .first();
 
             if (existingVoice) {
-                await this.db.orm.public.CompanionVoice
-                    .where({
-                        companionId: numericCompanionId,
-                    })
-                    .update(dto.voice);
+                if (Object.keys(voice).length > 0) {
+                    await this.db.orm.public.CompanionVoice
+                        .where({
+                            companionId: numericCompanionId,
+                        })
+                        .update(voice);
+                }
             } else if (
-                dto.voice.provider &&
-                dto.voice.voiceId
+                voice.provider &&
+                voice.voiceId
             ) {
                 await this.db.orm.public.CompanionVoice.create({
                     companionId: numericCompanionId,
-                    provider: dto.voice.provider,
-                    voiceId: dto.voice.voiceId,
-                    language: dto.voice.language ?? 'en',
-                    speed: dto.voice.speed ?? 1,
-                    pitch: dto.voice.pitch ?? 1,
-                    settings: dto.voice.settings ?? null,
+                    provider: voice.provider,
+                    voiceId: voice.voiceId,
+                    language: voice.language ?? 'en',
+                    speed: voice.speed ?? 1,
+                    pitch: voice.pitch ?? 1,
+                    settings: voice.settings ?? null,
                 });
             }
         }
@@ -299,13 +338,50 @@ export class AvatarsService {
                 id: numericCompanionId,
                 userId: numericUserId,
             })
-            .update({
-                status: 'ARCHIVED',
-            });
+            .update(
+                archiveFields(new Date().toISOString()),
+            );
 
         return {
             message: 'Companion archived successfully',
         };
+
+    }
+
+    async restore(
+        userId: string,
+        companionId: string,
+    ) {
+        const numericUserId = Number(userId);
+        const numericCompanionId = Number(companionId);
+
+        const companion =
+            await this.db.orm.public.Companion
+                .where({
+                    id: numericCompanionId,
+                    userId: numericUserId,
+                })
+                .first();
+
+        if (!companion || restoreProblem(companion.status)) {
+            throw new NotFoundException(
+                'Companion not found',
+            );
+        }
+
+        if (companion.status !== 'ACTIVE') {
+            await this.db.orm.public.Companion
+                .where({
+                    id: numericCompanionId,
+                    userId: numericUserId,
+                })
+                .update(restoreFields());
+        }
+
+        return this.findOne(
+            numericUserId,
+            numericCompanionId,
+        );
 
     }
 
@@ -374,4 +450,11 @@ export class AvatarsService {
             appearance,
         };
     }
+}
+
+function checked(pick: FieldPick): Record<string, any> {
+    if (pick.problem) {
+        throw new BadRequestException(pick.problem);
+    }
+    return pick.data;
 }

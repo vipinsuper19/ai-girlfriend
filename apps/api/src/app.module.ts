@@ -10,7 +10,12 @@ import { ConversationsModule } from './conversations/conversations.module.js';
 import { MessagesModule } from './messages/messages.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { MemoriesModule } from './memories/memories.module.js';
-
+import { VoiceModule } from './voice/voice.module.js';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
+import { UsageModule } from "./usage/usage.module.js";
+import { MailModule } from './mail/mail.module.js';
+import { ImagesModule } from './images/images.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 @Module({
   imports: [
     CommonModule,
@@ -23,6 +28,12 @@ import { MemoriesModule } from './memories/memories.module.js';
     MessagesModule,
     AiModule,
     MemoriesModule,
+    VoiceModule,
+    SubscriptionsModule,
+    UsageModule,
+    MailModule,
+    ImagesModule,
+    NotificationsModule,
   ],
 })
 export class AppModule { }

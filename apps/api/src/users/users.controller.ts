@@ -28,6 +28,13 @@ export class UsersController {
         );
     }
 
+    @Get('me/export')
+    async exportMe(@CurrentUser() user: JwtPayload) {
+        return this.usersService.exportMe(
+            String(user.sub),
+        );
+    }
+
     @Patch('me')
     async updateMe(
         @CurrentUser() user: JwtPayload,

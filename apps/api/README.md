@@ -31,6 +31,62 @@
 $ pnpm install
 ```
 
+Apply the schema to the database after pulling (this branch uses `DeviceToken` and `ImageGeneration`):
+
+```bash
+$ pnpm --filter @ai-girlfriend/api exec prisma db update
+```
+
+## Configuration
+
+Every feature below stays off until its variables are set. Unconfigured features answer `503` and the
+clients hide the matching controls, so nothing is faked.
+
+| Variable | Used for |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Session tokens |
+| `JWT_RESET_SECRET` | Password reset tokens. Falls back to a value derived from `JWT_ACCESS_SECRET` |
+| `APP_URL` | Web origin used in reset links, e.g. `https://app.example.com` |
+| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL` mail is written to the log, which is for development only |
+| `GOOGLE_CLIENT_IDS` | Comma-separated OAuth client ids accepted by `POST /auth/google` (web) |
+| `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
+| `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL`, `GEMINI_STT_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_IMAGE_MODEL` | Chat, voice, and images |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Android Publisher API access for verifying purchases. Raw JSON or base64 |
+| `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
+| `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
+| `CORS_ORIGIN`, `PORT` | HTTP server |
+
+### Google Play subscriptions
+
+A plan changes only after `POST /api/v1/subscriptions/google-play` fetches the purchase from Google,
+finds this user's obfuscated account id on it (from `GET /subscriptions/google-play`), and sees an
+active, unexpired line item for the product. The server then acknowledges the purchase. Real-time
+developer notifications are not wired yet, so renewals and cancellations reach the server when the app
+re-sends owned purchases on the Plan screen; a lapsed `expiresAt` drops the user back to Free.
+
+### Routes added for the clients
+
+All under `/api/v1`, wrapped as `{ data }`.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /auth/google` | Exchange a Google or Firebase ID token for a session |
+| `POST /auth/password/forgot` | Always `200` with the same body; mails a 30-minute reset link when the account exists |
+| `POST /auth/password/reset/check` | `{ valid }` for a token without using it, so link scanners cannot spend it |
+| `POST /auth/password/reset` | Set a new password; ends every session |
+| `POST /auth/email` | Change the sign-in email (requires the current password) |
+| `GET /users/me/export` | Everything stored for the account as JSON |
+| `PATCH /users/me` | Also takes `memoryPaused` and `notificationsEnabled` |
+| `POST /memories` | Add a memory by hand |
+| `POST /messages/:id/regenerate` | Replace her newest reply |
+| `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
+| `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
+| `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
+
+Neither auth route is rate limited yet; put a limit in front of `password/forgot` before going public.
+
 ## Compile and run the project
 
 ```bash

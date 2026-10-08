@@ -1,18 +1,23 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { CreateMemoryDto } from './dto/create-memory.dto.js';
 import { ListMemoriesDto } from './dto/list-memories.dto.js';
 import { UpdateMemoryDto } from './dto/update-memory.dto.js';
-import { MemorySearchService } from './memory-search.service.js';
+import { MemoryEmbeddingService } from './memory-embedding.service.js';
+import { memoryListWhere, needsReembedding } from './memory-list.js';
+
+const USER_MEMORY_IMPORTANCE = 7;
 
 @Injectable()
 export class MemoriesService {
     constructor(
         private readonly prisma: PrismaService,
-        private readonly memorySearchService: MemorySearchService,
+        private readonly memoryEmbeddingService: MemoryEmbeddingService,
     ) { }
 
     private get db(): any {
@@ -23,58 +28,64 @@ export class MemoriesService {
         userId: string | number,
         query: ListMemoriesDto,
     ) {
+        return this.db.orm.public.Memory
+            .where(memoryListWhere(userId, query))
+            .orderBy((memory: any) =>
+                memory.importance.desc(),
+            )
+            .limit(query.limit ?? 50)
+            .all();
+    }
+
+    /** A memory the user wrote herself. She treats it like one she noticed. */
+    async create(
+        userId: string | number,
+        dto: CreateMemoryDto,
+    ) {
         const numericUserId = Number(userId);
 
-        const embMemories =
-            await this.memorySearchService.searchRelevantMemories(
-                numericUserId,
-                query.companionId ?? 1,
-                'Where should I travel for a mountain vacation?',
-            );
-
-        console.log(embMemories);
-
-
-        const memories =
-            await this.db.orm.public.Memory
+        const companion =
+            await this.db.orm.public.Companion
                 .where({
+                    id: dto.companionId,
                     userId: numericUserId,
                     status: 'ACTIVE',
-                    deletedAt: null,
                 })
-                .orderBy((memory: any) =>
-                    memory.importance.desc(),
-                )
-                .limit(query.limit ?? 50)
-                .all();
+                .first();
 
-        return memories.filter((memory: any) => {
-            if (
-                query.type &&
-                memory.type !== query.type
-            ) {
-                return false;
-            }
+        if (!companion) {
+            throw new NotFoundException(
+                'Companion not found',
+            );
+        }
 
-            if (
-                query.companionId &&
-                memory.companionId !==
-                Number(query.companionId)
-            ) {
-                return false;
-            }
+        const now = new Date().toISOString();
+        const content = dto.content.trim();
 
-            if (
-                query.conversationId &&
-                memory.conversationId !==
-                Number(query.conversationId)
-            ) {
-                return false;
-            }
-
-            return true;
+        const memory = await this.db.orm.public.Memory.create({
+            userId: numericUserId,
+            companionId: dto.companionId,
+            conversationId: null,
+            type: dto.type,
+            status: 'ACTIVE',
+            source: 'USER_INPUT',
+            content,
+            metadata: null,
+            importance: dto.importance ?? USER_MEMORY_IMPORTANCE,
+            confidence: 1,
+            accessCount: 0,
+            lastAccessedAt: null,
+            expiresAt: null,
+            updatedAt: now,
+            deletedAt: null,
         });
 
+        void this.memoryEmbeddingService.generateForMemory(
+            memory.id,
+            content,
+        );
+
+        return memory;
     }
 
     async findOne(
@@ -112,7 +123,7 @@ export class MemoriesService {
         const numericUserId = Number(userId);
         const numericMemoryId = Number(memoryId);
 
-        await this.findOne(
+        const existing = await this.findOne(
             numericUserId,
             numericMemoryId,
         );
@@ -123,7 +134,7 @@ export class MemoriesService {
             const content = dto.content.trim();
 
             if (!content) {
-                throw new NotFoundException(
+                throw new BadRequestException(
                     'Memory content cannot be empty',
                 );
             }
@@ -157,7 +168,7 @@ export class MemoriesService {
 
         const now = new Date().toISOString();
 
-        return this.db.orm.public.Memory
+        const updated = await this.db.orm.public.Memory
             .where({
                 id: numericMemoryId,
                 userId: numericUserId,
@@ -169,6 +180,52 @@ export class MemoriesService {
                 updatedAt: now,
             });
 
+        const content = data['content'] as string | undefined;
+        if (needsReembedding(existing.content, content)) {
+            void this.memoryEmbeddingService.generateForMemory(
+                numericMemoryId,
+                content as string,
+                { replace: true },
+            );
+        }
+
+        return updated;
+    }
+
+    async removeAll(
+        userId: string | number,
+        companionId?: number,
+    ) {
+        const where: Record<string, unknown> = {
+            userId: Number(userId),
+            status: 'ACTIVE',
+            deletedAt: null,
+        };
+
+        if (companionId != null) {
+            where.companionId = companionId;
+        }
+
+        const rows =
+            await this.db.orm.public.Memory
+                .where(where)
+                .all();
+
+        if (rows.length === 0) {
+            return { deleted: 0 };
+        }
+
+        const now = new Date().toISOString();
+
+        await this.db.orm.public.Memory
+            .where(where)
+            .update({
+                status: 'DELETED',
+                deletedAt: now,
+                updatedAt: now,
+            });
+
+        return { deleted: rows.length };
     }
 
     async remove(

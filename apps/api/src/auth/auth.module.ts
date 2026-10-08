@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { GoogleTokenService } from './google-token.service.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 
 @Global()
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
     controllers: [AuthController],
     providers: [
         AuthService,
+        GoogleTokenService,
         JwtAuthGuard
     ],
     exports: [

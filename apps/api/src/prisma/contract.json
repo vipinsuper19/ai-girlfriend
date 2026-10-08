@@ -32,6 +32,10 @@
       "model": "Conversation",
       "namespace": "public"
     },
+    "deviceToken": {
+      "model": "DeviceToken",
+      "namespace": "public"
+    },
     "imageGeneration": {
       "model": "ImageGeneration",
       "namespace": "public"
@@ -50,6 +54,14 @@
     },
     "session": {
       "model": "Session",
+      "namespace": "public"
+    },
+    "subscription": {
+      "model": "Subscription",
+      "namespace": "public"
+    },
+    "usageRecord": {
+      "model": "UsageRecord",
       "namespace": "public"
     },
     "user": {
@@ -303,6 +315,77 @@
               {
                 "name": "SYSTEM",
                 "value": "SYSTEM"
+              }
+            ]
+          },
+          "SubscriptionPlan": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "FREE",
+                "value": "FREE"
+              },
+              {
+                "name": "PREMIUM",
+                "value": "PREMIUM"
+              },
+              {
+                "name": "PREMIUM_PLUS",
+                "value": "PREMIUM_PLUS"
+              }
+            ]
+          },
+          "SubscriptionStatus": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "ACTIVE",
+                "value": "ACTIVE"
+              },
+              {
+                "name": "TRIALING",
+                "value": "TRIALING"
+              },
+              {
+                "name": "PAST_DUE",
+                "value": "PAST_DUE"
+              },
+              {
+                "name": "CANCELED",
+                "value": "CANCELED"
+              },
+              {
+                "name": "EXPIRED",
+                "value": "EXPIRED"
+              }
+            ]
+          },
+          "UsageFeature": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "TEXT_TOKENS",
+                "value": "TEXT_TOKENS"
+              },
+              {
+                "name": "MESSAGES",
+                "value": "MESSAGES"
+              },
+              {
+                "name": "IMAGE_GENERATIONS",
+                "value": "IMAGE_GENERATIONS"
+              },
+              {
+                "name": "VOICE_MINUTES",
+                "value": "VOICE_MINUTES"
+              },
+              {
+                "name": "AUDIO_CALL_MINUTES",
+                "value": "AUDIO_CALL_MINUTES"
+              },
+              {
+                "name": "VIDEO_CALL_MINUTES",
+                "value": "VIDEO_CALL_MINUTES"
               }
             ]
           },
@@ -1574,6 +1657,93 @@
               "table": "conversation"
             }
           },
+          "DeviceToken": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "platform": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "token": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "platform": {
+                  "column": "platform"
+                },
+                "token": {
+                  "column": "token"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "deviceToken"
+            }
+          },
           "ImageGeneration": {
             "fields": {
               "companionId": {
@@ -2492,6 +2662,238 @@
               "table": "session"
             }
           },
+          "Subscription": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "plan": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "SubscriptionPlan",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "provider": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "providerSubscriptionId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "startedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "SubscriptionStatus",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "expiresAt": {
+                  "column": "expiresAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "plan": {
+                  "column": "plan"
+                },
+                "provider": {
+                  "column": "provider"
+                },
+                "providerSubscriptionId": {
+                  "column": "providerSubscriptionId"
+                },
+                "startedAt": {
+                  "column": "startedAt"
+                },
+                "status": {
+                  "column": "status"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "subscription"
+            }
+          },
+          "UsageRecord": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "feature": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "UsageFeature",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "metadata": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/json@1",
+                  "kind": "scalar"
+                }
+              },
+              "quantity": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "feature": {
+                  "column": "feature"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "metadata": {
+                  "column": "metadata"
+                },
+                "quantity": {
+                  "column": "quantity"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "usageRecord"
+            }
+          },
           "User": {
             "fields": {
               "avatarUrl": {
@@ -2533,6 +2935,20 @@
                 "nullable": false,
                 "type": {
                   "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "memoryPausedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "notificationsEnabledAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
                   "kind": "scalar"
                 }
               },
@@ -2625,6 +3041,21 @@
                   "namespace": "public"
                 }
               },
+              "deviceTokens": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "DeviceToken",
+                  "namespace": "public"
+                }
+              },
               "imageGenerations": {
                 "cardinality": "1:N",
                 "on": {
@@ -2669,6 +3100,36 @@
                   "model": "Session",
                   "namespace": "public"
                 }
+              },
+              "subscriptions": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "Subscription",
+                  "namespace": "public"
+                }
+              },
+              "usageRecords": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "UsageRecord",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
@@ -2690,6 +3151,12 @@
                 },
                 "id": {
                   "column": "id"
+                },
+                "memoryPausedAt": {
+                  "column": "memoryPausedAt"
+                },
+                "notificationsEnabledAt": {
+                  "column": "notificationsEnabledAt"
                 },
                 "passwordHash": {
                   "column": "passwordHash"
@@ -3687,6 +4154,89 @@
               },
               "uniques": []
             },
+            "deviceToken": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "platform": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "token": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "deviceToken"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "deviceToken_userId_idx_a489d58a",
+                  "prefix": "deviceToken_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "token"
+                  ]
+                }
+              ]
+            },
             "imageGeneration": {
               "checks": [
                 {
@@ -4604,6 +5154,281 @@
                 }
               ]
             },
+            "subscription": {
+              "checks": [
+                {
+                  "expression": "\"plan\" IN ('FREE', 'PREMIUM', 'PREMIUM_PLUS')",
+                  "name": "subscription_plan_check_0f874b4b",
+                  "prefix": "subscription_plan_check"
+                },
+                {
+                  "expression": "\"status\" IN ('ACTIVE', 'TRIALING', 'PAST_DUE', 'CANCELED', 'EXPIRED')",
+                  "name": "subscription_status_check_21af5e2c",
+                  "prefix": "subscription_status_check"
+                }
+              ],
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "expiresAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "id": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "plan": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "FREE"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "SubscriptionPlan",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "provider": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "providerSubscriptionId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "startedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "ACTIVE"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "SubscriptionStatus",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "subscription"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "expiresAt"
+                  ],
+                  "name": "subscription_expiresAt_idx_6b6b8c10",
+                  "prefix": "subscription_expiresAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "providerSubscriptionId"
+                  ],
+                  "name": "subscription_providerSubscriptionId_idx_3f5a8174",
+                  "prefix": "subscription_providerSubscriptionId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "subscription_userId_idx_a489d58a",
+                  "prefix": "subscription_userId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId",
+                    "status"
+                  ],
+                  "name": "subscription_userId_status_idx_e4a128ba",
+                  "prefix": "subscription_userId_status_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
+            "usageRecord": {
+              "checks": [
+                {
+                  "expression": "\"feature\" IN ('TEXT_TOKENS', 'MESSAGES', 'IMAGE_GENERATIONS', 'VOICE_MINUTES', 'AUDIO_CALL_MINUTES', 'VIDEO_CALL_MINUTES')",
+                  "name": "usageRecord_feature_check_94e56e34",
+                  "prefix": "usageRecord_feature_check"
+                }
+              ],
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "feature": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "UsageFeature",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "id": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "metadata": {
+                  "codecId": "pg/json@1",
+                  "nativeType": "json",
+                  "nullable": true
+                },
+                "quantity": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "usageRecord"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "feature",
+                    "createdAt"
+                  ],
+                  "name": "usageRecord_feature_createdAt_idx_9805c3ce",
+                  "prefix": "usageRecord_feature_createdAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId",
+                    "createdAt"
+                  ],
+                  "name": "usageRecord_userId_createdAt_idx_f726f04a",
+                  "prefix": "usageRecord_userId_createdAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId",
+                    "feature"
+                  ],
+                  "name": "usageRecord_userId_feature_idx_2615db75",
+                  "prefix": "usageRecord_userId_feature_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "usageRecord_userId_idx_a489d58a",
+                  "prefix": "usageRecord_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "user": {
               "checks": [
                 {
@@ -4650,6 +5475,16 @@
                   },
                   "nativeType": "int4",
                   "nullable": false
+                },
+                "memoryPausedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "notificationsEnabledAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
                 },
                 "passwordHash": {
                   "codecId": "pg/text@1",
@@ -4821,6 +5656,35 @@
                 "SYSTEM"
               ]
             },
+            "SubscriptionPlan": {
+              "kind": "valueSet",
+              "values": [
+                "FREE",
+                "PREMIUM",
+                "PREMIUM_PLUS"
+              ]
+            },
+            "SubscriptionStatus": {
+              "kind": "valueSet",
+              "values": [
+                "ACTIVE",
+                "TRIALING",
+                "PAST_DUE",
+                "CANCELED",
+                "EXPIRED"
+              ]
+            },
+            "UsageFeature": {
+              "kind": "valueSet",
+              "values": [
+                "TEXT_TOKENS",
+                "MESSAGES",
+                "IMAGE_GENERATIONS",
+                "VOICE_MINUTES",
+                "AUDIO_CALL_MINUTES",
+                "VIDEO_CALL_MINUTES"
+              ]
+            },
             "UserStatus": {
               "kind": "valueSet",
               "values": [
@@ -4835,7 +5699,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "ae1947ff563df16abcf42ff1bf50476eb895a60bfd83d8357d6ea9ea973149ff",
+    "storageHash": "48e16405130b1c3e792d7ac95b9017b46609b3ed29ab580557c4466b62a4b9eb",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",
@@ -4848,7 +5712,7 @@
     }
   },
   "execution": {
-    "executionHash": "36eca365b5afc7f287ce904e169beb05fbf49bc541f3921047844a55b510b38b",
+    "executionHash": "3548ac1c3efbfff1cbf00a7db55976a4fbc5ab5ac5e1d6492eca74b79489dc58",
     "mutations": {
       "defaults": [
         {
@@ -4968,6 +5832,21 @@
           "ref": {
             "column": "updatedAt",
             "namespace": "public",
+            "table": "deviceToken"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
             "table": "imageGeneration"
           }
         },
@@ -5029,6 +5908,21 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "session"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "subscription"
           }
         },
         {

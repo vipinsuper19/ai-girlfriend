@@ -6,6 +6,7 @@ import {
     Param,
     Patch,
     Post,
+    Query,
     UseGuards,
 } from '@nestjs/common';
 
@@ -25,6 +26,7 @@ import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 
 import { AvatarsService } from './avatars.service.js';
 import { CreateAvatarDto } from './dto/create-avatar.dto.js';
+import { ListAvatarsDto } from './dto/list-avatars.dto.js';
 import { UpdateAvatarDto } from './dto/update-avatar.dto.js';
 
 @Controller('avatars')
@@ -48,9 +50,11 @@ export class AvatarsController {
     @Get()
     async findAll(
         @CurrentUser() user: JwtPayload,
+        @Query() query: ListAvatarsDto,
     ) {
         return this.avatarsService.findAll(
             String(user.sub),
+            query.status,
         );
     }
 
@@ -86,6 +90,17 @@ export class AvatarsController {
         return this.avatarsService.remove(
             String(user.sub),
             avatarId,
+        );
+    }
+
+    @Post(':id/restore')
+    async restore(
+        @CurrentUser() user: JwtPayload,
+        @Param('id') companionId: string,
+    ) {
+        return this.avatarsService.restore(
+            String(user.sub),
+            companionId,
         );
     }
 

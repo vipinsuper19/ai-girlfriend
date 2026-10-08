@@ -1,32 +1,27 @@
 import {
     IsIn,
-    IsNotEmpty,
     IsObject,
     IsOptional,
     IsString,
-    IsUrl,
+    Matches,
     MaxLength,
 } from 'class-validator';
 
+/**
+ * Clients write text only. Audio rows come from POST /voice/respond, which
+ * stores the file itself, so a client cannot point a message at any URL.
+ */
 export class CreateMessageDto {
     @IsString()
-    @IsNotEmpty()
+    @Matches(/\S/, { message: 'content must not be blank' })
     @MaxLength(10000)
     content!: string;
 
     @IsOptional()
-    @IsIn(['TEXT', 'AUDIO', 'IMAGE'])
-    type?: 'TEXT' | 'AUDIO' | 'IMAGE';
+    @IsIn(['TEXT'])
+    type?: 'TEXT';
 
     @IsOptional()
     @IsObject()
     metadata?: Record<string, unknown>;
-
-    @IsOptional()
-    @IsUrl()
-    audioUrl?: string;
-
-    @IsOptional()
-    @IsUrl()
-    imageUrl?: string;
 }
