@@ -174,8 +174,11 @@ class AuthRepoImpl(
                 val authCredential = GoogleAuthProvider.getCredential(tokenCredential.idToken,null)
                 val authResult = auth.signInWithCredential(authCredential).await()
 
-                if (authResult.user != null) {
-                    api.clear()
+                val user = authResult.user
+                if (user != null) {
+                    // Google sign-in stands either way. Without an API session, chat stays on this phone.
+                    val firebaseToken = runCatching { user.getIdToken(false).await().token }.getOrNull()
+                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken)
                     return true
                 }
                 return false
