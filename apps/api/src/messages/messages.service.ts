@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { StorageService } from '../storage/storage.service.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
+import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
@@ -190,6 +192,81 @@ export class MessagesService {
         return {
             message: 'Message deleted successfully',
         };
+    }
+
+    /**
+     * Replaces her latest reply with a new one. The old row is soft-deleted
+     * first so the model answers the same user line again.
+     */
+    async regenerate(
+        userId: string,
+        messageId: string,
+    ) {
+        const numericUserId = Number(userId);
+        const numericMessageId = Number(messageId);
+
+        if (!Number.isInteger(numericMessageId) || numericMessageId <= 0) {
+            throw new NotFoundException('Message not found');
+        }
+
+        const target =
+            await this.db.orm.public.Message
+                .where({ id: numericMessageId, deletedAt: null })
+                .first();
+
+        if (!target) {
+            throw new NotFoundException('Message not found');
+        }
+
+        const conversation = await this.getOwnedConversation(
+            userId,
+            target.conversationId,
+        );
+
+        const newest =
+            await this.db.orm.public.Message
+                .where({ conversationId: conversation.id, deletedAt: null })
+                .orderBy((message: any) => message.id.desc())
+                .limit(1)
+                .all();
+
+        const problem = regenerateProblem(target, newest[0]);
+        if (problem === 'Message not found') {
+            throw new NotFoundException(problem);
+        }
+        if (problem) {
+            throw new BadRequestException(problem);
+        }
+
+        await this.usageService.consume(
+            numericUserId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: conversation.id, source: 'regenerate' },
+        );
+
+        const now = new Date().toISOString();
+        await this.db.orm.public.Message
+            .where({ id: numericMessageId })
+            .update({ deletedAt: now, updatedAt: now });
+
+        try {
+            const assistantMessage =
+                await this.aiService.generateResponse(
+                    numericUserId,
+                    conversation.id,
+                );
+
+            return {
+                replacedId: numericMessageId,
+                assistantMessage,
+            };
+        } catch (error) {
+            await this.db.orm.public.Message
+                .where({ id: numericMessageId })
+                .update({ deletedAt: null, updatedAt: new Date().toISOString() });
+            throw error;
+        }
     }
 
     private async getOwnedConversation(

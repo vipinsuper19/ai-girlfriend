@@ -65,6 +65,17 @@ export class MessagesController {
         );
     }
 
+    @Post('messages/:id/regenerate')
+    async regenerate(
+        @CurrentUser() user: JwtPayload,
+        @Param('id') messageId: string,
+    ) {
+        return this.messagesService.regenerate(
+            String(user.sub),
+            messageId,
+        );
+    }
+
     @Post('conversations/:id/messages/stream')
     @Header(
         'Content-Type',
