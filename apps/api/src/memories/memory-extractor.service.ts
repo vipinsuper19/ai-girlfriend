@@ -62,6 +62,14 @@ export class MemoryExtractorService {
         }
 
         try {
+            const user = await this.db.orm.public.User
+                .where({ id: userId })
+                .first();
+
+            if (!user || user.memoryPausedAt != null) {
+                return;
+            }
+
             const response =
                 await this.chatProvider.generateChat({
                     messages: [

@@ -4,6 +4,7 @@ import {
     Get,
     Param,
     Patch,
+    Post,
     Query,
     Body,
     UseGuards
@@ -12,6 +13,7 @@ import {
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
+import { CreateMemoryDto } from './dto/create-memory.dto.js';
 import { ListMemoriesDto } from './dto/list-memories.dto.js';
 import { UpdateMemoryDto } from './dto/update-memory.dto.js';
 import { MemoriesService } from './memories.service.js';
@@ -22,6 +24,17 @@ export class MemoriesController {
     constructor(
         private readonly memoriesService: MemoriesService,
     ) { }
+
+    @Post()
+    async create(
+        @CurrentUser() user: JwtPayload,
+        @Body() dto: CreateMemoryDto,
+    ) {
+        return this.memoriesService.create(
+            String(user.sub),
+            dto,
+        );
+    }
 
     @Get()
     async findAll(

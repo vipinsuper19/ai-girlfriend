@@ -175,6 +175,11 @@ createdAt    TimestamptzString   @default(now())
 updatedAt    temporal.updatedAtString()
 deletedAt    TimestamptzString?
 
+// Set while the user has paused new memories.
+memoryPausedAt         TimestamptzString?
+// Set while the user wants push notifications.
+notificationsEnabledAt TimestamptzString?
+
 accounts     Account[]
 sessions     Session[]
 companions   Companion[]
@@ -184,6 +189,7 @@ imageGenerations ImageGeneration[]
 calls Call[]
 subscriptions Subscription[]
 usageRecords UsageRecord[]
+deviceTokens DeviceToken[]
 
 @@index([status])
 @@index([createdAt])
@@ -218,6 +224,26 @@ onDelete: Cascade
 // ============================================================
 // USER SESSIONS
 // ============================================================
+
+model DeviceToken {
+id        Int                 @id @default(autoincrement())
+userId    Int
+
+// FCM registration token for one installed app.
+token     String              @unique
+platform  String
+
+createdAt TimestamptzString   @default(now())
+updatedAt temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@index([userId])
+}
 
 model Session {
 id           Int                 @id @default(autoincrement())

@@ -1,14 +1,12 @@
 import {
     IsIn,
     IsInt,
-    IsISO8601,
-    IsNumber,
     IsOptional,
     IsString,
+    Matches,
     Max,
     MaxLength,
     Min,
-    ValidateIf,
 } from 'class-validator';
 
 import { MEMORY_CONTENT_MAX } from '../memory-list.js';
@@ -21,30 +19,22 @@ const MEMORY_TYPES = [
     'FACT',
 ] as const;
 
-export class UpdateMemoryDto {
-    @IsOptional()
-    @IsString()
-    @MaxLength(MEMORY_CONTENT_MAX)
-    content?: string;
+export class CreateMemoryDto {
+    @IsInt()
+    @Min(1)
+    companionId!: number;
 
-    @IsOptional()
+    @IsString()
+    @Matches(/\S/, { message: 'content must not be blank' })
+    @MaxLength(MEMORY_CONTENT_MAX)
+    content!: string;
+
     @IsIn(MEMORY_TYPES)
-    type?: (typeof MEMORY_TYPES)[number];
+    type!: (typeof MEMORY_TYPES)[number];
 
     @IsOptional()
     @IsInt()
     @Min(1)
     @Max(10)
     importance?: number;
-
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    @Max(1)
-    confidence?: number;
-
-    @IsOptional()
-    @ValidateIf((dto: UpdateMemoryDto) => dto.expiresAt !== '')
-    @IsISO8601()
-    expiresAt?: string;
 }
