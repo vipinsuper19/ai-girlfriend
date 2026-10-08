@@ -209,6 +209,20 @@ await step('images: create, list, open, delete', async () => {
     assert.equal((await call('DELETE', `/avatars/${young.data.id}`, { token })).status, 200);
 });
 
+await step('notification devices', async () => {
+    const status = await call('GET', '/notifications/status', { token });
+    assert.equal(status.data.pushConfigured, false);
+    const device = `fcm-${stamp}`;
+    const added = await call('POST', '/notifications/devices', { token, body: { token: device, platform: 'ANDROID' } });
+    assert.equal(added.status, 201, JSON.stringify(added.raw));
+    const again = await call('POST', '/notifications/devices', { token, body: { token: device, platform: 'ANDROID' } });
+    assert.equal(again.data.id, added.data.id);
+    assert.equal((await call('POST', '/notifications/devices', { token, body: { token: 'a b', platform: 'ANDROID' } })).status, 400);
+    assert.equal((await call('POST', '/notifications/test', { token })).status, 503);
+    assert.equal((await call('DELETE', `/notifications/devices/${device}`, { token })).status, 200);
+    assert.equal((await call('DELETE', `/notifications/devices/${device}`, { token })).status, 404);
+});
+
 await step('export leaves out secrets', async () => {
     const r = await call('GET', '/users/me/export', { token });
     assert.equal(r.status, 200, JSON.stringify(r.raw));
