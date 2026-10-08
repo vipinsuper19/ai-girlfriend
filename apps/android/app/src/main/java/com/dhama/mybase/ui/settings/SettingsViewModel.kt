@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.chat.personalityUpdatedLine
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
+import com.dhama.mybase.core.data.PushRegistration
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
@@ -34,7 +35,53 @@ class SettingsViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val memoryRepository: MemoryRepository,
     private val accountSync: AccountSync,
+    private val pushRegistration: PushRegistration,
 ) : ViewModel() {
+
+    val notificationsEnabled = pushRegistration.observeEnabled()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _pushAvailable = MutableStateFlow(false)
+    val pushAvailable = _pushAvailable.asStateFlow()
+
+    private val _notificationSaving = MutableStateFlow(false)
+    val notificationSaving = _notificationSaving.asStateFlow()
+
+    private val _notificationNote = MutableStateFlow<String?>(null)
+    val notificationNote = _notificationNote.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _pushAvailable.value = try {
+                pushRegistration.available()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    fun setNotifications(enabled: Boolean) {
+        if (_notificationSaving.value) return
+        viewModelScope.launch {
+            _notificationSaving.value = true
+            _notificationNote.value = null
+            try {
+                if (enabled) pushRegistration.enable() else pushRegistration.disable()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _notificationNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't update notifications."
+            } finally {
+                _notificationSaving.value = false
+            }
+        }
+    }
+
+    fun notificationsBlocked() {
+        _notificationNote.value = "Allow notifications for this app in system settings, then try again."
+    }
 
     val themeMode = dataStoreRepo.getString(PreferencesKeys.THEME_MODE, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")

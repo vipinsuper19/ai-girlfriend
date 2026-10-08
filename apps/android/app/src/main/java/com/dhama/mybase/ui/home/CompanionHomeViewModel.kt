@@ -6,6 +6,7 @@ import com.dhama.mybase.core.memory.RankedMemory
 import com.dhama.mybase.core.memory.pickMemoryHighlight
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
+import com.dhama.mybase.core.data.PushRegistration
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.ChatRepository
@@ -32,6 +33,7 @@ class CompanionHomeViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val memoryRepository: MemoryRepository,
     private val accountSync: AccountSync,
+    private val pushRegistration: PushRegistration,
 ) : ViewModel() {
 
     val companion: StateFlow<SavedCompanion?> = repository.observe()
@@ -96,6 +98,7 @@ class CompanionHomeViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
+            pushRegistration.forgetDevice()
             authRepository.logout()
             dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
             repository.clear()

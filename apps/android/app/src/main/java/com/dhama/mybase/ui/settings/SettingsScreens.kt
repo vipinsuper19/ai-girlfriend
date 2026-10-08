@@ -6,6 +6,11 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,6 +123,14 @@ fun YouSettingsScreen(
     val privacy by viewModel.screenPrivacy.collectAsState()
     val theme by viewModel.themeMode.collectAsState()
     val companion by viewModel.companion.collectAsState()
+    val notificationsOn by viewModel.notificationsEnabled.collectAsState()
+    val pushAvailable by viewModel.pushAvailable.collectAsState()
+    val notificationSaving by viewModel.notificationSaving.collectAsState()
+    val notificationNote by viewModel.notificationNote.collectAsState()
+    val notificationPermission = rememberLauncherForActivityResult(RequestPermission()) { granted ->
+        if (granted) viewModel.setNotifications(true) else viewModel.notificationsBlocked()
+    }
+    val context = LocalContext.current
     YouSettingsContent(
         displayName = displayName,
         plan = plan,
@@ -139,8 +152,32 @@ fun YouSettingsScreen(
         onScreenPrivacy = viewModel::setScreenPrivacy,
         onTheme = viewModel::setThemeMode,
         onDeleteAccount = viewModel::deleteAccount,
+        notifications = NotificationRowState(
+            visible = pushAvailable,
+            on = notificationsOn,
+            saving = notificationSaving,
+            note = notificationNote,
+        ),
+        onNotifications = { on ->
+            val needsPermission = on &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            if (needsPermission) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                viewModel.setNotifications(on)
+            }
+        },
     )
 }
+
+data class NotificationRowState(
+    val visible: Boolean = false,
+    val on: Boolean = false,
+    val saving: Boolean = false,
+    val note: String? = null,
+)
 
 @Composable
 private fun YouSettingsContent(
@@ -164,6 +201,8 @@ private fun YouSettingsContent(
     onScreenPrivacy: (Boolean) -> Unit,
     onTheme: (String) -> Unit,
     onDeleteAccount: () -> Unit,
+    notifications: NotificationRowState = NotificationRowState(),
+    onNotifications: (Boolean) -> Unit = {},
 ) {
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -219,7 +258,9 @@ private fun YouSettingsContent(
             }
             Switch(checked = privacy, onCheckedChange = onScreenPrivacy)
         }
-        DisabledRow("Email", email.ifBlank { "No email-change endpoint" })
+        if (email.isNotBlank()) {
+            InfoRow("Email", email, "The email you sign in with on this phone.")
+        }
         if (email.isBlank()) {
             DisabledRow("Change password", "Sign in with email to change your password.")
         } else {
@@ -236,7 +277,32 @@ private fun YouSettingsContent(
         SectionLabel("App")
         Text("Theme", style = MaterialTheme.typography.bodyLarge)
         ThemePicker(selected = theme.ifBlank { "system" }, onSelect = onTheme)
-        DisabledRow("Notifications", "No notifications module yet")
+        if (notifications.visible) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .semantics(mergeDescendants = true) {},
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Notifications")
+                    Text(
+                        if (notifications.on) "On for this phone" else "Off",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = notifications.on,
+                    onCheckedChange = onNotifications,
+                    enabled = !notifications.saving,
+                )
+            }
+            if (!notifications.note.isNullOrBlank()) {
+                Text(notifications.note.orEmpty(), color = MaterialTheme.colorScheme.error)
+            }
+        }
         Spacer(Modifier.height(24.dp))
         TextButton(
             onClick = { confirmDelete = true },
@@ -774,6 +840,21 @@ private fun PasswordChange(
 }
 
 @Composable
+private fun InfoRow(label: String, value: String, caption: String) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(vertical = 8.dp)
+            .semantics(mergeDescendants = true) {},
+    ) {
+        Text(label)
+        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 private fun DisabledRow(label: String, reason: String) {
     Column(
         Modifier
@@ -867,6 +948,7 @@ private fun ChoiceChips(options: List<String>, selected: String, onSelect: (Stri
     }
 }
 
+@Composable
 private fun Level(label: String, value: Float, onChange: (Float) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("$label ${value.toInt()}")
