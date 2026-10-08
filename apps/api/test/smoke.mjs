@@ -293,9 +293,14 @@ await step('forgot and reset password, once', async () => {
     const link = /token=([^\s]+)/.exec(outbox[0].text)?.[1];
     assert.ok(link);
     const resetToken = decodeURIComponent(link);
+    const check = await call('POST', '/auth/password/reset/check', { body: { token: resetToken } });
+    assert.equal(check.data.valid, true);
+    assert.equal((await call('POST', '/auth/password/reset/check', { body: { token: resetToken } })).data.valid, true);
+    assert.equal((await call('POST', '/auth/password/reset/check', { body: { token: 'nope' } })).data.valid, false);
     const reset = await call('POST', '/auth/password/reset', { body: { token: resetToken, newPassword: 'password-two' } });
     assert.equal(reset.status, 200, JSON.stringify(reset.raw));
     assert.equal((await call('POST', '/auth/password/reset', { body: { token: resetToken, newPassword: 'password-three' } })).status, 400);
+    assert.equal((await call('POST', '/auth/password/reset/check', { body: { token: resetToken } })).data.valid, false);
     assert.equal((await call('GET', '/users/me', { token })).status, 401);
     assert.equal((await call('POST', '/auth/refresh', { body: { refreshToken: refresh } })).status, 401);
     const login = await call('POST', '/auth/login', { body: { email, password: 'password-two' } });

@@ -15,3 +15,10 @@ export class ResetPasswordDto {
     @MaxLength(128, { message: 'Keep the password under 128 characters.' })
     newPassword!: string;
 }
+
+export class CheckResetTokenDto {
+    @IsString()
+    @MinLength(1)
+    @MaxLength(2048)
+    token!: string;
+}

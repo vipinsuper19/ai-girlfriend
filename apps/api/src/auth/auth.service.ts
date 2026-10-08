@@ -329,15 +329,12 @@ export class AuthService {
         return reply;
     }
 
-    async resetPassword(token: string, newPassword: string) {
+    /** Reads a reset token without using it up, so link scanners cannot spend it. */
+    private async resetTarget(token: string) {
         const db = this.prisma.client as any;
         const secret = resetSecret();
-        const invalid = new BadRequestException(
-            'This reset link has expired or was already used.',
-        );
-
         if (!secret) {
-            throw invalid;
+            return null;
         }
 
         let payload: { sub?: string; fp?: string };
@@ -347,7 +344,7 @@ export class AuthService {
                 audience: RESET_AUDIENCE,
             });
         } catch {
-            throw invalid;
+            return null;
         }
 
         const user = await db.orm.public.User
@@ -359,7 +356,22 @@ export class AuthService {
             !accountCanSignIn(user.status) ||
             payload.fp !== passwordFingerprint(user.passwordHash)
         ) {
-            throw invalid;
+            return null;
+        }
+        return user;
+    }
+
+    async checkResetToken(token: string) {
+        return { valid: (await this.resetTarget(token)) !== null };
+    }
+
+    async resetPassword(token: string, newPassword: string) {
+        const db = this.prisma.client as any;
+        const user = await this.resetTarget(token);
+        if (!user) {
+            throw new BadRequestException(
+                'This reset link has expired or was already used.',
+            );
         }
 
         const passwordHash = await bcrypt.hash(newPassword, 12);
