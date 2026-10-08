@@ -96,4 +96,7 @@ fun togetherLine(relationship: String, createdAtEpochMs: Long, nowEpochMs: Long)
 private val NAME = Regex("^(?:my name is|i am|i'm)\\s+([A-Za-z][A-Za-z '\\-]{0,40})$", RegexOption.IGNORE_CASE)
 private val PREFERENCE = Regex("^(?:i)\\s+(like|love|prefer|hate|dislike)\\s+(.{2,80})$", RegexOption.IGNORE_CASE)
 private val RELATION = Regex("\\bmy\\s+(sister|brother|mom|mother|dad|father|friend|partner|wife|husband)\\b", RegexOption.IGNORE_CASE)
+/** Matches the API's limit on an edited memory. */
+const val MEMORY_CONTENT_MAX = 2000
+
 private const val DAY_MS = 86_400_000L

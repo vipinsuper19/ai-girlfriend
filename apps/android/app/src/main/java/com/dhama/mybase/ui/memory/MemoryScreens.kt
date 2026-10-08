@@ -48,6 +48,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.db.entity.MemoryEntity
+import com.dhama.mybase.core.memory.MEMORY_CONTENT_MAX
 import com.dhama.mybase.core.memory.importanceReading
 import com.dhama.mybase.core.memory.memoryTypeLabel
 import com.dhama.mybase.ui.preview.sampleMemories
@@ -230,7 +231,7 @@ private fun DetailBody(
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = content,
-            onValueChange = { content = it },
+            onValueChange = { content = it.take(MEMORY_CONTENT_MAX) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("What she remembers") },
             minLines = 3,
