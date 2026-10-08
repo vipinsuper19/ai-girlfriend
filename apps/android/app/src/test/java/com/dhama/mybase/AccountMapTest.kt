@@ -247,6 +247,8 @@ class AccountMapTest {
         assertEquals("Current plan", planCardStatus("Free", ""))
         assertEquals("Read only", planCardStatus("Premium", ""))
         assertEquals("Current plan", planCardStatus("Premium Plus", "Premium Plus"))
+        assertEquals("$9.99 on Google Play", planCardStatus("Premium", "Free", "$9.99"))
+        assertEquals("Current plan", planCardStatus("Premium", "Premium", "$9.99"))
         val subscription = unwrapData<RemoteSubscription>(
             """{"data":{"id":1,"plan":"PREMIUM","status":"ACTIVE","userId":3}}""",
         )

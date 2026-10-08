@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -675,8 +676,25 @@ fun SubscriptionScreen(onBack: () -> Unit) {
         ),
     )
     val name = companion?.name?.ifBlank { null } ?: "her"
-    SubscriptionContent(name, usage, plan, onBack)
+    val billing: BillingViewModel = hiltViewModel()
+    val offers by billing.offers.collectAsState()
+    val billingNote by billing.note.collectAsState()
+    val activity = LocalContext.current.findActivity()
+    SubscriptionContent(
+        name = name,
+        usage = usage,
+        plan = plan,
+        onBack = onBack,
+        offers = offers.map { PlanOffer(it.plan, it.price) },
+        billingNote = billingNote,
+        onUpgrade = { chosen ->
+            val offer = offers.firstOrNull { it.plan == chosen.plan }
+            if (activity != null && offer != null) billing.buy(activity, offer)
+        },
+    )
 }
+
+private data class PlanOffer(val plan: String, val price: String)
 
 @Composable
 private fun SubscriptionContent(
@@ -684,7 +702,13 @@ private fun SubscriptionContent(
     usage: PlanUsage,
     plan: String,
     onBack: () -> Unit,
+    offers: List<PlanOffer> = emptyList(),
+    billingNote: String? = null,
+    onUpgrade: (PlanOffer) -> Unit = {},
 ) {
+    val current = plan.ifBlank { "Free" }
+    val upgrades = offers.filter { it.plan != current }
+    fun offerFor(title: String) = upgrades.firstOrNull { it.plan == title }
     Column(
         Modifier
             .fillMaxSize()
@@ -706,13 +730,27 @@ private fun SubscriptionContent(
         UsageMeter("Voice minutes", usage.voiceUsed, usage.voiceLimit)
         UsageMeter("Images", usage.imagesUsed, usage.imagesLimit)
         Spacer(Modifier.height(12.dp))
-        PaywallCard(name = name, resetLabel = resetLabel(usage.resetEpochMs))
+        PaywallCard(
+            name = name,
+            resetLabel = resetLabel(usage.resetEpochMs),
+            upgradeAvailable = upgrades.isNotEmpty(),
+        )
+        if (billingNote != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(billingNote, color = MaterialTheme.colorScheme.primary)
+        }
         Spacer(Modifier.height(16.dp))
         PlanCard("Free", planCardStatus("Free", plan), listOf("100 messages", "10 voice minutes", "5 images"))
-        PlanCard("Premium", planCardStatus("Premium", plan), listOf("Unlimited messages", "300 voice minutes", "100 images", "1,200 audio call minutes"))
+        PlanCard(
+            "Premium",
+            planCardStatus("Premium", plan, offerFor("Premium")?.price),
+            listOf("Unlimited messages", "300 voice minutes", "100 images", "1,200 audio call minutes"),
+            offer = offerFor("Premium"),
+            onUpgrade = onUpgrade,
+        )
         PlanCard(
             "Premium Plus",
-            planCardStatus("Premium Plus", plan),
+            planCardStatus("Premium Plus", plan, offerFor("Premium Plus")?.price),
             listOf(
                 "Unlimited messages",
                 "1,000 voice minutes",
@@ -720,12 +758,20 @@ private fun SubscriptionContent(
                 "1,200 audio call minutes",
                 "1,200 video call minutes",
             ),
+            offer = offerFor("Premium Plus"),
+            onUpgrade = onUpgrade,
         )
     }
 }
 
 @Composable
-private fun PlanCard(title: String, status: String, lines: List<String>) {
+private fun PlanCard(
+    title: String,
+    status: String,
+    lines: List<String>,
+    offer: PlanOffer? = null,
+    onUpgrade: (PlanOffer) -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -738,6 +784,12 @@ private fun PlanCard(title: String, status: String, lines: List<String>) {
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         lines.forEach { Text(it) }
+        if (offer != null) {
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { onUpgrade(offer) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Upgrade · ${offer.price}")
+            }
+        }
     }
 }
 
@@ -1030,6 +1082,22 @@ private fun SubscriptionPreview() {
             ),
             plan = "Free",
             onBack = {},
+        )
+    }
+}
+
+@Preview(name = "Plan with Google Play", showBackground = true, widthDp = 360, heightDp = 1000)
+@Composable
+private fun SubscriptionPlayPreview() {
+    val now = System.currentTimeMillis()
+    MyBaseTheme {
+        SubscriptionContent(
+            name = "Aria",
+            usage = phonePlanUsage(monthUsage(emptyList(), now)),
+            plan = "Premium",
+            onBack = {},
+            offers = listOf(PlanOffer("Premium", "$9.99"), PlanOffer("Premium Plus", "$19.99")),
+            billingNote = "Your plan is active.",
         )
     }
 }

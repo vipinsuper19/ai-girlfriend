@@ -64,8 +64,14 @@ fun PaywallCard(
     name: String,
     resetLabel: String,
     onSeePlans: (() -> Unit)? = null,
+    upgradeAvailable: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val upgradeLine = if (upgradeAvailable) {
+        "Upgrade below through Google Play."
+    } else {
+        "There is no upgrade from here."
+    }
     Column(
         modifier
             .fillMaxWidth()
@@ -79,7 +85,7 @@ fun PaywallCard(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Free is 100 messages a month. That resets $resetLabel. There is no upgrade from here.",
+            "Free is 100 messages a month. That resets $resetLabel. $upgradeLine",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (onSeePlans != null) {

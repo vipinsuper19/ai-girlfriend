@@ -352,9 +352,13 @@ fun planLabel(plan: String): String = when (plan.trim().uppercase()) {
     else -> plan.trim()
 }
 
-fun planCardStatus(cardTitle: String, currentLabel: String): String {
+fun planCardStatus(cardTitle: String, currentLabel: String, playPrice: String? = null): String {
     val current = currentLabel.ifBlank { "Free" }
-    return if (cardTitle == current) "Current plan" else "Read only"
+    return when {
+        cardTitle == current -> "Current plan"
+        playPrice != null -> "$playPrice on Google Play"
+        else -> "Read only"
+    }
 }
 
 fun epochMillis(value: String?): Long {
