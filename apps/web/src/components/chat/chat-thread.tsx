@@ -31,6 +31,8 @@ export function ChatThread({
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState("Active now");
   const [offline, setOffline] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const bufferRef = useRef("");
@@ -55,10 +57,11 @@ export function ChatThread({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length]);
 
-  async function send() {
-    const content = input.trim();
-    if (!content || sending) return;
-    setInput("");
+  async function send(retryText?: string) {
+    const content = (retryText ?? input).trim();
+    if (!content || sending || regenerating) return;
+    if (retryText === undefined) setInput("");
+    setNote(null);
     const clientId = `tmp-${Date.now()}`;
     const optimistic: ThreadMessage = {
       id: clientId,
@@ -162,6 +165,44 @@ export function ChatThread({
     }
   }
 
+  function retry(failed: ThreadMessage) {
+    if (sending || regenerating) return;
+    setMessages((current) => current.filter((item) => item.id !== failed.id));
+    void send(failed.content ?? "");
+  }
+
+  async function regenerate(target: ThreadMessage) {
+    if (sending || regenerating) return;
+    setRegenerating(true);
+    setNote(null);
+    setStatus("Typing…");
+    try {
+      const result = await api<{ replacedId: number; assistantMessage: Message }>(
+        `/messages/${target.id}/regenerate`,
+        { method: "POST" },
+      );
+      setMessages((current) => [
+        ...current.filter((item) => item.id !== result.replacedId),
+        { ...result.assistantMessage, status: "sent" },
+      ]);
+    } catch (error) {
+      setNote(`Her reply stayed. ${(error as Error).message}`);
+    } finally {
+      setRegenerating(false);
+      setStatus("Active now");
+    }
+  }
+
+  const newest = messages[messages.length - 1];
+  const regenerableId =
+    newest &&
+    newest.role === "ASSISTANT" &&
+    newest.type === "TEXT" &&
+    typeof newest.id === "number" &&
+    !sending
+      ? newest.id
+      : null;
+
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && window.innerWidth >= 768) {
       event.preventDefault();
@@ -220,11 +261,23 @@ export function ChatThread({
                     {formatRelativeTime(message.createdAt)}
                   </p>
                 ) : null}
-                <Bubble message={message} />
+                <Bubble
+                  message={message}
+                  onRetry={() => retry(message)}
+                  onRegenerate={
+                    message.id === regenerableId ? () => void regenerate(message) : undefined
+                  }
+                  regenerating={regenerating}
+                />
               </div>
             );
           })}
         </div>
+        {note ? (
+          <Banner tone="warning" className="mx-auto w-full max-w-[44rem]">
+            {note}
+          </Banner>
+        ) : null}
         <form
           className="mx-auto flex w-full max-w-[44rem] items-end gap-2 px-4 pb-4"
           onSubmit={(event) => {
@@ -251,7 +304,7 @@ export function ChatThread({
           </button>
           <button
             type="submit"
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || regenerating}
             className={cn(
               "flex size-11 items-center justify-center rounded-full",
               input.trim()
@@ -268,7 +321,17 @@ export function ChatThread({
   );
 }
 
-function Bubble({ message }: { message: ThreadMessage }) {
+function Bubble({
+  message,
+  onRetry,
+  onRegenerate,
+  regenerating,
+}: {
+  message: ThreadMessage;
+  onRetry: () => void;
+  onRegenerate?: () => void;
+  regenerating: boolean;
+}) {
   const outgoing = message.role === "USER";
   return (
     <div className={cn("flex flex-col", outgoing ? "items-end" : "items-start")}>
@@ -293,9 +356,19 @@ function Bubble({ message }: { message: ThreadMessage }) {
         <button
           type="button"
           className="mt-1 text-xs font-semibold text-error"
-          onClick={() => undefined}
+          onClick={onRetry}
         >
           Not sent · Retry
+        </button>
+      ) : null}
+      {onRegenerate ? (
+        <button
+          type="button"
+          className="mt-1 text-xs font-semibold text-primary disabled:opacity-55"
+          onClick={onRegenerate}
+          disabled={regenerating}
+        >
+          {regenerating ? "Writing a new reply…" : "Regenerate"}
         </button>
       ) : null}
     </div>
