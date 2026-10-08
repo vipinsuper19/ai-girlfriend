@@ -416,6 +416,23 @@ class ChatRepositoryImpl(
         dao.delete(id)
     }
 
+    override suspend fun regenerate(id: String) {
+        val serverId = serverRecordId(id)
+            ?: throw ApiStatusException(400, "Only her replies on the server can be regenerated.", null)
+        val current = dao.find(id)
+        val reply = api.regenerate(serverId).assistantMessage
+            ?: throw ApiStatusException(0, "Couldn't regenerate that.", null)
+        val stored = reply.toStored(api.origin())
+        dao.delete(id)
+        dao.upsert(
+            stored.copy(
+                createdAtEpochMs = stored.createdAtEpochMs.takeIf { it > 0L }
+                    ?: current?.createdAtEpochMs
+                    ?: System.currentTimeMillis(),
+            ),
+        )
+    }
+
     override suspend fun discard(id: String) {
         dao.delete(id)
     }

@@ -17,6 +17,7 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.regenerableReplyId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.utils.PreferencesKeys
 import com.dhama.mybase.core.voice.canSpeakMessage
@@ -190,6 +191,35 @@ class ChatViewModel @Inject constructor(
 
     fun delete(message: ChatMessageEntity) {
         viewModelScope.launch { chatRepository.delete(message.id) }
+    }
+
+    val regenerableId = messages
+        .map { thread -> regenerableReplyId(thread, { it.id }, { it.role }, { it.kind }) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _regenerateNote = MutableStateFlow<String?>(null)
+    val regenerateNote = _regenerateNote.asStateFlow()
+
+    fun regenerate(message: ChatMessageEntity) {
+        if (message.id != regenerableId.value || sendJob?.isActive == true) return
+        _regenerateNote.value = null
+        sendJob = viewModelScope.launch {
+            try {
+                chatRepository.regenerate(message.id)
+                refreshUsage()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ApiStatusException) {
+                noteUsageLimit(error)
+                _regenerateNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't regenerate that."
+            } catch (_: Exception) {
+                _regenerateNote.value = "Couldn't regenerate that. Her first reply is still here."
+            }
+        }
+    }
+
+    fun dismissRegenerateNote() {
+        _regenerateNote.value = null
     }
 
     fun speak(message: ChatMessageEntity) {

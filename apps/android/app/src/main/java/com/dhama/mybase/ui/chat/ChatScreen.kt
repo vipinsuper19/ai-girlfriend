@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -123,6 +122,8 @@ fun ChatScreen(
     val usageBlocked by viewModel.usageBlocked.collectAsState()
     val hasOlder by viewModel.hasOlder.collectAsState()
     val loadingOlder by viewModel.loadingOlder.collectAsState()
+    val regenerableId by viewModel.regenerableId.collectAsState()
+    val regenerateNote by viewModel.regenerateNote.collectAsState()
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
@@ -446,6 +447,16 @@ fun ChatScreen(
         )
     }
 
+    regenerateNote?.let { note ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRegenerateNote,
+            title = { Text("Her reply stayed") },
+            text = { Text(note) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissRegenerateNote) { Text("OK") }
+            },
+        )
+    }
     selected?.let { message ->
         val outgoing = message.role == ChatRepositoryImpl.ROLE_USER
         AlertDialog(
@@ -478,8 +489,11 @@ fun ChatScreen(
                             selected = null
                         }) { Text("Speak") }
                     }
-                    if (!outgoing && message.kind != ChatMessageEntity.KIND_AUDIO) {
-                        TextButton(onClick = {}, enabled = false) { Text("Regenerate") }
+                    if (message.id == regenerableId && !streaming && !showWall) {
+                        TextButton(onClick = {
+                            viewModel.regenerate(message)
+                            selected = null
+                        }) { Text("Regenerate") }
                     }
                     TextButton(
                         onClick = {
