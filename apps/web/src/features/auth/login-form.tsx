@@ -10,7 +10,7 @@ import { Banner } from "@/components/ui/surfaces";
 import { loginSchema } from "@/features/auth/schemas";
 import { api } from "@/lib/api";
 import { isApiError } from "@/lib/api-error";
-import { PASSWORD_RESET_ENABLED, safeNextPath } from "@/lib/utils";
+import { safeNextPath } from "@/lib/utils";
 
 export function LoginForm() {
   const router = useRouter();
@@ -95,13 +95,11 @@ export function LoginForm() {
         onChange={(event) => setPassword(event.target.value)}
         errorText={fieldErrors.password}
       />
-      {PASSWORD_RESET_ENABLED ? (
-        <div className="flex justify-end">
-          <Link href="/forgot-password" className="text-sm font-semibold text-primary">
-            Forgot password?
-          </Link>
-        </div>
-      ) : null}
+      <div className="flex justify-end">
+        <Link href="/forgot-password" className="text-sm font-semibold text-primary">
+          Forgot password?
+        </Link>
+      </div>
       <Button type="submit" loading={submitting} className="mt-2 w-full">
         Log in
       </Button>

@@ -64,7 +64,4 @@ export function firstName(displayName: string | null | undefined): string {
   return displayName.trim().split(/\s+/)[0] ?? "there";
 }
 
-export const PASSWORD_RESET_ENABLED =
-  process.env.NEXT_PUBLIC_FEATURE_PASSWORD_RESET === "true";
-
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Lumen";

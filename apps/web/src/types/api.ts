@@ -2,6 +2,8 @@ export type User = {
   id: number | string;
   email: string;
   displayName: string | null;
+  memoryPaused?: boolean;
+  notificationsEnabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
