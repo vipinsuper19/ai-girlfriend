@@ -31,6 +31,25 @@ export const registerSchema = z.object({
     .refine((value) => value === true, "Please accept the Terms to continue"),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: loginSchema.shape.email,
+});
+
+export const resetPasswordSchema = z
+  .object({
+    newPassword: registerSchema.shape.password,
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Both passwords need to match",
+  });
+
+export const changeEmailSchema = z.object({
+  newEmail: loginSchema.shape.email,
+  password: loginSchema.shape.password,
+});
+
 export type LoginValues = z.infer<typeof loginSchema>;
 export type RegisterValues = z.infer<typeof registerSchema>;
 

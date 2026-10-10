@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AiModule } from '../ai/ai.module.js';
+import { UsageModule } from '../usage/usage.module.js';
 
 import {
   SPEECH_TO_TEXT_PROVIDER,
@@ -24,6 +25,7 @@ import { VoiceService } from './voice.service.js';
 @Module({
   imports: [
     AiModule,
+    UsageModule,
   ],
   controllers: [
     VoiceController,

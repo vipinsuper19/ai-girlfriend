@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import { EmptyState } from "@/components/ui/surfaces";
+import { AddMemoryForm } from "@/features/memory/add-memory-form";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { serverApi } from "@/lib/server/api";
-import type { Memory, MemoryType } from "@/types/api";
+import type { Companion, Memory, MemoryType } from "@/types/api";
 
 export const metadata = { title: "Memory" };
 
@@ -38,7 +39,11 @@ export default async function MemoryPage({
 }) {
   const { type } = await searchParams;
   const query = type ? `?type=${encodeURIComponent(type)}&limit=50` : "?limit=50";
-  const memories = await serverApi<Memory[]>(`/memories${query}`).catch(() => []);
+  const [memories, companions] = await Promise.all([
+    serverApi<Memory[]>(`/memories${query}`).catch(() => []),
+    serverApi<Companion[]>("/avatars").catch(() => []),
+  ]);
+  const companion = companions.find((item) => item.status === "ACTIVE");
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-8">
@@ -49,6 +54,7 @@ export default async function MemoryPage({
           anything here — she'll forget it immediately.
         </p>
       </div>
+      {companion ? <AddMemoryForm companionId={companion.id} companionName={companion.name} /> : null}
       <div className="flex flex-wrap gap-2">
         {TYPES.map((item) => {
           const href = item.id ? `/memory?type=${item.id}` : "/memory";
@@ -72,7 +78,7 @@ export default async function MemoryPage({
       {memories.length === 0 ? (
         <EmptyState
           title="Nothing here yet"
-          description="Memory comes from talking to her. There is no add button because the API does not create memories by hand."
+          description="Memory comes from talking to her, or from anything you tell her to remember above."
         />
       ) : (
         <ul className="space-y-3">

@@ -512,6 +512,19 @@ while the button keeps its width, so the layout does not jump).
 
 **`OutlinedButton`** — transparent with a 1dp `outline` stroke. Dismissive actions: "Skip for now".
 
+**`GoogleButton`** — same 56dp pill metrics as `PrimaryButton`, outlined, `onSurface` label, official
+four-colour G at 18dp leading. Label is "Continue with Google". Loading replaces the G with a spinner
+and the label with "Connecting…". Used on Google sign-in and Signup only. Do not render it on Email
+sign-in. Omit the composable entirely when Play Services / Credential Manager is unavailable — do
+not render it disabled.
+
+```kotlin
+@Composable fun GoogleButton(
+    onClick: () -> Unit, modifier: Modifier = Modifier,
+    enabled: Boolean = true, loading: Boolean = false,
+)
+```
+
 **`TextButton`** — no container, 40dp tall, 12dp horizontal padding. Inline navigation: "Forgot
 password?". Never the only way to complete a task.
 
@@ -654,7 +667,7 @@ One root `NavHost`, four nested graphs, type-safe `@Serializable` routes (Naviga
 ```
 RootNavHost
 ├── Splash                      resolve session, decide entry
-├── AuthGraph                   Welcome · Login · Signup · ForgotPassword · ResetPassword(token)
+├── AuthGraph                   Welcome · Login · LoginEmail · Signup · ForgotPassword · ResetPassword(token)
 ├── OnboardingGraph             Intro · Personality · Appearance · Relationship · Finalize
 └── MainGraph                   Scaffold + NavigationBar
     ├── Home
@@ -667,6 +680,7 @@ RootNavHost
 @Serializable data object Splash
 @Serializable data object AuthGraph
 @Serializable data object Login
+@Serializable data class LoginEmail(val email: String? = null)
 @Serializable data class ResetPassword(val token: String)
 @Serializable data object MainGraph
 @Serializable data class Conversation(val conversationId: Long)

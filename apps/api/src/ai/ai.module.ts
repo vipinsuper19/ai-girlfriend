@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 
 import { AiService } from './ai.service.js';
 import { CHAT_PROVIDER } from './interfaces/chat-provider.interface.js';
@@ -8,8 +8,9 @@ import {
     EMBEDDING_PROVIDER,
 } from './interfaces/embedding.provider.js';
 import { GeminiEmbeddingProvider } from './providers/gemini-embedding.provider.js';
-
+import { MemoriesModule } from '../memories/memories.module.js';
 @Module({
+    imports: [forwardRef(() => MemoriesModule)],
     providers: [
         AiService,
         // OpenAiChatProvider,

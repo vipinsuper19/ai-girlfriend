@@ -1,19 +1,28 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import type { ListMessagesDto } from './dto/list-messages.dto.js';
+import { messagePageLimit, orderMessagePage } from './message-page.js';
+import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
+import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
+import { UsageService } from '../usage/usage.service.js';
 
 @Injectable()
 export class MessagesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
-        private readonly memoryExtractorService: MemoryExtractorService
+        private readonly memoryExtractorService: MemoryExtractorService,
+        private readonly usageService: UsageService,
+        private readonly storageService: StorageService,
     ) { }
 
     private get db(): any {
@@ -28,16 +37,16 @@ export class MessagesService {
         const numericUserId = Number(userId);
         const numericConversationId = Number(conversationId);
 
-        console.log({
-            jwtUserId: userId,
-            numericUserId: Number(userId),
-            conversationId,
-            numericConversationId: Number(conversationId),
-        });
-
         const conversation = await this.getOwnedConversation(
             userId,
             conversationId,
+        );
+
+        await this.usageService.consume(
+            numericUserId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();
@@ -46,11 +55,11 @@ export class MessagesService {
             await this.db.orm.public.Message.create({
                 conversationId: numericConversationId,
                 role: 'USER',
-                type: dto.type ?? 'TEXT',
+                type: 'TEXT',
                 content: dto.content.trim(),
                 metadata: dto.metadata ?? null,
-                audioUrl: dto.audioUrl ?? null,
-                imageUrl: dto.imageUrl ?? null,
+                audioUrl: null,
+                imageUrl: null,
                 updatedAt: now,
             });
 
@@ -87,8 +96,8 @@ export class MessagesService {
     async findAll(
         userId: string,
         conversationId: string,
+        query: ListMessagesDto = {},
     ) {
-        const numericUserId = Number(userId);
         const numericConversationId = Number(conversationId);
 
         await this.getOwnedConversation(
@@ -96,15 +105,36 @@ export class MessagesService {
             conversationId,
         );
 
-        return this.db.orm.public.Message
+        const limit = messagePageLimit(query.limit);
+        let messages = this.db.orm.public.Message
             .where({
                 conversationId: numericConversationId,
                 deletedAt: null,
-            })
-            .orderBy((message: any) =>
-                message.createdAt.asc(),
-            )
-            .all();
+            });
+
+        if (query.before == null && limit == null) {
+            return messages
+                .orderBy((message: any) =>
+                    message.createdAt.asc(),
+                )
+                .all();
+        }
+
+        if (query.before != null) {
+            messages = messages.where((message: any) =>
+                message.id.lt(query.before),
+            );
+        }
+
+        let page = messages.orderBy((message: any) =>
+            message.id.desc(),
+        );
+
+        if (limit != null) {
+            page = page.limit(limit);
+        }
+
+        return orderMessagePage(await page.all());
     }
 
     async remove(
@@ -154,9 +184,89 @@ export class MessagesService {
                 updatedAt: now,
             });
 
+        await this.storageService.removeVoiceFile(
+            numericUserId,
+            message.audioUrl,
+        );
+
         return {
             message: 'Message deleted successfully',
         };
+    }
+
+    /**
+     * Replaces her latest reply with a new one. The old row is soft-deleted
+     * first so the model answers the same user line again.
+     */
+    async regenerate(
+        userId: string,
+        messageId: string,
+    ) {
+        const numericUserId = Number(userId);
+        const numericMessageId = Number(messageId);
+
+        if (!Number.isInteger(numericMessageId) || numericMessageId <= 0) {
+            throw new NotFoundException('Message not found');
+        }
+
+        const target =
+            await this.db.orm.public.Message
+                .where({ id: numericMessageId, deletedAt: null })
+                .first();
+
+        if (!target) {
+            throw new NotFoundException('Message not found');
+        }
+
+        const conversation = await this.getOwnedConversation(
+            userId,
+            target.conversationId,
+        );
+
+        const newest =
+            await this.db.orm.public.Message
+                .where({ conversationId: conversation.id, deletedAt: null })
+                .orderBy((message: any) => message.id.desc())
+                .limit(1)
+                .all();
+
+        const problem = regenerateProblem(target, newest[0]);
+        if (problem === 'Message not found') {
+            throw new NotFoundException(problem);
+        }
+        if (problem) {
+            throw new BadRequestException(problem);
+        }
+
+        await this.usageService.consume(
+            numericUserId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: conversation.id, source: 'regenerate' },
+        );
+
+        const now = new Date().toISOString();
+        await this.db.orm.public.Message
+            .where({ id: numericMessageId })
+            .update({ deletedAt: now, updatedAt: now });
+
+        try {
+            const assistantMessage =
+                await this.aiService.generateResponse(
+                    numericUserId,
+                    conversation.id,
+                );
+
+            return {
+                replacedId: numericMessageId,
+                assistantMessage,
+            };
+        } catch (error) {
+            await this.db.orm.public.Message
+                .where({ id: numericMessageId })
+                .update({ deletedAt: null, updatedAt: new Date().toISOString() });
+            throw error;
+        }
     }
 
     private async getOwnedConversation(
@@ -211,17 +321,24 @@ export class MessagesService {
             conversationId,
         );
 
+        await this.usageService.consume(
+            Number(userId),
+            UsageFeatureDto.MESSAGES,
+            1,
+            { conversationId: numericConversationId },
+        );
+
         const now = new Date().toISOString();
 
         const userMessage =
             await this.db.orm.public.Message.create({
                 conversationId: numericConversationId,
                 role: 'USER',
-                type: dto.type ?? 'TEXT',
+                type: 'TEXT',
                 content: dto.content.trim(),
                 metadata: dto.metadata ?? null,
-                audioUrl: dto.audioUrl ?? null,
-                imageUrl: dto.imageUrl ?? null,
+                audioUrl: null,
+                imageUrl: null,
                 updatedAt: now,
             });
 

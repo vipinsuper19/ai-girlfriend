@@ -10,6 +10,7 @@ import {
     SubscriptionPlanDto,
 } from './dto/create-subscription.dto.js';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
+import { currentSubscription, subscriptionLapsed } from './google-play.js';
 
 @Injectable()
 export class SubscriptionsService {
@@ -31,23 +32,21 @@ export class SubscriptionsService {
     async getCurrent(userId: number) {
         this.assertUserId(userId);
 
-        const subscription =
+        const rows =
             await this.db.orm.public.Subscription
-                .where({
-                    userId,
-                    status: {
-                        in: [
-                            'ACTIVE',
-                            'TRIALING',
-                            'PAST_DUE',
-                        ],
-                    },
-                })
-                .orderBy((subscription: any) =>
-                    subscription.createdAt.desc(),
-                )
-                .first();
+                .where({ userId })
+                .all();
 
+        const now = new Date();
+        for (const row of rows) {
+            if (row.status !== 'EXPIRED' && row.status !== 'CANCELED' && subscriptionLapsed(row, now)) {
+                await this.db.orm.public.Subscription
+                    .where({ id: row.id })
+                    .update({ status: 'EXPIRED' });
+            }
+        }
+
+        const subscription = currentSubscription(rows, now);
         if (subscription) {
             return subscription;
         }

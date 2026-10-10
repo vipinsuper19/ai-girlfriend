@@ -33,6 +33,7 @@ export class MemoryEmbeddingService {
     async generateForMemory(
         memoryId: number,
         content: string,
+        options: { replace?: boolean } = {},
     ): Promise<void> {
         const text = content.trim();
 
@@ -62,7 +63,8 @@ export class MemoryEmbeddingService {
              */
             if (
                 existingEmbedding &&
-                existingEmbedding.status === 'READY'
+                existingEmbedding.status === 'READY' &&
+                !options.replace
             ) {
                 this.logger.debug(
                     `Embedding already exists for memory ${memoryId}`,
@@ -86,7 +88,8 @@ export class MemoryEmbeddingService {
                     updatedAt: new Date().toISOString(),
                 });
             } else if (
-                existingEmbedding.status === 'FAILED'
+                existingEmbedding.status === 'FAILED' ||
+                options.replace
             ) {
                 /*
                  * Allow retrying previously failed embeddings.

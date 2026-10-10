@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Injectable,
     InternalServerErrorException,
 } from '@nestjs/common';
@@ -6,13 +7,20 @@ import {
 import { randomUUID } from 'crypto';
 import {
     mkdir,
+    readdir,
+    rm,
     writeFile,
 } from 'fs/promises';
 
+import { join } from 'path';
+
 import {
-    extname,
-    join,
-} from 'path';
+    avatarExtension,
+    companionFilesIn,
+    generatedImageExtension,
+    ownUserFile,
+    ownVoiceFile,
+} from './file-types.js';
 
 export interface StorageSaveOptions {
     directory: string;
@@ -82,13 +90,13 @@ export class StorageService {
         companionId: number,
         file: Express.Multer.File,
     ): Promise<string> {
-        const extension =
-            extname(
-                file.originalname,
-            ) ||
-            this.getExtensionFromMimeType(
-                file.mimetype,
+        const extension = avatarExtension(file.mimetype);
+
+        if (!extension) {
+            throw new BadRequestException(
+                'Avatar must be a JPEG, PNG, or WebP image',
             );
+        }
 
         return this.save(
             file.buffer,
@@ -117,21 +125,55 @@ export class StorageService {
         );
     }
 
-    private getExtensionFromMimeType(
-        mimeType: string,
-    ): string {
-        const extensions:
-            Record<string, string> = {
-            'image/jpeg': '.jpg',
-            'image/png': '.png',
-            'image/webp': '.webp',
-            'audio/wav': '.wav',
-            'audio/mpeg': '.mp3',
-            'audio/mp4': '.m4a',
-            'audio/ogg': '.ogg',
-            'audio/webm': '.webm',
-        };
+    /**
+     * Uploads are public by URL, so deleting an account also deletes the
+     * voice notes, gallery images, and portraits it stored.
+     */
+    async removeUserFiles(
+        userId: number,
+        companionIds: readonly number[],
+    ): Promise<void> {
+        for (const dir of ['voice', 'images']) {
+            await rm(
+                join(this.uploadRoot, dir, String(userId)),
+                { recursive: true, force: true },
+            );
+        }
 
-        return extensions[mimeType] ?? '';
+        const portraits = join(this.uploadRoot, 'companions');
+        const names = await readdir(portraits).catch(() => [] as string[]);
+
+        for (const name of companionFilesIn(names, companionIds)) {
+            await rm(join(portraits, name), { force: true });
+        }
+    }
+
+    async removeVoiceFile(userId: number, url: unknown): Promise<void> {
+        const name = ownVoiceFile(url, userId);
+        if (!name) return;
+        await rm(
+            join(this.uploadRoot, 'voice', String(userId), name),
+            { force: true },
+        );
+    }
+
+    async saveGeneratedImage(
+        userId: number,
+        image: Buffer,
+        mimeType: string,
+    ): Promise<string> {
+        return this.save(image, {
+            directory: `images/${userId}`,
+            fileName: `${randomUUID()}${generatedImageExtension(mimeType)}`,
+        });
+    }
+
+    async removeImageFile(userId: number, url: unknown): Promise<void> {
+        const name = ownUserFile(url, 'images', userId);
+        if (!name) return;
+        await rm(
+            join(this.uploadRoot, 'images', String(userId), name),
+            { force: true },
+        );
     }
 }

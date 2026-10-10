@@ -108,7 +108,9 @@ An explanation card, three stat tiles, controls, and a destructive clear-all.
 memories." The most common fear is a transcript sitting on a server, and correcting it earns the right
 to explain the rest.
 
-"Pause new memories" and "Export my data" have no backend and are shown disabled.
+"Pause new memories" is a switch backed by `PATCH /users/me { memoryPaused }`; while it is on, the
+phone and the server both stop saving new memories. "Export my data" saves `GET /users/me/export`
+as a JSON file the user picks a location for.
 
 Clear-all requires typing DELETE. It is unrecoverable and there is no bulk endpoint — the client
 iterates `DELETE /memories/:id`, which needs a progress state and partial-failure handling.

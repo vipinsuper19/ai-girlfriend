@@ -13,23 +13,18 @@ Visual reference: `canvases/web-auth-screens.canvas.tsx`.
 
 ---
 
-## 1. Before anything else: two of these screens have no backend
+## 1. Backend status
 
-`apps/api` implements exactly four auth endpoints — `register`, `login`, `logout`, `refresh`
-(`auth.controller.ts:25-60`). There is **no forgot-password endpoint, no reset-password endpoint, and
-no mail transport anywhere in the repo**; searching `apps/api` for `nodemailer`, `smtp`, `resend`, or
-`forgot` returns nothing.
+`apps/api` now serves the reset flow: `POST /auth/password/forgot` (always `200` with the same body,
+mails a single-use 30-minute link when the account exists), `POST /auth/password/reset/check`
+(reports whether a token is valid without using it), and `POST /auth/password/reset`. A token carries
+a fingerprint of the password hash, so it stops working once the password changes, including by that
+reset, and the reset ends every session. Mail goes through `SMTP_URL`; without it the message is
+written to the API log, which is for development only. The "Forgot password?" link on Login is always
+shown.
 
-Screens 4 and 5 are fully specified so they are ready the day the backend lands, but they cannot
-function in a shipping build. **The "Forgot password?" link on Login sits behind
-`NEXT_PUBLIC_FEATURE_PASSWORD_RESET`, off by default.** A link into a dead end is worse than no link —
-it teaches users the product is broken at the moment they are already locked out.
-
-What the backend needs first: `POST /auth/forgot-password` taking `{ email }` and always returning
-202 in the same amount of time whether or not the account exists; `POST /auth/reset-password` taking
-`{ token, password }`; a single-use, 30-minute token stored hashed and invalidated on use and on
-password change; a mail transport with SPF, DKIM, and DMARC on the sending domain; and rate limiting
-on both, since `main.ts` registers no throttler and these are the two endpoints most worth abusing.
+Still open on the backend: SPF, DKIM, and DMARC on the sending domain, and rate limiting on
+`password/forgot` and `password/reset`, since `main.ts` registers no throttler.
 
 **The web reset link changes the token-handling story.** On Android the link is
 `aicompanion://reset-password?token=…`, delivered to a process nothing else can read. On web it is
@@ -38,12 +33,12 @@ back-forward cache, in the `Referer` header of any outbound request the page mak
 consequential one — in the fetch logs of every link scanner between sender and inbox. Outlook Safe
 Links, corporate mail gateways, and chat unfurlers all GET a URL before a human clicks it. **So the
 token must be validated on `GET` and burned only on `POST`.** If the backend invalidates on first
-read, a large share of users will click a link a machine already spent. §3.5 covers the client half.
+read, a large share of users will click a link a machine already spent. The reset page calls
+`password/reset/check` on load and spends the token only on submit. §3.5 covers the client half.
 
-Google sign-in is still absent: `AuthProvider.GOOGLE` exists in the schema and `POST /auth/google`
-does not. [`01-foundation.md`](./01-foundation.md) §12 reopens the Android deferral for web, so Login
-and Sign up reserve vertical space for a provider row above the email field — adding it later should
-be filling a gap, not a redesign.
+`POST /auth/google` exchanges a Google ID token (checked against `GOOGLE_CLIENT_IDS`) or a Firebase ID
+token (checked against `FIREBASE_PROJECT_ID`) for a session. Login and Sign up keep the vertical space
+reserved for a provider row above the email field, so a web Google button fills that gap.
 
 ---
 

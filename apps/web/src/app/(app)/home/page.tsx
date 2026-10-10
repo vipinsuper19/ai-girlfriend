@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
+import { NoCompanion } from "@/components/shared/no-companion";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Banner } from "@/components/ui/surfaces";
@@ -15,7 +15,12 @@ export default async function HomePage() {
   const companions = await serverApi<Companion[]>("/avatars").catch(() => []);
   const companionSummary = companions[0];
   if (!companionSummary) {
-    redirect("/onboarding");
+    return (
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-5 py-8">
+        <Greeting name={firstName(user.displayName)} />
+        <NoCompanion />
+      </div>
+    );
   }
 
   const companion = await serverApi<Companion>(

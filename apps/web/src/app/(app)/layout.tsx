@@ -15,7 +15,7 @@ export default async function AuthenticatedLayout({
     user = await serverApi<User>("/users/me");
   } catch (error) {
     if (isApiError(error) && error.status === 401) {
-      redirect("/login");
+      redirect("/api/bff/auth/logout");
     }
     throw error;
   }
