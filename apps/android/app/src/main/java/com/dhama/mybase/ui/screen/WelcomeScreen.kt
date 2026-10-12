@@ -41,7 +41,6 @@ import com.dhama.mybase.ui.theme.MyBaseTheme
 fun WelcomeScreen(
     modifier: Modifier = Modifier,
     onGetStarted: () -> Unit,
-    onSkip: () -> Unit,
     onLogin: (() -> Unit)? = null,
 ) {
     Scaffold(
@@ -198,9 +197,6 @@ fun WelcomeScreen(
                 textAlign = TextAlign.Center
             )
         }
-        
-        // Suppress unused warning via fully referencing parameter locally if needed
-        if (false) onSkip()
     }
 }
 
@@ -211,7 +207,6 @@ private fun WelcomeScreenPreview() {
     MyBaseTheme {
         WelcomeScreen(
             onGetStarted = {},
-            onSkip = {},
             onLogin = {}
         )
     }

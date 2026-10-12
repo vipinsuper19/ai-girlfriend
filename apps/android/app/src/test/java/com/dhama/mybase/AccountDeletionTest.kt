@@ -3,15 +3,23 @@ package com.dhama.mybase
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_ERROR
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
-import com.dhama.mybase.core.data.ACCOUNT_DELETION_PREFERENCE_NAMES
 import com.dhama.mybase.core.data.AccountDeletionResult
+import com.dhama.mybase.core.data.AgeLocalStore
+import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.SignInRoute
 import com.dhama.mybase.core.data.deleteServerAccount
-import com.dhama.mybase.core.data.isAccountDeletionPreference
 import com.dhama.mybase.core.data.performAccountDeletion
 import com.dhama.mybase.core.data.routeAfterFailedDeleteRefresh
 import com.dhama.mybase.core.data.signOutThenClearSession
+import com.dhama.mybase.core.age.AGE_SEAL_PREFIX
+import com.dhama.mybase.core.age.AgeSeal
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.utils.PreferencesKeys
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -245,20 +253,73 @@ class AccountDeletionTest {
     }
 
     @Test
-    fun accountDeletionClearsAgeGateAndDisclosureKeysIncludingPerUidVariants() {
-        val uid = "firebaseUid"
-        assertTrue(isAccountDeletionPreference("age_confirmed_18"))
-        assertTrue(isAccountDeletionPreference("date_of_birth"))
-        assertTrue(isAccountDeletionPreference("ai_disclosure_acknowledged"))
-        assertTrue(isAccountDeletionPreference("age_confirmed_18_$uid"))
-        assertTrue(isAccountDeletionPreference("date_of_birth.$uid"))
-        assertTrue(isAccountDeletionPreference("ai_disclosure_acknowledged:$uid"))
-        assertTrue(isAccountDeletionPreference("age_confirmed_at"))
-        assertTrue(isAccountDeletionPreference("age_subject_$uid"))
-        assertFalse(isAccountDeletionPreference("theme_mode"))
-        assertFalse(isAccountDeletionPreference("user_email"))
-        assertTrue(ACCOUNT_DELETION_PREFERENCE_NAMES.containsAll(
-            setOf("age_confirmed_18", "date_of_birth", "ai_disclosure_acknowledged"),
-        ))
+    fun failedServerDeleteKeepsTheSessionAndDoesNotWipeAgeData() = runBlocking {
+        var ageCleared = false
+        var signedOut = false
+        val result = performAccountDeletion(
+            deleteRemote = { throw ApiStatusException(503, "Server unavailable", null) },
+            signOut = { signedOut = true },
+            clearLocal = { ageCleared = true },
+        )
+        assertEquals(AccountDeletionResult.Failed("Server unavailable"), result)
+        assertFalse(signedOut)
+        assertFalse(ageCleared)
+    }
+
+    @Test
+    fun successfulDeleteClearsTheAgeKeystoreKeyAndDisclosure() = runBlocking {
+        val preferences = MemoryPreferences()
+        val repo = DataStoreRepo(preferences)
+        val seal = ReversibleSeal()
+        val age = AgeLocalStore(repo, seal)
+        repo.saveBoolean(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED, true)
+        assertTrue(age.save("user-a", "1991-03-17", "2026-10-12T15:04:05Z"))
+
+        var signedOut = false
+        val result = performAccountDeletion(
+            deleteRemote = {},
+            signOut = { signedOut = true },
+            clearLocal = {
+                age.clear()
+                repo.update { prefs -> prefs.remove(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED) }
+            },
+        )
+
+        assertEquals(AccountDeletionResult.Deleted, result)
+        assertTrue(signedOut)
+        assertTrue(seal.discarded)
+        assertEquals("", preferences.value(PreferencesKeys.DATE_OF_BIRTH_SEALED))
+        assertEquals(false, preferences.state.value[PreferencesKeys.AGE_CONFIRMED] ?: false)
+        assertEquals(false, preferences.state.value[PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED] ?: false)
+    }
+
+    private class MemoryPreferences : DataStore<Preferences> {
+        val state = MutableStateFlow<Preferences>(emptyPreferences())
+        override val data: Flow<Preferences> = state
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+            val next = transform(state.value)
+            state.value = next
+            return next
+        }
+
+        suspend fun value(key: Preferences.Key<String>): String = state.value[key].orEmpty()
+    }
+
+    private class ReversibleSeal : AgeSeal {
+        private val box = linkedMapOf<String, String>()
+        private var next = 0
+        var discarded = false
+        override fun seal(plaintext: String): String {
+            val token = "$AGE_SEAL_PREFIX" + "t${next++}"
+            box[token] = plaintext
+            return token
+        }
+
+        override fun open(sealed: String): String? = box[sealed]
+
+        override fun discard() {
+            discarded = true
+            box.clear()
+        }
     }
 }

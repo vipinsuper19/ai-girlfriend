@@ -1,6 +1,7 @@
 package com.dhama.mybase.core.data
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
@@ -56,13 +57,8 @@ class DataStoreRepo @Inject constructor(
         }
     }
 
-    suspend fun removeMatching(predicate: (String) -> Boolean) {
-        dataStore.edit { preferences ->
-        preferences.asMap().keys
-            .filter { predicate(it.name) }
-            .toList()
-            .forEach { preferences.remove(it) }
-        }
+    suspend fun update(block: (MutablePreferences) -> Unit) {
+        dataStore.edit { preferences -> block(preferences) }
     }
 
 }

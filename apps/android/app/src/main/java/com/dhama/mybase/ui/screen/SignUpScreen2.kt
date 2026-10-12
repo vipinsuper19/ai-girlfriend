@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,9 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,8 +46,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +80,12 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.dhama.mybase.R
+import com.dhama.mybase.core.age.AgeGateCopy
+import com.dhama.mybase.core.age.MINIMUM_SIGNUP_AGE
+import com.dhama.mybase.core.age.dateOfBirthFromUtcMillis
+import com.dhama.mybase.core.age.evaluateAgeGate
+import com.dhama.mybase.core.age.formatDateOfBirth
+import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
@@ -80,6 +93,7 @@ import com.dhama.mybase.core.FeatureFlags
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,7 +104,7 @@ fun SignUpScreen(
     onLogin: () -> Unit,
     viewModel: OnBoardingViewModel
 ) {
-    var mobileSignUp by rememberSaveable { mutableStateOf(true) }
+    var mobileSignUp by rememberSaveable { mutableStateOf(FeatureFlags.build.phoneSignIn) }
     val authState by viewModel.authState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -116,14 +130,14 @@ fun SignUpScreen(
 
     SignUpContent(
         onBack = onBack,
-        onSignUp = { email, password ->
-            viewModel.createEmailSignIn(email, password)
+        onSignUp = { email, password, dateOfBirth ->
+            viewModel.createEmailSignIn(email, password, dateOfBirth)
         },
         onMobileSignUp = { mobile ->
             viewModel.sendOtp(mobile, context as androidx.activity.ComponentActivity)
         },
         onLogin = onLogin,
-        googleSignIn = {
+        googleSignIn = { dateOfBirth ->
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(
                     GetGoogleIdOption.Builder()
@@ -137,7 +151,7 @@ fun SignUpScreen(
                 .build()
             coroutineScope.launch { // Launch a coroutine
                 val response = credentialManager.getCredential(request = request, context = context)
-                viewModel.googleSignIn(response)
+                viewModel.googleSignIn(response, dateOfBirth)
             }
 
         },
@@ -153,12 +167,13 @@ fun SignUpScreen(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun SignUpContent(
     onBack: () -> Unit,
-    onSignUp: (email: String, password: String) -> Unit,
+    onSignUp: (email: String, password: String, dateOfBirth: String) -> Unit,
     onMobileSignUp: (mobile: String) -> Unit,
     onLogin: () -> Unit,
-    googleSignIn: () -> Unit,
+    googleSignIn: (dateOfBirth: String) -> Unit,
     facebookSignIn: () -> Unit,
     twitterSignIn: () -> Unit,
     isValidEmail: (email: String) -> Boolean,
@@ -175,15 +190,32 @@ fun SignUpContent(
     var confirm by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var showConfirm by rememberSaveable { mutableStateOf(false) }
+    var confirmedAdult by rememberSaveable { mutableStateOf(false) }
+    var dateOfBirthIso by rememberSaveable { mutableStateOf("") }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var attempted by rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val showPhoneForm = FeatureFlags.build.phoneSignIn && mobileSignUp
+    val dateOfBirth = dateOfBirthIso.takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
+    val ageDecision = evaluateAgeGate(confirmedAdult, dateOfBirth, LocalDate.now())
+    val dobMessage = ageDecision.dateOfBirthMessage?.takeIf { dateOfBirth != null || attempted }
+    val confirmMessage = ageDecision.confirmationMessage?.takeIf { attempted }
 
     val mobileError = mobile.isNotBlank() && !isValidMobile(mobile)
-    val emailError = email.isNotBlank() && !isValidEmail(email)
-    val passwordError = password.isNotBlank() && !isStrongPassword(password)
-    val confirmError = confirm.isNotBlank() && confirm != password
+    val emailError = !isValidEmail(email) && (email.isNotBlank() || (attempted && !showPhoneForm))
+    val passwordError = !isStrongPassword(password) && (password.isNotBlank() || (attempted && !showPhoneForm))
+    val confirmError = confirm != password && (confirm.isNotBlank() || (attempted && !showPhoneForm && password.isNotBlank()))
     val canSubmit = isValidEmail(email) && isStrongPassword(password) && confirm == password
+    val submitEmail = {
+        attempted = true
+        val birth = dateOfBirthIso.takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
+        val gate = evaluateAgeGate(confirmedAdult, birth, LocalDate.now())
+        if (canSubmit && gate.allowed && birth != null) {
+            onSignUp(email.trim(), password, birth.toString())
+        }
+    }
 
 
     Scaffold(
@@ -232,7 +264,7 @@ fun SignUpContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
+            if (showPhoneForm) {
                 TextField(
                     value = mobile,
                     onValueChange = { mobile = it },
@@ -419,11 +451,78 @@ fun SignUpContent(
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = {
-                            if (canSubmit) onSignUp(email.trim(), password)
-                        }
+                        onDone = { submitEmail() }
                     ),
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    TextField(
+                        value = dateOfBirth?.let(::formatDateOfBirth).orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Date of birth") },
+                        placeholder = { Text("Select your date of birth") },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = dobMessage != null,
+                        supportingText = {
+                            if (dobMessage != null) {
+                                Text(
+                                    text = dobMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                            unfocusedIndicatorColor = Color.LightGray,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                        ),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showDatePicker = true }
+                            .semantics { contentDescription = "Date of birth" },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = confirmedAdult,
+                            role = Role.Checkbox,
+                            onValueChange = { confirmedAdult = it },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = confirmedAdult,
+                        onCheckedChange = null,
+                    )
+                    Text(
+                        text = AgeGateCopy.CHECKBOX,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                if (confirmMessage != null) {
+                    Text(
+                        text = confirmMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp),
+                    )
+                }
             }
 
 
@@ -437,10 +536,10 @@ fun SignUpContent(
                 text = "Sign up",
                 textLoading = "Signing up..."
             ) {
-                when {
-                    !FeatureFlags.build.phoneSignIn -> if (canSubmit) onSignUp(email.trim(), password)
-                    mobileSignUp -> onSignUp(email, password)
-                    else -> onSignUp(mobile, password)
+                if (showPhoneForm) {
+                    if (isValidMobile(mobile)) onMobileSignUp(mobile)
+                } else {
+                    submitEmail()
                 }
             }
 
@@ -478,12 +577,13 @@ fun SignUpContent(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 SocialLoginButton(iconRes = R.drawable.ic_google, "Sign up with google") {
-                    /* Handle Google Sign Up */
-                    googleSignIn()
+                    attempted = true
+                    val birth = dateOfBirthIso.takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
+                    val gate = evaluateAgeGate(confirmedAdult, birth, LocalDate.now())
+                    if (gate.allowed && birth != null) googleSignIn(birth.toString())
                 }
-                if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
+                if (showPhoneForm) {
                     SocialLoginButton(iconRes = R.drawable.outline_mail_24, "Sign up with email") {
-                        /* Handle Facebook Sign Up */
                         updateMobileSignUp(false)
                     }
                 } else if (FeatureFlags.build.phoneSignIn) {
@@ -491,7 +591,6 @@ fun SignUpContent(
                         iconRes = R.drawable.baseline_phone_24,
                         "Sign up with mobile"
                     ) {
-                        /* Handle Twitter Sign Up */
                         updateMobileSignUp(true)
                     }
                 }
@@ -512,6 +611,32 @@ fun SignUpContent(
                     modifier = Modifier.clickable { onLogin() } // Call the provided lambda
                 )
             }
+        }
+    }
+
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = dateOfBirth?.let(::utcMillisFromDateOfBirth),
+            initialDisplayedMonthMillis = utcMillisFromDateOfBirth(
+                dateOfBirth ?: LocalDate.now().minusYears(MINIMUM_SIGNUP_AGE.toLong()),
+            ),
+            yearRange = 1900..LocalDate.now().year,
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        dateOfBirthIso = dateOfBirthFromUtcMillis(millis).toString()
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = pickerState)
         }
     }
 }
@@ -592,17 +717,17 @@ fun PreviewSignUpScreen() {
     val sampleState = MutableStateFlow<UiState<String>>(UiState.Loading).collectAsState().value
     SignUpContent(
         onBack = { },
-        onSignUp = { _, _ -> },
+        onSignUp = { _, _, _ -> },
         onMobileSignUp = { _ -> },
         onLogin = { },
-        googleSignIn = { },
+        googleSignIn = { _ -> },
         facebookSignIn = { },
         twitterSignIn = { },
         isValidEmail = { true },
         isStrongPassword = { true },
         isValidMobile = { true },
         authState = sampleState,
-        mobileSignUp = true,
+        mobileSignUp = false,
         updateMobileSignUp = { }
     )
 }

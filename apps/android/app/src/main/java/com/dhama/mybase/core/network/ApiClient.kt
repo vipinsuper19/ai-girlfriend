@@ -1,5 +1,10 @@
 package com.dhama.mybase.core.network
 
+import com.dhama.mybase.core.age.AGE_PATCH_PATH
+import com.dhama.mybase.core.age.SEND_AGE_TO_API
+import com.dhama.mybase.core.age.googleAuthRequestJson
+import com.dhama.mybase.core.age.registerRequestJson
+import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
@@ -45,10 +50,15 @@ class ApiClient(
 
     fun origin(): String = apiOrigin(baseUrl)
 
-    suspend fun establish(email: String, password: String) {
+    suspend fun establish(
+        email: String,
+        password: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ) {
         val normalized = email.trim().lowercase()
         val tokens = attempt { login(normalized, password) }
-            ?: attempt { register(normalized, password, sessionDisplayName(normalized)) }
+            ?: attempt { register(normalized, password, sessionDisplayName(normalized), dateOfBirth, ageConfirmedAt) }
         if (tokens != null) store.write(tokens) else store.clear()
     }
 
@@ -306,11 +316,27 @@ class ApiClient(
     }
 
     /** Trades a Firebase Google ID token for an API session. Returns false when the API refuses it. */
-    suspend fun establishWithGoogle(idToken: String): Boolean {
-        val payload = json.encodeToString(GoogleBody(idToken))
+    suspend fun establishWithGoogle(
+        idToken: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ): Boolean {
+        val payload = googleAuthRequestJson(idToken, dateOfBirth, ageConfirmedAt, SEND_AGE_TO_API, json)
         val tokens = attempt { unwrapData<SessionTokens>(execute(authed("POST", "auth/google", payload, null)), json) }
         if (tokens != null) store.write(tokens) else store.clear()
         return tokens != null
+    }
+
+    /**
+     * PATCH users/me/age. No request is made while [SEND_AGE_TO_API] is false,
+     * so the date of birth cannot be logged from a body that was never sent.
+     */
+    suspend fun patchAge(dateOfBirth: String, ageConfirmedAt: String) {
+        if (!SEND_AGE_TO_API) return
+        val payload = agePatchJson(dateOfBirth, ageConfirmedAt, json)
+        withAuth { access ->
+            execute(authed("PATCH", AGE_PATCH_PATH, payload, access))
+        }
     }
 
     suspend fun regenerate(messageId: Int): RegeneratedReply {
@@ -390,11 +416,23 @@ class ApiClient(
         return unwrapData(execute(jsonPost("auth/login", LoginBody(email, password))), json)
     }
 
-    private suspend fun register(email: String, password: String, displayName: String): SessionTokens {
-        return unwrapData(
-            execute(jsonPost("auth/register", RegisterBody(email, password, displayName))),
+    private suspend fun register(
+        email: String,
+        password: String,
+        displayName: String,
+        dateOfBirth: String?,
+        ageConfirmedAt: String?,
+    ): SessionTokens {
+        val payload = registerRequestJson(
+            email,
+            password,
+            displayName,
+            dateOfBirth,
+            ageConfirmedAt,
+            SEND_AGE_TO_API,
             json,
         )
+        return unwrapData(execute(authed("POST", "auth/register", payload, null)), json)
     }
 
     private suspend fun <T> withAuth(
@@ -442,7 +480,6 @@ class ApiClient(
     private fun jsonPost(path: String, body: Any, access: String? = null): Request {
         val payload = when (body) {
             is LoginBody -> json.encodeToString(body)
-            is RegisterBody -> json.encodeToString(body)
             is RefreshBody -> json.encodeToString(body)
             is PasswordBody -> json.encodeToString(body)
             is CreateAvatarRequest -> json.encodeToString(body)
@@ -497,9 +534,6 @@ private suspend fun <T> attempt(block: suspend () -> T): T? {
 private data class LoginBody(val email: String, val password: String)
 
 @Serializable
-private data class RegisterBody(val email: String, val password: String, val displayName: String)
-
-@Serializable
 private data class RefreshBody(val refreshToken: String)
 
 @Serializable
@@ -522,9 +556,6 @@ private data class DisplayNameBody(val displayName: String)
 
 @Serializable
 private data class SynthesizeBody(val companionId: Int, val text: String)
-
-@Serializable
-private data class GoogleBody(val idToken: String)
 
 @Serializable
 private data class NewMemoryBody(val companionId: Int, val content: String, val type: String)

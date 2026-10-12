@@ -10,26 +10,6 @@ internal const val ACCOUNT_DELETE_SIGN_IN = "Sign in again to delete this accoun
 internal const val ACCOUNT_DELETE_SIGN_IN_CODE = "ACCOUNT_DELETE_SIGN_IN"
 
 /**
- * Preference names the 18+ gate and first-chat disclosure will write (PR #8, not on main yet).
- * Deletion removes them by name. Per-uid variants use `_`, `.`, or `:` after the base name,
- * for example `date_of_birth_<uid>` and `age_confirmed_18.<uid>`.
- */
-internal val ACCOUNT_DELETION_PREFERENCE_NAMES = setOf(
-    "age_confirmed_18",
-    "date_of_birth",
-    "age_confirmed_at",
-    "age_subject",
-    "ai_disclosure_acknowledged",
-)
-
-internal fun isAccountDeletionPreference(name: String): Boolean {
-    if (name in ACCOUNT_DELETION_PREFERENCE_NAMES) return true
-    return ACCOUNT_DELETION_PREFERENCE_NAMES.any { base ->
-        name.startsWith("${base}_") || name.startsWith("$base.") || name.startsWith("$base:")
-    }
-}
-
-/**
  * Calls DELETE /users/me.
  *
  * A 404 from DELETE /users/me counts as success: the account is already gone, so this phone

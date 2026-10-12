@@ -6,10 +6,10 @@ import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.personalityUpdatedLine
 import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AccountSync
+import com.dhama.mybase.core.data.AgeLocalStore
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.PushRegistration
 import com.dhama.mybase.core.data.SignInRoute
-import com.dhama.mybase.core.data.isAccountDeletionPreference
 import com.dhama.mybase.core.data.performAccountDeletion
 import com.dhama.mybase.core.data.routeAfterFailedDeleteRefresh
 import com.dhama.mybase.core.domain.AuthRepository
@@ -42,6 +42,7 @@ class SettingsViewModel @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val accountSync: AccountSync,
     private val pushRegistration: PushRegistration,
+    private val ageLocal: AgeLocalStore,
 ) : ViewModel() {
 
     val notificationsEnabled = pushRegistration.observeEnabled()
@@ -321,8 +322,12 @@ class SettingsViewModel @Inject constructor(
         dataStoreRepo.saveString(PreferencesKeys.USER_EMAIL, "")
         dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
         dataStoreRepo.saveString(PreferencesKeys.USAGE_SUMMARY, "")
-        // PR #8 has not landed. Remove the age-gate and disclosure keys by name anyway.
-        dataStoreRepo.removeMatching(::isAccountDeletionPreference)
+        // AgeLocalStore.clear deletes the Keystore key and the age preferences.
+        // It runs only after the server delete succeeds.
+        ageLocal.clear()
+        dataStoreRepo.update { prefs ->
+            prefs.remove(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED)
+        }
         companionRepository.clear()
         chatRepository.clear()
         memoryRepository.clear()
