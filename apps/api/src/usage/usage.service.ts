@@ -1,7 +1,6 @@
 import {
     BadRequestException,
     Injectable,
-    NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -10,6 +9,10 @@ import {
     RecordUsageDto,
     UsageFeatureDto,
 } from './dto/record-usage.dto.js';
+import {
+    limitFor,
+    windowFor,
+} from './free-tier-llm.js';
 import {
     SubscriptionPlan,
     USAGE_LIMITS,
@@ -27,47 +30,6 @@ export class UsageService {
         return this.prisma.client;
     }
 
-    /**
-     * The current contract has no billing-period columns on UsageRecord.
-     * Therefore 9.3 uses calendar-month usage windows:
-     * [first day of current month, first day of next month).
-     *
-     * When billing-period support is added, this method should be the
-     * single place that changes.
-     */
-    private getCurrentPeriod() {
-        const now = new Date();
-
-        const start = new Date(
-            Date.UTC(
-                now.getUTCFullYear(),
-                now.getUTCMonth(),
-                1,
-                0,
-                0,
-                0,
-                0,
-            ),
-        );
-
-        const end = new Date(
-            Date.UTC(
-                now.getUTCFullYear(),
-                now.getUTCMonth() + 1,
-                1,
-                0,
-                0,
-                0,
-                0,
-            ),
-        );
-
-        return {
-            start: start.toISOString(),
-            end: end.toISOString(),
-        };
-    }
-
     async check(
         userId: number,
         feature: UsageFeatureDto,
@@ -83,13 +45,14 @@ export class UsageService {
         const plan =
             subscription.plan as SubscriptionPlan;
 
-        const limit =
-            USAGE_LIMITS[plan]?.[feature];
+        const limit = limitFor(plan, feature);
+        const window = windowFor(plan, feature);
 
         const used =
             await this.getUsed(
                 userId,
                 feature,
+                plan,
             );
 
         if (limit === undefined) {
@@ -107,6 +70,10 @@ export class UsageService {
                 limit,
                 used,
                 quantity,
+                {
+                    period: window.period,
+                    resetsAt: window.end,
+                },
             );
         }
 
@@ -124,6 +91,8 @@ export class UsageService {
                         0,
                         limit - used - quantity,
                     ),
+            period: window.period,
+            resetsAt: window.end,
         };
     }
 
@@ -141,21 +110,20 @@ export class UsageService {
             dto.quantity,
         );
 
-        return this.db.orm.public.UsageRecord.create({
+        return this.write(
             userId,
-            feature: dto.feature,
-            quantity: dto.quantity,
-            metadata:
-                dto.metadata ?? null,
-        });
+            dto.feature,
+            dto.quantity,
+            dto.metadata,
+        );
     }
 
     /**
      * Atomic-at-application-level consume operation:
      * validate the requested amount, then persist one usage record.
      *
-     * The database contract does not currently contain a usage counter,
-     * so the source of truth remains append-only UsageRecord rows.
+     * Chat replies do not use this. They check first and `charge` only after
+     * the model returns a reply, so a failed or aborted generation is free.
      */
     async consume(
         userId: number,
@@ -169,20 +137,39 @@ export class UsageService {
             quantity,
         );
 
-        return this.db.orm.public.UsageRecord.create({
+        return this.write(
             userId,
             feature,
             quantity,
-            metadata: metadata ?? null,
-        });
+            metadata,
+        );
+    }
+
+    /**
+     * Persist usage for work that already succeeded. Does not re-check the
+     * cap: the caller checked before spending provider time, and a reply
+     * that finished must count even if a concurrent request landed first.
+     *
+     * Accepted MVP limitation: check and charge are not one transaction, so
+     * overlapping requests can record a few units past the free-tier cap.
+     */
+    async charge(
+        userId: number,
+        feature: UsageFeatureDto,
+        quantity = 1,
+        metadata?: Record<string, unknown>,
+    ) {
+        this.assertPositiveQuantity(quantity);
+        return this.write(userId, feature, quantity, metadata);
     }
 
     async getUsed(
         userId: number,
         feature: UsageFeatureDto,
+        plan?: SubscriptionPlan,
     ): Promise<number> {
-        const { start, end } =
-            this.getCurrentPeriod();
+        const resolved = plan ?? await this.planFor(userId);
+        const { start, end } = windowFor(resolved, feature);
 
         const records =
             await this.db.orm.public.UsageRecord
@@ -235,10 +222,11 @@ export class UsageService {
                         await this.getUsed(
                             userId,
                             feature,
+                            plan,
                         );
 
-                    const limit =
-                        USAGE_LIMITS[plan][feature];
+                    const limit = limitFor(plan, feature);
+                    const window = windowFor(plan, feature);
 
                     return {
                         feature,
@@ -255,18 +243,46 @@ export class UsageService {
                                     0,
                                     limit - used,
                                 ),
+                        period: window.period,
+                        resetsAt: window.end,
                     };
                 }),
             );
+
+        const messageWindow = windowFor(
+            plan,
+            UsageFeatureDto.MESSAGES,
+        );
 
         return {
             plan,
             subscriptionId:
                 subscription.id,
-            period:
-                this.getCurrentPeriod(),
+            period: {
+                start: messageWindow.start,
+                end: messageWindow.end,
+            },
             usage,
         };
+    }
+
+    private async planFor(userId: number): Promise<SubscriptionPlan> {
+        const subscription = await this.subscriptionsService.getCurrent(userId);
+        return subscription.plan as SubscriptionPlan;
+    }
+
+    private write(
+        userId: number,
+        feature: UsageFeatureDto,
+        quantity: number,
+        metadata?: Record<string, unknown> | null,
+    ) {
+        return this.db.orm.public.UsageRecord.create({
+            userId,
+            feature,
+            quantity,
+            metadata: metadata ?? null,
+        });
     }
 
     private assertPositiveQuantity(

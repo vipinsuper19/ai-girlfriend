@@ -266,14 +266,16 @@ class AuthRepoImpl(
     }
 
     override suspend fun deleteRemoteAccount() {
-        try {
-            if (api.hasSession()) api.deleteAccount()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            // Sign-out still clears this phone when the server account cannot be removed.
-        }
-        ageLocal.clear()
+        // A failed server delete throws and leaves the session and age data in place.
+        // AgeLocalStore.clear runs only from the local wipe after a successful delete.
+        deleteServerAccount(api.hasSession()) { api.deleteAccount() }
     }
 
+    override suspend fun signInAgainAfterDelete(): Boolean {
+        return signOutThenClearSession(
+            firebaseSignedIn = { auth.currentUser != null },
+            signOutFirebase = { auth.signOut() },
+            clearSessionStore = { api.clear() },
+        )
+    }
 }

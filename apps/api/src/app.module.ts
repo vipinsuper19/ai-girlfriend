@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from './auth/auth.module.js';
+import { RateLimitModule } from './rate-limit/rate-limit.module.js';
 import { CommonModule } from './common/common.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -24,6 +25,7 @@ import { ReportsModule } from './reports/reports.module.js';
   imports: [
     CommonModule,
     PrismaModule,
+    RateLimitModule,
     AuthModule,
     UsersModule,
     AvatarsModule,
