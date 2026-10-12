@@ -1,4 +1,5 @@
-# Render Blueprint: API on the free plan.
+# Render Blueprint: API on the free plan, as a native Node service.
+# Render does not run apps/api/Dockerfile. The service root is the repo root.
 #
 # Secret values are not in this file. Each one is `sync: false` on the
 # service, so Render asks for it in the dashboard secret manager the first
@@ -9,12 +10,14 @@
 # Non-secret defaults live in the env group. Code defaults match them when
 # the variable is unset.
 #
-# autoDeploy is false: ship with a manual deploy after the image is reviewed.
+# autoDeploy is false: ship with a manual deploy after the build is reviewed.
 envVarGroups:
   - name: ai-girlfriend-api-config
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "24"
       - key: STORAGE_DRIVER
         value: s3
       - key: S3_FORCE_PATH_STYLE
@@ -75,12 +78,13 @@ envVarGroups:
 services:
   - type: web
     name: ai-girlfriend-api
-    runtime: docker
+    runtime: node
     plan: free
     region: singapore
     branch: main
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    # NODE_ENV=production would omit the TypeScript toolchain. Install it, then compile.
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @ai-girlfriend/api build
+    startCommand: pnpm --filter @ai-girlfriend/api run db:migrate && pnpm --filter @ai-girlfriend/api start:prod
     healthCheckPath: /health
     autoDeploy: false
     envVars:
@@ -91,9 +95,9 @@ services:
       # named prepared statements and cannot turn them off.
       - key: DATABASE_URL
         sync: false
-      # Same session pooler. The container migrates with this URL and the
-      # process refuses to boot when it is empty. Enable the vector extension
-      # in Supabase first.
+      # Same session pooler. The start command migrates with this URL before
+      # the process listens, and production boot refuses when it is empty.
+      # Enable the vector extension in Supabase first.
       - key: DIRECT_URL
         sync: false
       - key: JWT_ACCESS_SECRET

@@ -170,8 +170,13 @@ export class UsersService {
         const companions = await db.orm.public.Companion.where({ userId: id }).all();
         const companionIds = companions.map((companion: { id: number }) => companion.id);
 
-        await deleteAccountRecords(db, id);
+        // Files go first. Android treats a later 404 from DELETE /users/me as
+        // success, so a file delete after this commit would never be retried.
+        // PR #19 owns that order: keep `removeUserFiles` as the `removeFiles`
+        // callback of `deleteAccountStorageFirst`, and pass `deleteAccountRecords`
+        // as `deleteUser`. That PR records failures on `storageCleanup`.
         await this.storage.removeUserFiles(id, companionIds);
+        await deleteAccountRecords(db, id);
 
         return {
             message: 'Account deleted successfully',

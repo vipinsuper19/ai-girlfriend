@@ -37,7 +37,13 @@ $ pnpm install
 $ pnpm --filter @ai-girlfriend/api run db:migrate
 ```
 
-Render native Node start command, with the repo root as the service root:
+Render runs this API as a native Node service, not the image from `apps/api/Dockerfile`. The service root is the repository root, and `render.yaml` sets Node 24. The build command installs devDependencies (production `NODE_ENV` would omit the TypeScript toolchain) and compiles:
+
+```bash
+pnpm install --frozen-lockfile --prod=false && pnpm --filter @ai-girlfriend/api build
+```
+
+The start command migrates, then listens:
 
 ```bash
 pnpm --filter @ai-girlfriend/api run db:migrate && pnpm --filter @ai-girlfriend/api start:prod
@@ -109,7 +115,7 @@ Put these in the Render dashboard (Blueprint `sync: false` on the service). They
 
 These are not credentials, but they differ per deploy, so they are `sync: false` as well: `CORS_ORIGIN`, `APP_URL`, `MAIL_FROM`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`.
 
-Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. The object-storage driver reads the S3 variables; until it is deployed, account deletion still removes files through `StorageService.removeUserFiles`.
+Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. Account deletion calls `StorageService.removeUserFiles` before the user row is deleted. The object-storage driver replaces that method and owns failure recording; this call stays where that driver expects it.
 
 ### Google Play subscriptions
 
