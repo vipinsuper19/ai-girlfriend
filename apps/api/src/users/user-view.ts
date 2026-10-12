@@ -6,6 +6,7 @@ export type UserRow = {
     updatedAt?: string | null;
     memoryPausedAt?: string | null;
     notificationsEnabledAt?: string | null;
+    ageConfirmedAt?: string | null;
 };
 
 export function userView(user: UserRow) {
