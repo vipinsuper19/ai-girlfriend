@@ -44,8 +44,8 @@ ENV PORT=3001
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
 COPY --chmod=755 --chown=node:node apps/api/docker-entrypoint.sh ./docker-entrypoint.sh
-# Render's disk is ephemeral. This directory only keeps the process from
-# crashing until uploads move to Supabase Storage.
+# Only the local driver writes here. The Render service uses S3
+# (STORAGE_DRIVER=s3), so this directory stays empty in that deploy.
 RUN mkdir -p uploads && chown node:node uploads
 USER node
 EXPOSE 3001

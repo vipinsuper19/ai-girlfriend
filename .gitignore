@@ -32,14 +32,12 @@ packages/**/src/**/*.d.ts
 packages/**/src/**/*.d.ts.map
 !apps/api/src/prisma/contract.d.ts
 
-# Environment files
+# Environment files. Examples are tracked; real env files are not.
 .env
 .env.local
-.env.example
 .env.development
 .env.production
- apps/*/.env
- apps/*/.env.example
+apps/*/.env
 
 # Logs
 *.log

@@ -97,14 +97,52 @@ export function voiceFields(source: Record<string, unknown> | null | undefined):
     return pick(source, VOICE_FIELDS, 'voice');
 }
 
-/** Only a portrait this API stored for this companion may be kept on her appearance. */
+/**
+ * Only a portrait this API stored for this companion may be kept.
+ * Clients send back the signed URL from the last response; this returns the
+ * stable `/uploads/companions/...` path that belongs in the database.
+ */
 export function ownAvatarUrl(
     url: unknown,
     companionId: number,
 ): string | null {
     if (typeof url !== 'string' || !url) return null;
-    const prefix = `/uploads/companions/${companionId}-`;
-    if (!url.startsWith(prefix)) return null;
-    const name = url.slice('/uploads/companions/'.length);
-    return /^[0-9]+-[0-9a-f-]+\.(jpg|jpeg|png|webp)$/i.test(name) ? url : null;
+    const path = url.split(/[?#]/, 1)[0] ?? '';
+    let name: string | null = null;
+    const relative = path.startsWith('/uploads/companions/')
+        ? path.slice('/uploads/companions/'.length)
+        : null;
+    if (relative != null && !relative.includes('/')) name = relative;
+
+    if (!name && /^https?:\/\//i.test(url)) {
+        try {
+            const pathname = decodeURIComponent(new URL(path).pathname);
+            const marker = '/companions/';
+            const at = pathname.lastIndexOf(marker);
+            if (at >= 0) {
+                const tail = pathname.slice(at + marker.length);
+                if (tail && !tail.includes('/')) name = tail;
+            }
+        } catch {
+            return null;
+        }
+    }
+
+    if (!name || !name.startsWith(`${companionId}-`)) return null;
+    if (!/^[0-9]+-[0-9a-f-]+\.(jpg|jpeg|png|webp)$/i.test(name)) return null;
+    return `/uploads/companions/${name}`;
+}
+
+/** Collapse a signed or absolute portrait URL before the field length check. */
+export function canonicalizeAppearance(
+    source: object | null | undefined,
+    companionId: number,
+): Record<string, unknown> | null | undefined {
+    if (!source) return source;
+    const record = source as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(record, 'avatarUrl')) return record;
+    return {
+        ...record,
+        avatarUrl: ownAvatarUrl(record.avatarUrl, companionId),
+    };
 }

@@ -5,7 +5,6 @@ import {
   VersioningType
 } from '@nestjs/common';
 
-import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 import helmet from 'helmet';
@@ -13,6 +12,7 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
+import { StorageService } from './storage/storage.service.js';
 import { API_BASE_PATH } from './common/constants/api.constants.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
@@ -86,12 +86,10 @@ async function bootstrap(): Promise<void> {
     new ResponseInterceptor()
   );
 
-  app.useStaticAssets(
-    join(process.cwd(), 'uploads'),
-    {
-      prefix: '/uploads/',
-    },
-  );
+  const downloads = app.get(StorageService).localDownloadHandler();
+  if (downloads) {
+    app.use('/uploads', downloads);
+  }
 
 
   //const port =configService.get<number>('app.port') ?? 3001;
