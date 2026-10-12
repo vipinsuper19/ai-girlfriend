@@ -70,8 +70,11 @@ import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.AiDisclosure
+import com.dhama.mybase.core.chat.CHAT_MESSAGE_MAX_CHARS
 import com.dhama.mybase.core.chat.ReportReason
 import com.dhama.mybase.core.chat.canOfferReport
+import com.dhama.mybase.core.chat.chatDraftLimitNote
+import com.dhama.mybase.core.chat.chatDraftOverLimit
 import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
@@ -850,18 +853,37 @@ private fun Composer(
                 modifier = Modifier.weight(1f),
             )
         } else {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onChange,
-                enabled = enabled && !streaming,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 52.dp),
-                placeholder = { Text("Message") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-                maxLines = 4,
-            )
+            val overLimit = chatDraftOverLimit(value)
+            val limitNote = chatDraftLimitNote(value)
+            Column(Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onChange,
+                    enabled = enabled && !streaming,
+                    isError = overLimit || value.length == CHAT_MESSAGE_MAX_CHARS,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    placeholder = { Text("Message") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (!overLimit && value.isNotBlank()) onSend() },
+                    ),
+                    maxLines = 4,
+                )
+                if (limitNote != null) {
+                    Text(
+                        limitNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overLimit || value.length == CHAT_MESSAGE_MAX_CHARS) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                    )
+                }
+            }
         }
         if (FeatureFlags.build.voice && !locked) {
             HoldMic(
@@ -880,7 +902,10 @@ private fun Composer(
                 TextButton(onClick = onVoiceCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 TextButton(onClick = onVoiceSend, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send") }
             }
-            else -> IconButton(onClick = onSend, enabled = enabled && value.isNotBlank()) {
+            else -> IconButton(
+                onClick = onSend,
+                enabled = enabled && value.isNotBlank() && !chatDraftOverLimit(value),
+            ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
         }

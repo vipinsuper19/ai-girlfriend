@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.chatDraftOverLimit
 import com.dhama.mybase.core.chat.REPORT_NOTE_MAX
 import com.dhama.mybase.core.chat.REPORT_UNAVAILABLE
 import com.dhama.mybase.core.chat.ReportReason
@@ -168,7 +169,7 @@ class ChatViewModel @Inject constructor(
     fun send(prompt: String? = null) {
         val text = (prompt ?: _draft.value).trim()
         val saved = companion.value ?: return
-        if (text.isEmpty() || sendJob?.isActive == true || rateLimitOpen()) return
+        if (text.isEmpty() || chatDraftOverLimit(text) || sendJob?.isActive == true || rateLimitOpen()) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
             _replyNote.value = null
