@@ -19,12 +19,17 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.ui.theme.companionColors
 
 @Composable
 fun OfflineStrip(modifier: Modifier = Modifier) {
     Text(
-        "You're offline. Chat, memories, and voice notes on this phone still work.",
+        if (FeatureFlags.build.voice) {
+            "You're offline. Chat, memories, and voice notes on this phone still work."
+        } else {
+            "You're offline. Chat and memories on this phone still work."
+        },
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))

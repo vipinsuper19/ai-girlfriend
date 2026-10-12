@@ -15,6 +15,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 import { UsageModule } from "./usage/usage.module.js";
 import { MailModule } from './mail/mail.module.js';
 import { ImagesModule } from './images/images.module.js';
+import { HealthModule } from './modules/health/health.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     MailModule,
     ImagesModule,
     NotificationsModule,
+    HealthModule,
   ],
 })
 export class AppModule { }

@@ -56,7 +56,8 @@ async function bootstrap(): Promise<void> {
     ]
   });
 
-  app.setGlobalPrefix(API_BASE_PATH);
+  // /health stays unprefixed for the Render health check.
+  app.setGlobalPrefix(API_BASE_PATH, { exclude: ['health'] });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -87,7 +88,7 @@ async function bootstrap(): Promise<void> {
 
   //const port =configService.get<number>('app.port') ?? 3001;
   const port = Number(process.env['PORT'] ?? 3001);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`API running on http://localhost:${port}/${API_BASE_PATH}`);
   // console.log(

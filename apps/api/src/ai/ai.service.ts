@@ -7,12 +7,25 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MemoryContextService } from '../memories/memory-context.service.js';
+import { ModerationService } from '../moderation/moderation.service.js';
+import {
+    companionSafetyRules,
+    hiddenFromModel,
+    type SafetyNotice,
+} from '../moderation/safety-policy.js';
+import { takeReadyWindow } from '../moderation/text-windows.js';
 
 import {
     CHAT_PROVIDER,
     type AiChatMessage,
     type ChatProvider,
 } from './interfaces/chat-provider.interface.js';
+
+/**
+ * Non-overridable companion rules. They are appended after personality text
+ * so a saved persona cannot push them out of the prompt.
+ */
+export const SAFETY_SYSTEM_RULES = companionSafetyRules();
 
 @Injectable()
 export class AiService {
@@ -25,6 +38,8 @@ export class AiService {
         @Inject(forwardRef(() => MemoryContextService))
         private readonly memoryContextService:
             MemoryContextService,
+
+        private readonly moderation: ModerationService,
     ) { }
 
     private get db(): any {
@@ -135,6 +150,31 @@ export class AiService {
                         message.content?.trim(),
                 );
 
+        const inputNotice = await this.moderation.noticeFor(
+            currentUserMessage?.content ?? '',
+            'input',
+            {
+                userId: numericUserId,
+                conversationId: numericConversationId,
+            },
+        );
+
+        if (inputNotice) {
+            if (currentUserMessage) {
+                await this.flagUserMessage(
+                    currentUserMessage,
+                    inputNotice,
+                );
+            }
+            return this.finishTurn(
+                numericConversationId,
+                numericUserId,
+                inputNotice.message,
+                inputNotice,
+                options.persistMessage ?? true,
+            );
+        }
+
         /*
          * ------------------------------------------------------
          * 6. Retrieve relevant long-term memories
@@ -162,30 +202,10 @@ export class AiService {
                 memoryContext,
             );
 
-        const aiMessages: AiChatMessage[] = [
-            {
-                role: 'system',
-                content: systemPrompt,
-            },
-
-            ...chronologicalMessages
-                .filter(
-                    (message: any) =>
-                        message.content &&
-                        (
-                            message.role === 'USER' ||
-                            message.role === 'ASSISTANT' ||
-                            message.role === 'SYSTEM'
-                        ),
-                )
-                .map((message: any) => ({
-                    role: this.toAiRole(
-                        message.role,
-                    ),
-                    content:
-                        message.content as string,
-                })),
-        ];
+        const aiMessages = this.modelMessages(
+            systemPrompt,
+            chronologicalMessages,
+        );
 
         /*
          * ------------------------------------------------------
@@ -197,47 +217,83 @@ export class AiService {
                 messages: aiMessages,
             });
 
+        const outputNotice = await this.moderation.noticeFor(
+            responseText,
+            'output',
+            {
+                userId: numericUserId,
+                conversationId: numericConversationId,
+            },
+        );
+
         /*
          * ------------------------------------------------------
          * 9. Persist assistant response
          * ------------------------------------------------------
          */
-        const shouldPersistMessage =
-            options.persistMessage ?? true;
+        return this.finishTurn(
+            numericConversationId,
+            numericUserId,
+            outputNotice?.message ?? responseText.trim(),
+            outputNotice,
+            options.persistMessage ?? true,
+        );
+    }
 
-        if (!shouldPersistMessage) {
-            return {
-                content: responseText,
-            };
-        }
+    private modelMessages(
+        systemPrompt: string,
+        chronologicalMessages: any[],
+    ): AiChatMessage[] {
+        return [
+            {
+                role: 'system',
+                content: systemPrompt,
+            },
+            ...chronologicalMessages
+                .filter(
+                    (message: any) =>
+                        message.content &&
+                        (
+                            message.role === 'USER' ||
+                            message.role === 'ASSISTANT' ||
+                            message.role === 'SYSTEM'
+                        ) &&
+                        !hiddenFromModel(message),
+                )
+                .map((message: any) => ({
+                    role: this.toAiRole(
+                        message.role,
+                    ),
+                    content:
+                        message.content as string,
+                })),
+        ];
+    }
 
-        const now =
-            new Date().toISOString();
-
-        const assistantMessage =
-            await this.db.orm.public.Message.create({
-                conversationId:
-                    numericConversationId,
-                role: 'ASSISTANT',
-                type: 'TEXT',
-                content: responseText,
-                metadata: null,
-                audioUrl: null,
-                imageUrl: null,
-                updatedAt: now,
-            });
-
-        await this.db.orm.public.Conversation
-            .where({
-                id: numericConversationId,
-                userId: numericUserId,
-            })
+    private async flagUserMessage(
+        message: { id?: unknown; metadata?: unknown },
+        notice: SafetyNotice,
+    ) {
+        if (message.id == null) return;
+        const existing =
+            message.metadata &&
+            typeof message.metadata === 'object' &&
+            !Array.isArray(message.metadata)
+                ? {
+                    ...(message.metadata as Record<string, unknown>),
+                }
+                : {};
+        const metadata = {
+            ...existing,
+            safety: notice,
+        };
+        await this.db.orm.public.Message
+            .where({ id: message.id })
             .update({
-                lastMessageAt: now,
-                updatedAt: now,
+                metadata,
+                updatedAt: new Date().toISOString(),
             });
-
-        return assistantMessage;
+        message.metadata = metadata;
     }
 
     private toAiRole(
@@ -322,6 +378,9 @@ export class AiService {
             'Use relevant memories naturally when they help answer the user.',
             'Do not mention the memory system or memory retrieval.',
             'Do not invent facts about the user.',
+            '',
+            'SAFETY RULES',
+            SAFETY_SYSTEM_RULES,
         );
 
         return sections.join('\n');
@@ -338,6 +397,7 @@ export class AiService {
         | {
             type: 'done';
             message: unknown;
+            safety?: SafetyNotice;
         }
     > {
         const numericUserId = Number(userId);
@@ -431,6 +491,41 @@ export class AiService {
                         message.content?.trim(),
                 );
 
+        const inputNotice = await this.moderation.noticeFor(
+            currentUserMessage?.content ?? '',
+            'input',
+            {
+                userId: numericUserId,
+                conversationId: numericConversationId,
+            },
+        );
+
+        if (inputNotice) {
+            if (currentUserMessage) {
+                await this.flagUserMessage(
+                    currentUserMessage,
+                    inputNotice,
+                );
+            }
+            yield {
+                type: 'delta',
+                content: inputNotice.message,
+            };
+            const assistantMessage = await this.finishTurn(
+                numericConversationId,
+                numericUserId,
+                inputNotice.message,
+                inputNotice,
+                true,
+            );
+            yield {
+                type: 'done',
+                message: assistantMessage,
+                safety: inputNotice,
+            };
+            return;
+        }
+
         /*
          * ------------------------------------------------------
          * 6. Retrieve long-term memory
@@ -458,52 +553,91 @@ export class AiService {
                 memoryContext,
             );
 
-        const aiMessages: AiChatMessage[] = [
-            {
-                role: 'system',
-                content: systemPrompt,
-            },
-
-            ...chronologicalMessages
-                .filter(
-                    (message: any) =>
-                        message.content &&
-                        (
-                            message.role === 'USER' ||
-                            message.role === 'ASSISTANT' ||
-                            message.role === 'SYSTEM'
-                        ),
-                )
-                .map((message: any) => ({
-                    role: this.toAiRole(
-                        message.role,
-                    ),
-                    content:
-                        message.content as string,
-                })),
-        ];
+        const aiMessages = this.modelMessages(
+            systemPrompt,
+            chronologicalMessages,
+        );
 
         /*
          * ------------------------------------------------------
          * 8. Stream AI response
          * ------------------------------------------------------
+         *
+         * Score sentence-sized windows so a safe sentence can
+         * leave before the rest of the reply is known. A flagged
+         * window is replaced by the refusal and the rest is dropped.
          */
-        let fullResponse = '';
+        const outputContext = {
+            userId: numericUserId,
+            conversationId: numericConversationId,
+        };
+        let pending = '';
+        let safeText = '';
+        let outputNotice: SafetyNotice | null = null;
 
         for await (
             const chunk of this.chatProvider.streamChat({
                 messages: aiMessages,
             })
         ) {
-            fullResponse += chunk;
-
-            yield {
-                type: 'delta',
-                content: chunk,
-            };
+            if (outputNotice) continue;
+            pending += chunk;
+            while (!outputNotice) {
+                const window = takeReadyWindow(pending);
+                if (!window.ready) {
+                    pending = window.rest;
+                    break;
+                }
+                pending = window.rest;
+                const notice = await this.moderation.noticeFor(
+                    window.ready,
+                    'output',
+                    outputContext,
+                );
+                if (notice) {
+                    outputNotice = notice;
+                    yield {
+                        type: 'delta',
+                        content: notice.message,
+                    };
+                    break;
+                }
+                safeText += window.ready;
+                yield {
+                    type: 'delta',
+                    content: window.ready,
+                };
+            }
         }
 
-        if (!fullResponse.trim()) {
+        if (!outputNotice && pending.trim()) {
+            const notice = await this.moderation.noticeFor(
+                pending,
+                'output',
+                outputContext,
+            );
+            if (notice) {
+                outputNotice = notice;
+                yield {
+                    type: 'delta',
+                    content: notice.message,
+                };
+            } else {
+                safeText += pending;
+                yield {
+                    type: 'delta',
+                    content: pending,
+                };
+            }
+        }
+
+        const streamedContent = outputNotice
+            ? [safeText.trim(), outputNotice.message]
+                .filter((part) => part.length > 0)
+                .join('\n')
+            : safeText.trim();
+
+        if (!streamedContent) {
             throw new Error(
                 'AI provider returned an empty response',
             );
@@ -514,17 +648,46 @@ export class AiService {
          * 9. Persist complete streamed response
          * ------------------------------------------------------
          */
-        const now =
-            new Date().toISOString();
+        const assistantMessage = await this.finishTurn(
+            numericConversationId,
+            numericUserId,
+            streamedContent,
+            outputNotice,
+            true,
+        );
+
+        yield {
+            type: 'done',
+            message: assistantMessage,
+            ...(outputNotice ? { safety: outputNotice } : {}),
+        };
+    }
+
+    private async finishTurn(
+        conversationId: number,
+        userId: number,
+        content: string,
+        notice: SafetyNotice | null,
+        persist: boolean,
+    ) {
+        const metadata = notice ? { safety: notice } : null;
+
+        if (!persist) {
+            return {
+                content,
+                metadata,
+            };
+        }
+
+        const now = new Date().toISOString();
 
         const assistantMessage =
             await this.db.orm.public.Message.create({
-                conversationId:
-                    numericConversationId,
+                conversationId,
                 role: 'ASSISTANT',
                 type: 'TEXT',
-                content: fullResponse.trim(),
-                metadata: null,
+                content,
+                metadata,
                 audioUrl: null,
                 imageUrl: null,
                 updatedAt: now,
@@ -532,17 +695,14 @@ export class AiService {
 
         await this.db.orm.public.Conversation
             .where({
-                id: numericConversationId,
-                userId: numericUserId,
+                id: conversationId,
+                userId,
             })
             .update({
                 lastMessageAt: now,
                 updatedAt: now,
             });
 
-        yield {
-            type: 'done',
-            message: assistantMessage,
-        };
+        return assistantMessage;
     }
 }
