@@ -1,0 +1,135 @@
+# Instrumented tests on an API 34 emulator.
+# The job is non-blocking (continue-on-error) and is not a required check.
+# No Play upload steps and no new secrets.
+name: Android emulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: API base URL for instrumented tests
+        required: false
+        type: string
+        default: https://ai-girlfriend-tnu3.onrender.com/api/v1/
+  pull_request:
+    paths:
+      - apps/android/**
+
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  instrumented:
+    name: Instrumented tests
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    # upload-artifact writes to the Actions artifact store, not the repo.
+    permissions:
+      contents: read
+      actions: write
+    env:
+      API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://ai-girlfriend-tnu3.onrender.com/api/v1/' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: AVD snapshot cache
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64
+
+      - name: Create AVD and generate snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Warm up API
+        continue-on-error: true
+        run: |
+          set -u
+          api_base="${API_BASE_URL%/}"
+          case "$api_base" in
+            */api/v1) origin="${api_base%/api/v1}" ;;
+            *) origin="$api_base" ;;
+          esac
+          health="${origin}/health"
+          echo "Warming ${health}"
+          ok=0
+          for attempt in $(seq 1 24); do
+            code="$(curl -sS -o /tmp/health-body -w '%{http_code}' --max-time 20 "$health" || true)"
+            echo "attempt ${attempt}: HTTP ${code}"
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::warning::API health did not return 200 at ${health}. Instrumented tests will still run."
+            cat /tmp/health-body || true
+            exit 1
+          fi
+
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          disable-spellchecker: true
+          working-directory: apps/android
+          script: |
+            chmod +x gradlew
+            status=0
+            ./gradlew connectedDebugAndroidTest --stacktrace \
+              -PAPI_BASE_URL="$API_BASE_URL" \
+              -Pandroid.testInstrumentationRunnerArguments.apiBaseUrl="$API_BASE_URL" || status=$?
+            mkdir -p "$GITHUB_WORKSPACE/emulator-artifacts"
+            adb logcat -d > "$GITHUB_WORKSPACE/emulator-artifacts/logcat.txt" || true
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/emulator-artifacts/screen.png" || true
+            exit "$status"
+
+      - name: Upload screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-artifacts
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            emulator-artifacts/**
+            apps/android/app/build/reports/androidTests/**
+            apps/android/app/build/outputs/androidTest-results/**
