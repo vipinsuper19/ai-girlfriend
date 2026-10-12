@@ -3,9 +3,11 @@ package com.dhama.mybase.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.chat.personalityUpdatedLine
+import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.PushRegistration
+import com.dhama.mybase.core.data.performAccountDeletion
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
@@ -115,6 +117,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _accountDeleted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val accountDeleted = _accountDeleted.asSharedFlow()
+
+    private val _accountDeleting = MutableStateFlow(false)
+    val accountDeleting = _accountDeleting.asStateFlow()
+
+    private val _accountDeleteError = MutableStateFlow<String?>(null)
+    val accountDeleteError = _accountDeleteError.asStateFlow()
 
     private val _archiveFailed = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val archiveFailed = _archiveFailed.asSharedFlow()
@@ -257,18 +265,43 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun clearAccountDeleteError() {
+        if (_accountDeleting.value) return
+        _accountDeleteError.value = null
+    }
+
     fun deleteAccount() {
+        if (_accountDeleting.value) return
+        _accountDeleting.value = true
+        _accountDeleteError.value = null
         viewModelScope.launch {
-            authRepository.deleteRemoteAccount()
-            authRepository.logout()
-            dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
-            dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, "")
-            dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
-            dataStoreRepo.saveString(PreferencesKeys.USAGE_SUMMARY, "")
-            companionRepository.clear()
-            chatRepository.clear()
-            memoryRepository.clear()
-            _accountDeleted.emit(Unit)
+            try {
+                val result = performAccountDeletion(
+                    deleteRemote = {
+                        pushRegistration.forgetDevice()
+                        authRepository.deleteRemoteAccount()
+                    },
+                    signOut = { authRepository.logout() },
+                    clearLocal = { clearLocalAccount() },
+                )
+                when (result) {
+                    AccountDeletionResult.Deleted -> _accountDeleted.emit(Unit)
+                    is AccountDeletionResult.Failed -> _accountDeleteError.value = result.message
+                }
+            } finally {
+                _accountDeleting.value = false
+            }
         }
+    }
+
+    private suspend fun clearLocalAccount() {
+        dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
+        dataStoreRepo.saveString(PreferencesKeys.DISPLAY_NAME, "")
+        dataStoreRepo.saveString(PreferencesKeys.USER_EMAIL, "")
+        dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
+        dataStoreRepo.saveString(PreferencesKeys.USAGE_SUMMARY, "")
+        companionRepository.clear()
+        chatRepository.clear()
+        memoryRepository.clear()
     }
 }

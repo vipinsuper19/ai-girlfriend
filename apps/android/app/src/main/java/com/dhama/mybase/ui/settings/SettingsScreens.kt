@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -115,6 +116,8 @@ fun YouSettingsScreen(
 ) {
     val displayName by viewModel.displayName.collectAsState()
     val plan by viewModel.planLabel.collectAsState()
+    val accountDeleting by viewModel.accountDeleting.collectAsState()
+    val accountDeleteError by viewModel.accountDeleteError.collectAsState()
     val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
     val passwordNote by viewModel.passwordNote.collectAsState()
@@ -153,6 +156,9 @@ fun YouSettingsScreen(
         onScreenPrivacy = viewModel::setScreenPrivacy,
         onTheme = viewModel::setThemeMode,
         onDeleteAccount = viewModel::deleteAccount,
+        accountDeleting = accountDeleting,
+        accountDeleteError = accountDeleteError,
+        onDismissDeleteError = viewModel::clearAccountDeleteError,
         notifications = NotificationRowState(
             visible = pushAvailable,
             on = notificationsOn,
@@ -204,9 +210,12 @@ private fun YouSettingsContent(
     onDeleteAccount: () -> Unit,
     notifications: NotificationRowState = NotificationRowState(),
     onNotifications: (Boolean) -> Unit = {},
+    accountDeleting: Boolean = false,
+    accountDeleteError: String? = null,
+    onDismissDeleteError: () -> Unit = {},
 ) {
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxSize()
@@ -304,30 +313,48 @@ private fun YouSettingsContent(
                 Text(notifications.note.orEmpty(), color = MaterialTheme.colorScheme.error)
             }
         }
-        Spacer(Modifier.height(24.dp))
-        TextButton(
-            onClick = { confirmDelete = true },
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .semantics { role = Role.Button },
-        ) { Text("Delete account", color = MaterialTheme.colorScheme.error) }
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(8.dp))
+        SectionLabel("Account")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .clickable(enabled = !accountDeleting) {
+                    onDismissDeleteError()
+                    confirmDelete = true
+                }
+                .semantics(mergeDescendants = true) { role = Role.Button },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Text("Delete account", color = MaterialTheme.colorScheme.error)
+                Text(
+                    "Permanently delete this account and its data",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         TextButton(
             onClick = onLogout,
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
                 .heightIn(min = 48.dp)
                 .semantics { role = Role.Button },
         ) { Text("Log out", color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(24.dp))
     }
-    if (confirmDelete) {
+    if (confirmDelete || accountDeleting) {
         DeleteAccountDialog(
-            onDismiss = { confirmDelete = false },
-            onConfirm = {
-                confirmDelete = false
-                onDeleteAccount()
+            deleting = accountDeleting,
+            error = accountDeleteError,
+            onDismiss = {
+                if (!accountDeleting) {
+                    confirmDelete = false
+                    onDismissDeleteError()
+                }
             },
+            onConfirm = onDeleteAccount,
         )
     }
 }
@@ -794,29 +821,51 @@ private fun PlanCard(
 }
 
 @Composable
-private fun DeleteAccountDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
+private fun DeleteAccountDialog(
+    deleting: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    var typed by rememberSaveable { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!deleting) onDismiss() },
         title = { Text("Delete account") },
         text = {
             Column {
-                Text("This removes the account, her, every conversation, and everything she remembers. Type DELETE to confirm.")
+                Text("This permanently deletes the account, her, every conversation, and everything she remembers. This can't be undone. Type DELETE to confirm.")
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !deleting,
                     label = { Text("Type DELETE") },
+                    singleLine = true,
                 )
+                if (deleting) {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(
+                        "Deleting your account…",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                if (!error.isNullOrBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = typed == "DELETE") {
-                Text("Delete account", color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onConfirm, enabled = typed == "DELETE" && !deleting) {
+                Text(if (deleting) "Deleting…" else "Delete account", color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) { Text("Cancel") }
+        },
     )
 }
 
