@@ -31,10 +31,16 @@
 $ pnpm install
 ```
 
-Apply the schema to the database after pulling (this branch uses `DeviceToken` and `ImageGeneration`):
+`db:migrate` applies the on-disk migrations (`prisma db migrate --no-interactive`). From an empty database it installs the `vector` extension, then creates the current schema, including `public."user"`. Point `DIRECT_URL` at the Supabase session pooler (port 5432). Enable `vector` in the Supabase dashboard before the first run so `CREATE EXTENSION` is allowed.
 
 ```bash
-$ pnpm --filter @ai-girlfriend/api exec prisma db update
+$ pnpm --filter @ai-girlfriend/api run db:migrate
+```
+
+Render native Node start command, with the repo root as the service root:
+
+```bash
+pnpm --filter @ai-girlfriend/api run db:migrate && pnpm --filter @ai-girlfriend/api start:prod
 ```
 
 ## Configuration

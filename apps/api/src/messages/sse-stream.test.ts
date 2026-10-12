@@ -22,21 +22,21 @@ test('writes a ping comment while the next event is still pending', async (t) =>
 
     async function* events() {
         yield { type: 'message', content: 'hello' };
-        await new Promise((resolve) => setTimeout(resolve, 20_000));
+        await new Promise((resolve) => setTimeout(resolve, 45_000));
         yield { type: 'delta', content: 'there' };
     }
 
     const done = writeServerSentEvents(events(), (chunk) => {
         chunks.push(chunk);
-    }, 15_000);
+    }, 20_000);
 
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(chunks[0] ?? '', /event: message/);
 
-    t.mock.timers.tick(15_000);
+    t.mock.timers.tick(20_000);
     assert.ok(chunks.includes(SSE_KEEPALIVE));
 
-    t.mock.timers.tick(5_000);
+    t.mock.timers.tick(25_000);
     await done;
 
     assert.ok(chunks.some((chunk) => chunk.startsWith('event: delta')));

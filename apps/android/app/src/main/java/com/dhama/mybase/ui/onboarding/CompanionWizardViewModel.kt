@@ -3,6 +3,7 @@ package com.dhama.mybase.ui.onboarding
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.CompanionDraft
@@ -41,6 +42,7 @@ class CompanionWizardViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: CompanionRepository,
     private val accountSync: AccountSync,
+    private val flags: FeatureFlags,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -84,14 +86,14 @@ class CompanionWizardViewModel @Inject constructor(
     }
 
     fun next() {
-        val following = _state.value.step.next() ?: return
+        val following = _state.value.step.next(flags.voice) ?: return
         _state.update { it.copy(step = following, error = null) }
         persist()
     }
 
     /** Returns false when the caller should leave the wizard. */
     fun back(): Boolean {
-        val previous = _state.value.step.previous() ?: return false
+        val previous = _state.value.step.previous(flags.voice) ?: return false
         _state.update { it.copy(step = previous, error = null, nameError = null) }
         persist()
         return true
@@ -133,9 +135,10 @@ class CompanionWizardViewModel @Inject constructor(
         val draft = savedStateHandle.get<String>(DRAFT_KEY)?.let { raw ->
             runCatching { json.decodeFromString<CompanionDraft>(raw) }.getOrNull()
         } ?: CompanionDraft()
-        val step = savedStateHandle.get<String>(STEP_KEY)
+        val restored = savedStateHandle.get<String>(STEP_KEY)
             ?.let { runCatching { WizardStep.valueOf(it) }.getOrNull() }
             ?: WizardStep.Intro
+        val step = if (!flags.voice && restored == WizardStep.Voice) WizardStep.Finalize else restored
         return WizardUiState(step = step, draft = draft)
     }
 
@@ -145,20 +148,26 @@ class CompanionWizardViewModel @Inject constructor(
     }
 }
 
-private fun WizardStep.next(): WizardStep? = when (this) {
+internal fun WizardStep.next(voiceEnabled: Boolean): WizardStep? = when (this) {
     WizardStep.Intro -> WizardStep.Appearance
     WizardStep.Appearance -> WizardStep.Personality
-    WizardStep.Personality -> WizardStep.Voice
+    WizardStep.Personality -> if (voiceEnabled) WizardStep.Voice else WizardStep.Finalize
     WizardStep.Voice -> WizardStep.Finalize
     WizardStep.Finalize -> null
 }
 
-private fun WizardStep.previous(): WizardStep? = when (this) {
+internal fun WizardStep.previous(voiceEnabled: Boolean): WizardStep? = when (this) {
     WizardStep.Intro -> null
     WizardStep.Appearance -> WizardStep.Intro
     WizardStep.Personality -> WizardStep.Appearance
     WizardStep.Voice -> WizardStep.Personality
-    WizardStep.Finalize -> WizardStep.Voice
+    WizardStep.Finalize -> if (voiceEnabled) WizardStep.Voice else WizardStep.Personality
 }
 
-fun WizardStep.progressIndex(): Int = ordinal
+internal fun WizardStep.progressIndex(voiceEnabled: Boolean): Int = when {
+    voiceEnabled -> ordinal
+    this == WizardStep.Finalize -> 3
+    else -> ordinal.coerceAtMost(2)
+}
+
+internal fun wizardStepTotal(voiceEnabled: Boolean): Int = if (voiceEnabled) 4 else 3

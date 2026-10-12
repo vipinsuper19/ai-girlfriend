@@ -3,6 +3,7 @@ package com.dhama.mybase.ui.settings
 import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.billing.PlayBilling
 import com.dhama.mybase.core.billing.PlayOffer
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,20 +25,23 @@ class BillingViewModel @Inject constructor(
     val note = _note.asStateFlow()
 
     init {
-        viewModelScope.launch { billing.notes.collect { _note.value = it } }
-        viewModelScope.launch {
-            try {
-                billing.syncOwned()
-                _offers.value = billing.offers()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                // Plans stay read-only when Play or the server cannot list them.
+        if (FeatureFlags.build.billing) {
+            viewModelScope.launch { billing.notes.collect { _note.value = it } }
+            viewModelScope.launch {
+                try {
+                    billing.syncOwned()
+                    _offers.value = billing.offers()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Plans stay read-only when Play or the server cannot list them.
+                }
             }
         }
     }
 
     fun buy(activity: Activity, offer: PlayOffer) {
+        if (!FeatureFlags.build.billing) return
         _note.value = null
         if (!billing.launch(activity, offer)) {
             _note.value = "Google Play couldn't open the purchase."
