@@ -12,11 +12,18 @@ import {
     crisisMessage,
     decideSafety,
     EXPLICIT_REFUSAL_MESSAGE,
+    excludedFromThread,
     hiddenFromModel,
+    isCannedAssistantText,
     personaMinorAge,
+    personaRejectionMessage,
+    PERSONA_EXPLICIT_MESSAGE,
+    PERSONA_MINOR_MESSAGE,
+    PERSONA_REJECTION_MESSAGE,
     personaText,
     REFUSAL_MESSAGE,
     safetyNoticeOf,
+    UNAVAILABLE_MESSAGE,
 } from './safety-policy.js';
 import {
     categoriesFromClassifier,
@@ -189,7 +196,24 @@ test('hate and broadened crisis phrases are flagged, and ordinary stress is not'
         }),
         true,
     );
-    assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: { safety: { action: 'refuse', code: 'content_policy', message: REFUSAL_MESSAGE } } }), false);
+    assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: { safety: { action: 'refuse', code: 'content_policy', message: REFUSAL_MESSAGE } } }), true);
+    assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: null }), false);
+    const flagged = {
+        role: 'ASSISTANT' as const,
+        metadata: { safety: { action: 'refuse' as const, code: 'content_policy' as const, message: REFUSAL_MESSAGE } },
+    };
+    assert.equal(excludedFromThread(flagged), true);
+    assert.equal(excludedFromThread({ role: 'USER', metadata: flagged.metadata }), false);
+    assert.equal(isCannedAssistantText(REFUSAL_MESSAGE), true);
+    assert.equal(isCannedAssistantText(EXPLICIT_REFUSAL_MESSAGE), true);
+    assert.equal(isCannedAssistantText(UNAVAILABLE_MESSAGE), true);
+    assert.equal(isCannedAssistantText("I'm really glad you told me. You matter."), true);
+    assert.equal(isCannedAssistantText('I saved you a seat.'), false);
+    assert.equal(personaRejectionMessage(['minor']), PERSONA_MINOR_MESSAGE);
+    assert.equal(personaRejectionMessage(['sexual_minors', 'explicit']), PERSONA_MINOR_MESSAGE);
+    assert.equal(personaRejectionMessage(['explicit']), PERSONA_EXPLICIT_MESSAGE);
+    assert.equal(personaRejectionMessage(['jailbreak']), PERSONA_REJECTION_MESSAGE);
+    assert.equal(PERSONA_REJECTION_MESSAGE.includes('minor'), false);
 });
 
 test('persona text keeps free-text fields and drops slider numbers', () => {
@@ -295,6 +319,8 @@ test('gemini moderation wraps untrusted text and does not send sampling paramete
     assert.equal(wrapped.includes(payload), false);
     const request = geminiModerationRequest(GEMINI_MODERATION_MODEL, 'hello there');
     assert.equal(Object.hasOwn(request.config, 'temperature'), false);
+    assert.equal(request.config.httpOptions.timeout, 4000);
+    assert.equal(request.config.httpOptions.retryOptions.attempts, 1);
     assert.match(request.contents, /<<<UNTRUSTED_TEXT>>>\nhello there\n<<<END_UNTRUSTED_TEXT>>>/);
 });
 

@@ -71,7 +71,7 @@ clients hide the matching controls, so nothing is faked.
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
 | `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
 | `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
-| `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint when that provider is selected |
+| `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint. Also used once as a fallback when Gemini moderation is rate-limited, returns 503, or times out |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
 | `CRISIS_HELPLINE_INTL_NAME`, `CRISIS_HELPLINE_INTL_CONTACT`, `CRISIS_HELPLINE_INTL_DETAIL` | International pointer. Defaults to the IASP suicidal-thoughts page |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Android Publisher API access for verifying purchases. Raw JSON or base64 |
@@ -120,7 +120,7 @@ Put these in the Render dashboard (Blueprint `sync: false` on the service). They
 | `S3_ACCESS_KEY_ID` | Yes. Supabase Storage → S3 |
 | `S3_SECRET_ACCESS_KEY` | Yes. Private bucket |
 | `JWT_RESET_SECRET` | No. Falls back to a value derived from `JWT_ACCESS_SECRET` |
-| `OPENAI_API_KEY` | No. Moderation when that provider is selected |
+| `OPENAI_API_KEY` | No. Moderation when that provider is selected, and a one-shot fallback when Gemini moderation is unavailable |
 | `STORAGE_SIGNING_SECRET` | No. Local downloads fall back to `JWT_ACCESS_SECRET` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | No. Push stays off until it is set |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | No. Play billing stays off until it is set |
@@ -140,6 +140,10 @@ re-sends owned purchases on the Plan screen; a lapsed `expiresAt` drops the user
 ### Routes added for the clients
 
 All under `/api/v1`, wrapped as `{ data }`.
+
+Chat stays closed until `PATCH /users/me/age` sets `ageConfirmedAt`. Until then, every conversation route, `POST /conversations/:id/messages`, `POST /conversations/:id/messages/stream`, `POST /conversations/:conversationId/messages/:userMessageId/reply/stream`, `POST /messages/:id/regenerate`, and `POST /avatars` return `403` with `code: "AGE_REQUIRED"`. Register still succeeds without a date of birth. Auth, `GET` and `PATCH /users/me`, `PATCH /users/me/age`, export, deletion, and the public pages stay open.
+
+Path ids are positive 32-bit integers (`1` through `2147483647`). Anything else, including `abc` and integers that overflow Postgres `integer`, is `400`. Auth runs before that check, so a missing token is still `401`. JSON and urlencoded bodies larger than 64kb are `413` in the JSON error envelope. Unknown routes use that same envelope with `404`, not an HTML page. `POST /account-deletion` with an empty form is `400` HTML that redisplays the form and the error.
 
 | Route | Purpose |
 | --- | --- |
@@ -169,9 +173,9 @@ Chat input is scored before the model call, and the model reply is scored before
 
 Flirting, affection, and romance are allowed. Explicit sexual content (graphic acts, sexual body descriptions, and explicit roleplay) is blocked on input and output. That refusal is soft and in character (`code: "explicit_content"`). Sexual content involving minors stays a firm refusal. Both sides of that line live in `CONTENT_POLICY` in `src/moderation/safety-policy.ts`.
 
-A flagged user message stays in the thread the person can read. It is marked with `metadata.safety` and left out of later model prompts. Message usage is recorded only after a normal reply. A refusal, crisis reply, or moderation-unavailable turn is not charged.
+A flagged user message stays in the thread the person can read. It is marked with `metadata.safety` and left out of later model prompts. A refusal, crisis reply, or moderation-unavailable reply is returned on that response (and on a stream `done` event) so the client can show it once. It is not stored. `GET` messages omits those assistant rows, including any older assistant rows that already carry `metadata.safety`. They are also left out of the model prompt and out of memory extraction. A mixed stream stores only the safe prefix. Message usage is recorded only after a normal reply. A refusal, crisis reply, or moderation-unavailable turn is not charged.
 
-Allowed turns are otherwise unchanged. A refusal or crisis turn adds `safety` on the message `metadata` and on the response body (`POST /conversations/:id/messages`, `POST /messages/:id/regenerate`, voice respond, and the stream `done` event):
+Allowed turns are otherwise unchanged. A refusal or crisis turn adds `safety` on the response body (`POST /conversations/:id/messages`, `POST /messages/:id/regenerate`, voice respond, and the stream `done` event). Voice safety replies omit audio. The assistant `content` on that response is the notice text:
 
 ```json
 {
@@ -186,7 +190,11 @@ Allowed turns are otherwise unchanged. A refusal or crisis turn adds `safety` on
 
 `action` is `refuse` or `crisis`. `code` is `content_policy`, `explicit_content`, `self_harm`, or `moderation_unavailable`. The assistant `content` is the same `message`, so a client that only renders the bubble still shows it. Logs record the surface, action, code, categories, and ids — not the text. Text longer than a provider's limit is scored in overlapping chunks. A limit that cannot be applied is treated as a block. Providers do not silently truncate.
 
-Creating or updating a companion rejects an unsafe persona with HTTP 400 and `code: "UNSAFE_PERSONA"`. That includes an appearance age under 18. The companion system prompt also ends with safety rules that the persona cannot override.
+Each provider call is one attempt with a 4 second timeout. When the primary moderator returns 429 or 503, or times out, and `OPENAI_API_KEY` is set and the primary is not already OpenAI, one OpenAI moderations call runs before anything else. A 429 is logged as `provider quota exhausted`. Other outages are logged as `safety degraded` with the provider name and `reason` (`503`, `timeout`, or `unavailable`). The user text is not logged.
+
+Creating or updating a companion rejects an unsafe persona with HTTP 400 and `code: "UNSAFE_PERSONA"`. The message depends on the category: minors and sexual content involving minors, graphic sexual content, or other blocked content. It does not mention minors unless the persona is under 18 or sexual content involving minors. An appearance age under 18 is rejected locally. If the provider is down, the local check still blocks those cases and allows a benign persona such as the name Mira. A provider failure is never `UNSAFE_PERSONA`. If that local check itself cannot run, the request is `503` with `code: "MODERATION_TEMPORARILY_UNAVAILABLE"` and `retryAfterSeconds`. Chat input and output stay fail-closed: the same outage returns the moderation-unavailable notice, which is shown and not stored.
+
+When chat generation itself gets a Gemini 429, the API returns `503` with `code: "GENERATION_TEMPORARILY_UNAVAILABLE"` and `retryAfterSeconds` (30). A stream that has already flushed headers sends one SSE `error` event with that code instead. Nothing is stored and usage is not charged. The user line may already be saved, so a retry can generate again. Other generation errors stay `500`. The companion system prompt also ends with safety rules that the persona cannot override.
 
 ## Compile and run the project
 

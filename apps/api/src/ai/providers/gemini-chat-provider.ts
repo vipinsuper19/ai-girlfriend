@@ -1,10 +1,15 @@
 import {
     Injectable,
     InternalServerErrorException,
+    Logger,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 
 import { isAbortError } from '../abort-error.js';
+import {
+    GenerationTemporarilyUnavailableException,
+    isProviderQuotaError,
+} from '../generation-unavailable.js';
 import type {
     AiChatMessage,
     ChatProvider,
@@ -13,6 +18,7 @@ import type {
 
 @Injectable()
 export class GeminiChatProvider implements ChatProvider {
+    private readonly logger = new Logger(GeminiChatProvider.name);
     private readonly client: GoogleGenAI;
     private readonly model: string;
 
@@ -68,6 +74,7 @@ export class GeminiChatProvider implements ChatProvider {
             if (options.signal?.aborted || isAbortError(error)) {
                 throw error;
             }
+            this.rethrowQuota(error);
 
             console.error(
                 'Gemini chat generation failed',
@@ -113,6 +120,7 @@ export class GeminiChatProvider implements ChatProvider {
             if (options.signal?.aborted || isAbortError(error)) {
                 throw error;
             }
+            this.rethrowQuota(error);
 
             console.error(
                 'Gemini streaming generation failed',
@@ -124,6 +132,12 @@ export class GeminiChatProvider implements ChatProvider {
             );
         }
 
+    }
+
+    private rethrowQuota(error: unknown): void {
+        if (!isProviderQuotaError(error)) return;
+        this.logger.warn('provider quota exhausted provider=gemini reason=429');
+        throw new GenerationTemporarilyUnavailableException();
     }
 
     private getSystemInstruction(

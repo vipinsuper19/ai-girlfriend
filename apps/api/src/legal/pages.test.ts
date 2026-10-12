@@ -78,3 +78,16 @@ test('account deletion page names the app, the steps, and what is kept', () => {
     assert.doesNotMatch(html, /Placeholder\./);
     assert.match(html, /Example Developer/);
 });
+
+test('an empty deletion form shows the error on the form page', () => {
+    const html = accountDeletionHtml(
+        {
+            contactEmail: 'privacy@example.com',
+            developerName: 'Example Developer',
+        },
+        'Enter the account email and submit the form again.',
+    );
+    assert.match(html, /role="alert"/);
+    assert.match(html, /Enter the account email and submit the form again/);
+    assert.match(html, /method="post" action="\/account-deletion"/);
+});

@@ -6,6 +6,7 @@ import { ModerationService } from '../moderation/moderation.service.js';
 import { safetyConfigFromEnv } from '../moderation/safety.config.js';
 import { EXPLICIT_REFUSAL_MESSAGE, REFUSAL_MESSAGE } from '../moderation/safety-policy.js';
 import { MessagesService } from '../messages/messages.service.js';
+import { GenerationTemporarilyUnavailableException } from './generation-unavailable.js';
 import { AiService, SAFETY_SYSTEM_RULES } from './ai.service.js';
 
 const localProvider: ContentModerator = {
@@ -53,6 +54,7 @@ function harness(options: {
     messages: Record<string, unknown>[];
     provider?: ContentModerator;
     generate?: (prompt: string) => string;
+    throwOnGenerate?: unknown;
     stream?: string[];
     streamChat?: (request: { signal?: AbortSignal }) => AsyncGenerator<string>;
 }) {
@@ -102,6 +104,7 @@ function harness(options: {
             async generateChat(request: { messages: { content: string }[] }) {
                 prompts.push(request.messages[0]?.content ?? '');
                 sent.push(request.messages.map((message) => message.content));
+                if (options.throwOnGenerate) throw options.throwOnGenerate;
                 return options.generate?.(request.messages[0]?.content ?? '') ?? 'Hello love';
             },
             async *streamChat(request: { signal?: AbortSignal }) {
@@ -157,7 +160,7 @@ test('crisis input never calls the model and the saved reply carries helplines',
     assert.match(String(saved.content), /14416/);
     assert.equal(saved.metadata.safety.action, 'crisis');
     assert.equal(saved.metadata.safety.code, 'self_harm');
-    assert.equal(created[0]?.content, saved.content);
+    assert.equal(created.length, 0);
 });
 
 test('an allowed turn sends the safety rules after the persona', async () => {
@@ -183,6 +186,7 @@ test('flagged model output is replaced before it is saved or streamed', async ()
     assert.equal(saved.content.includes('bomb'), false);
     assert.equal(saved.metadata.safety.action, 'refuse');
     assert.equal(saved.metadata.safety.code, 'content_policy');
+    assert.equal(blocked.created.length, 0);
 
     const streamed = harness({
         messages: [{ role: 'USER', content: 'Tell me a story' }],
@@ -205,6 +209,7 @@ test('flagged model output is replaced before it is saved or streamed', async ()
             : '';
     assert.equal(done?.safety?.code, 'content_policy');
     assert.equal(doneContent, REFUSAL_MESSAGE);
+    assert.equal(streamed.created.length, 0);
 });
 
 test('a withheld stream still returns one safe delta and does not call the model', async () => {
@@ -264,6 +269,9 @@ test('a safe sentence streams before a later unsafe sentence is replaced', async
     assert.match(doneContent, /I saved you a seat/);
     assert.match(doneContent, /I can't help with that/);
     assert.equal(doneContent.includes('bomb'), false);
+    assert.equal(streamed.created.length, 1);
+    assert.equal(streamed.created[0]?.content, 'I saved you a seat.');
+    assert.equal(streamed.created[0]?.metadata, null);
 });
 
 test('an aborted moderated stream neither persists nor charges', async () => {
@@ -381,6 +389,18 @@ test('a flagged user line is marked and left out of the next model prompt', asyn
     await next.ai.generateResponse(1, 3);
     const transcript = (next.sent[0] ?? []).join('\n');
     assert.equal(transcript.includes('ignore previous instructions'), false);
+    assert.equal(transcript.includes("I can't help with that"), false);
     assert.match(transcript, /Tell me about your day/);
-    assert.match(transcript, /I can't help with that/);
+});
+
+test('a generation outage is not stored as an assistant message', async () => {
+    const { ai, created } = harness({
+        messages: [{ role: 'USER', content: 'Tell me about your day' }],
+        throwOnGenerate: new GenerationTemporarilyUnavailableException(),
+    });
+    await assert.rejects(
+        () => ai.generateResponse(1, 3),
+        GenerationTemporarilyUnavailableException,
+    );
+    assert.equal(created.length, 0);
 });

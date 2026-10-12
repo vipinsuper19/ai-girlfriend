@@ -11,6 +11,7 @@ import {
 import type {
     ChatProvider,
 } from '../ai/interfaces/chat-provider.interface.js';
+import { isCannedAssistantText } from '../moderation/safety-policy.js';
 import { MemoryImportanceService } from './memory-importance.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MemoryEmbeddingService } from './memory-embedding.service.js';
@@ -57,7 +58,7 @@ export class MemoryExtractorService {
         userMessage: string,
         assistantMessage: string,
     ): Promise<void> {
-        if (!userMessage.trim()) {
+        if (!userMessage.trim() || isCannedAssistantText(assistantMessage)) {
             return;
         }
 

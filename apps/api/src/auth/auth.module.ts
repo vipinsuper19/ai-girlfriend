@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 
+import { AgeConfirmedGuard } from './age-confirmed.guard.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { GoogleTokenService } from './google-token.service.js';
@@ -16,12 +17,14 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
     providers: [
         AuthService,
         GoogleTokenService,
-        JwtAuthGuard
+        JwtAuthGuard,
+        AgeConfirmedGuard,
     ],
     exports: [
         AuthService,
         JwtModule,
         JwtAuthGuard,
+        AgeConfirmedGuard,
     ],
 })
 export class AuthModule { }

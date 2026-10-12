@@ -19,7 +19,12 @@ import {
 import { regenerateProblem } from './regenerate.js';
 import { replyTargetProblem } from './reply-target.js';
 import { AiService } from '../ai/ai.service.js';
-import { safetyNoticeOf, type SafetyNotice } from '../moderation/safety-policy.js';
+import {
+    excludedFromThread,
+    isCannedAssistantText,
+    safetyNoticeOf,
+    type SafetyNotice,
+} from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { estimateTokens } from '../usage/estimate-tokens.js';
@@ -113,11 +118,11 @@ export class MessagesService {
             });
 
         if (query.before == null && limit == null) {
-            return messages
+            return withoutCannedReplies(await messages
                 .orderBy((message: any) =>
                     message.createdAt.asc(),
                 )
-                .all();
+                .all());
         }
 
         if (query.before != null) {
@@ -134,7 +139,7 @@ export class MessagesService {
             page = page.limit(limit);
         }
 
-        return orderMessagePage(await page.all());
+        return withoutCannedReplies(orderMessagePage(await page.all()));
     }
 
     async remove(
@@ -551,13 +556,16 @@ export class MessagesService {
                 args.userContent,
                 messageContent(assistantMessage),
             );
-            void this.memoryExtractorService.extractFromConversation(
-                Number(args.userId),
-                args.companionId,
-                args.conversationId,
-                messageContent(args.userMessage),
-                messageContent(assistantMessage),
-            );
+            const assistantText = messageContent(assistantMessage);
+            if (!isCannedAssistantText(assistantText)) {
+                void this.memoryExtractorService.extractFromConversation(
+                    Number(args.userId),
+                    args.companionId,
+                    args.conversationId,
+                    messageContent(args.userMessage),
+                    assistantText,
+                );
+            }
         }
 
         let userMessage: any = args.userMessage;
@@ -981,6 +989,12 @@ export class MessagesService {
             );
         }
     }
+}
+
+function withoutCannedReplies<T>(rows: T[]): T[] {
+    return rows.filter((row) => !excludedFromThread(
+        row as { role?: unknown; metadata?: unknown },
+    ));
 }
 
 function messageContent(message: unknown): string {

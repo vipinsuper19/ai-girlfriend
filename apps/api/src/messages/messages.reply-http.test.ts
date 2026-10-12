@@ -6,6 +6,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 
+import { AgeConfirmedGuard } from '../auth/age-confirmed.guard.js';
 import { API_BASE_PATH } from '../common/constants/api.constants.js';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
@@ -53,6 +54,8 @@ async function listen(service: object, options: { rateLimit?: boolean } = {}) {
                 return true;
             },
         })
+        .overrideGuard(AgeConfirmedGuard)
+        .useValue({ canActivate: () => true })
         .overrideGuard(RateLimitGuard)
         .useValue(options.rateLimit
             ? new RateLimitGuard(new Reflector(), new RateLimitService())

@@ -62,7 +62,7 @@ ${contactBlock(identity)}
 <p>Companion portraits, voice recordings, and generated gallery images are private files. In production they are objects in a private Supabase Storage bucket. The database keeps a stable path: a portrait under <code>uploads/companions</code> named with the companion id, a generated image under <code>uploads/images/</code> and the account id, or voice audio under <code>uploads/voice/</code> and the account id. The app reads a file with a short-lived signed URL. The bucket is not public. Voice notes are sent to Google Gemini for speech-to-text, and spoken replies are synthesized by Gemini text-to-speech. The current public build can hide voice and the gallery. When those features are on, the audio, the transcript, the image prompt, and the image file are processed and stored as described here.</p>
 
 <h2>Chat, Gemini, and safety checks</h2>
-<p>Chat replies are written by Google Gemini, so the user message and the conversation sent with it go to Gemini. Memory embeddings, image generation, speech-to-text, and text-to-speech are also sent to Google Gemini, with the text or audio that request needs. Before a reply is shown, the user message and the reply text are sent to a safety check. When <code>OPENAI_API_KEY</code> is set, that check is OpenAI's moderation API. When that key is not set and a Gemini key is set, the same text is sent to Gemini for the check instead. A flagged user message is kept, and a safety notice is stored in its metadata. A flagged reply is kept too, as the refusal text plus that safety notice. The OpenAI chat client is not the provider that writes replies. Google and OpenAI process those requests under their own terms. This app does not receive your payment details from them.</p>
+<p>Chat replies are written by Google Gemini, so the user message and the conversation sent with it go to Gemini. Memory embeddings, image generation, speech-to-text, and text-to-speech are also sent to Google Gemini, with the text or audio that request needs. Before a reply is shown, the user message and the reply text are sent to a safety check. When <code>OPENAI_API_KEY</code> is set, that check is OpenAI's moderation API. When that key is not set and a Gemini key is set, the same text is sent to Gemini for the check instead. A flagged user message is kept, and a safety notice is stored in its metadata. A refusal, crisis reply, or temporary safety error is shown once and is not stored as a message. The OpenAI chat client is not the provider that writes replies. Google and OpenAI process those requests under their own terms. This app does not receive your payment details from them.</p>
 
 <h2>Message reports</h2>
 <p>You can report an AI reply. The report stores a snapshot of that message's text, the reason, and an optional note. The report belongs to your account.</p>
@@ -87,7 +87,7 @@ ${contactBlock(identity)}
 `);
 }
 
-export function accountDeletionHtml(identity: LegalIdentity): string {
+export function accountDeletionHtml(identity: LegalIdentity, formError?: string): string {
     const days = String(DELETION_REQUEST_RETENTION_DAYS);
     const email = escapeHtml(identity.contactEmail);
     const mailto = contactEmailIsConfigured(identity.contactEmail)
@@ -105,6 +105,7 @@ ${contactBlock(identity)}
 </ol>
 <p>The form does not delete the account by itself. It stores a request and emails a confirmation link to that account address. The request is confirmed only when the link is opened, which shows the request came from someone who can read that inbox. If that email cannot be sent, the developer verifies the request from the account's email address before deleting. The matching account is deleted within ${days} days of a confirmed request.</p>
 
+${formError ? `<p role="alert">${escapeHtml(formError)}</p>` : ''}
 <form method="post" action="/account-deletion">
 <p><label>Account email<br><input name="email" type="email" required autocomplete="email"></label></p>
 <p><label>Anything else we should know (optional)<br><textarea name="note" maxlength="2000" rows="4"></textarea></label></p>

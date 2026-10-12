@@ -674,14 +674,37 @@ export class AiService {
          * ------------------------------------------------------
          */
         if (signal?.aborted) return;
-        const assistantMessage = await this.finishTurn(
-            numericConversationId,
-            numericUserId,
-            streamedContent,
-            outputNotice,
-            true,
-        );
+        const stored = outputNotice
+            ? (safeText.trim()
+                ? await this.finishTurn(
+                    numericConversationId,
+                    numericUserId,
+                    safeText.trim(),
+                    null,
+                    true,
+                )
+                : null)
+            : await this.finishTurn(
+                numericConversationId,
+                numericUserId,
+                streamedContent,
+                null,
+                true,
+            );
         if (signal?.aborted) return;
+
+        const assistantMessage = outputNotice
+            ? {
+                ...(stored ?? {
+                    role: 'ASSISTANT',
+                    type: 'TEXT',
+                    audioUrl: null,
+                    imageUrl: null,
+                }),
+                content: streamedContent,
+                metadata: { safety: outputNotice },
+            }
+            : stored;
 
         yield {
             type: 'done',
@@ -699,10 +722,15 @@ export class AiService {
     ) {
         const metadata = notice ? { safety: notice } : null;
 
-        if (!persist) {
+        // Canned refusals and transient safety replies are shown, not stored.
+        if (!persist || notice) {
             return {
+                role: 'ASSISTANT',
+                type: 'TEXT',
                 content,
                 metadata,
+                audioUrl: null,
+                imageUrl: null,
             };
         }
 
