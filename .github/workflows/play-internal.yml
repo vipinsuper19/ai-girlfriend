@@ -1,8 +1,15 @@
 # Play internal track upload.
 # DO NOT ENABLE until Vipin approves v1. The job is skipped unless the repo
 # variable PLAY_UPLOAD_ENABLED is 'true', and it only runs when started by hand.
+#
+# Before the first dispatch, Vipin has to create a GitHub Environment named
+# `play-internal` in this repo's settings (Settings → Environments) and add
+# required reviewers. Referencing the name here does not protect anything:
+# the first run will auto-create an unprotected environment if it is missing.
+#
 # Required secrets: PLAY_SERVICE_ACCOUNT_JSON, KEYSTORE_BASE64,
 # KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
+# Required variable: PLAY_PACKAGE_NAME (the Android application id).
 # Release signing is read from KEYSTORE_PATH in apps/android/app/build.gradle.kts.
 # That wiring lands with the API/Android CI change; without it this bundle is unsigned.
 name: Play internal upload
@@ -10,22 +17,28 @@ name: Play internal upload
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   upload:
     if: vars.PLAY_UPLOAD_ENABLED == 'true'
     runs-on: ubuntu-latest
+    environment: play-internal
     defaults:
       run:
         working-directory: apps/android
     steps:
       - uses: actions/checkout@v4
-      - name: Check required secrets
+      - name: Check required secrets and package name
         env:
           PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          PLAY_PACKAGE_NAME: ${{ vars.PLAY_PACKAGE_NAME }}
         run: |
           [ -n "$PLAY_JSON" ] || { echo "::error::PLAY_SERVICE_ACCOUNT_JSON missing"; exit 1; }
           [ -n "$KEYSTORE_BASE64" ] || { echo "::error::KEYSTORE_BASE64 missing"; exit 1; }
+          [ -n "$PLAY_PACKAGE_NAME" ] || { echo "::error::PLAY_PACKAGE_NAME variable is empty"; exit 1; }
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
@@ -40,10 +53,11 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: chmod +x gradlew && ./gradlew bundleRelease
-      - uses: r0adkll/upload-google-play@v1
+      # v1.1.5
+      - uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.dhama.mybase
+          packageName: ${{ vars.PLAY_PACKAGE_NAME }}
           releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
           track: internal
           status: draft
