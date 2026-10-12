@@ -6,6 +6,7 @@ import com.dhama.mybase.core.age.googleAuthRequestJson
 import com.dhama.mybase.core.age.registerRequestJson
 import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.ReportMessageBody
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.chat.consumeSse
@@ -342,6 +343,18 @@ class ApiClient(
         }
     }
 
+    /**
+     * `POST /reports`. Returns the status and body, including 404 and 429.
+     * 201 `{id}` is a new report. 200 `{id}` is a duplicate. A 401 still refreshes the session.
+     */
+    suspend fun reportMessage(body: ReportMessageBody): ReportHttp {
+        return withAuth { access ->
+            val result = executeRaw(authed("POST", "reports", json.encodeToString(body), access))
+            if (result.status == 401) throw apiStatus(result.status, result.body, json)
+            result
+        }
+    }
+
     suspend fun regenerate(messageId: Int): RegeneratedReply {
         return withAuth { access ->
             unwrapData(execute(authed("POST", "messages/$messageId/regenerate", "{}", access)), json)
@@ -502,6 +515,12 @@ class ApiClient(
             payload.orEmpty().toRequestBody(JSON)
         }
         return builder.method(method, body).build()
+    }
+
+    private suspend fun executeRaw(request: Request): ReportHttp = withContext(Dispatchers.IO) {
+        http.newCall(request).execute().use { response ->
+            ReportHttp(response.code, response.body?.string().orEmpty())
+        }
     }
 
     private suspend fun execute(request: Request): String = execute(http, request)
