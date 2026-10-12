@@ -14,7 +14,7 @@ import com.dhama.mybase.core.db.entity.User
 @Database(
     entities = [User::class, Notes::class, ChatMessageEntity::class, MemoryEntity::class],
     version = 7,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao

@@ -3,6 +3,7 @@ package com.dhama.mybase.di
 import android.content.Context
 import androidx.room.Room
 import com.dhama.mybase.core.db.AppDatabase
+import com.dhama.mybase.core.db.AppMigrations
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.MemoryRepositoryImpl
@@ -32,7 +33,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(context, AppDatabase::class.java, "my_database")
-            .fallbackToDestructiveMigration(true)
+            .addMigrations(*AppMigrations.ALL)
             .build()
     }
 
