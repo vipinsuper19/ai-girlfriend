@@ -12,10 +12,20 @@ export function isObjectKey(key: string): boolean {
     return OBJECT_KEY.test(key);
 }
 
-/** A folder account deletion may remove: one user's media, or the portrait directory. */
+/**
+ * A folder account deletion may remove: one user's media, or the shared portrait directory.
+ * TODO: store portraits under companions/{userId}/ so deletion can drop one prefix
+ * instead of listing the shared directory.
+ */
 export function isObjectPrefix(prefix: string): boolean {
     if (prefix.includes('..') || prefix.includes('\\') || prefix.includes('\0')) return false;
     return OBJECT_PREFIX.test(prefix);
+}
+
+/** A failed delete we can retry: one object, or one user's voice/image folder. Not the shared portrait directory. */
+export function isCleanupKey(key: string): boolean {
+    if (isObjectKey(key)) return true;
+    return /^(?:voice|images)\/[0-9]+\/$/.test(key);
 }
 
 export function storedPath(key: string): string {

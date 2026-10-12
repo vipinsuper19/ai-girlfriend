@@ -3,6 +3,7 @@ import {
     Inject,
     Injectable,
     InternalServerErrorException,
+    Logger,
 } from '@nestjs/common';
 
 import { randomUUID } from 'crypto';
@@ -10,17 +11,17 @@ import { randomUUID } from 'crypto';
 import type { RequestHandler } from 'express';
 
 import {
-    avatarExtension,
     companionFilesIn,
-    generatedImageExtension,
     ownUserFile,
     ownVoiceFile,
 } from './file-types.js';
 import { contentTypeForKey } from './content-type.js';
+import { extensionForImageKind, imageKindFromBytes } from './image-signature.js';
 import { createLocalDownloadHandler, LocalObjectStorage } from './local-storage.js';
 import { isObjectKey, objectKeyFromReference, storedPath } from './object-key.js';
 import { OBJECT_STORAGE, type ObjectStorage } from './object-storage.js';
 import { signFileUrlFields } from './sign-file-urls.js';
+import type { StorageRemoval } from '../users/account-deletion.js';
 
 export interface StorageSaveOptions {
     directory: string;
@@ -30,6 +31,8 @@ export interface StorageSaveOptions {
 
 @Injectable()
 export class StorageService {
+    private readonly logger = new Logger(StorageService.name);
+
     constructor(
         @Inject(OBJECT_STORAGE)
         private readonly objects: ObjectStorage,
@@ -62,14 +65,14 @@ export class StorageService {
         companionId: number,
         file: Express.Multer.File,
     ): Promise<string> {
-        const extension = avatarExtension(file.mimetype);
-        if (!extension) {
+        const kind = imageKindFromBytes(file.buffer);
+        if (!kind) {
             throw new BadRequestException('Avatar must be a JPEG, PNG, or WebP image');
         }
 
         return this.save(file.buffer, {
             directory: 'companions',
-            fileName: `${companionId}-${randomUUID()}${extension}`,
+            fileName: `${companionId}-${randomUUID()}${extensionForImageKind(kind)}`,
         });
     }
 
@@ -87,30 +90,61 @@ export class StorageService {
     async saveGeneratedImage(
         userId: number,
         image: Buffer,
-        mimeType: string,
+        _mimeType: string,
     ): Promise<string> {
+        const kind = imageKindFromBytes(image);
+        if (!kind) {
+            throw new BadRequestException('Image must be a JPEG, PNG, or WebP image');
+        }
+
         return this.save(image, {
             directory: `images/${userId}`,
-            fileName: `${randomUUID()}${generatedImageExtension(mimeType)}`,
+            fileName: `${randomUUID()}${extensionForImageKind(kind)}`,
         });
     }
 
     /**
      * Voice notes and gallery images live in per-user folders. Portraits share
      * one directory and are removed one companion at a time.
+     *
+     * TODO: store portraits under companions/{userId}/ so deletion can drop one
+     * prefix. Until then a failed listing is incomplete and must not be queued
+     * as companions/, which would delete every user's portraits.
      */
     async removeUserFiles(
         userId: number,
         companionIds: readonly number[],
-    ): Promise<void> {
-        await this.objects.deletePrefix(`voice/${userId}/`);
-        await this.objects.deletePrefix(`images/${userId}/`);
+    ): Promise<StorageRemoval> {
+        const failures: StorageRemoval['failures'] = [];
+        let incomplete = false;
 
-        const portraits = await this.objects.list('companions/');
-        const names = portraits.map((key) => key.slice('companions/'.length));
-        for (const name of companionFilesIn(names, companionIds)) {
-            await this.objects.delete(`companions/${name}`);
+        for (const prefix of [`voice/${userId}/`, `images/${userId}/`]) {
+            try {
+                await this.objects.deletePrefix(prefix);
+            } catch (error) {
+                failures.push({ key: prefix, error: errorText(error) });
+            }
         }
+
+        try {
+            const portraits = await this.objects.list('companions/');
+            const names = portraits.map((key) => key.slice('companions/'.length));
+            for (const name of companionFilesIn(names, companionIds)) {
+                const key = `companions/${name}`;
+                try {
+                    await this.objects.delete(key);
+                } catch (error) {
+                    failures.push({ key, error: errorText(error) });
+                }
+            }
+        } catch (error) {
+            incomplete = true;
+            this.logger.warn(
+                `Portrait listing failed during account deletion: ${errorText(error)}`,
+            );
+        }
+
+        return { failures, incomplete };
     }
 
     async removeVoiceFile(userId: number, url: unknown): Promise<void> {
@@ -145,4 +179,8 @@ export class StorageService {
         if (!(this.objects instanceof LocalObjectStorage)) return null;
         return createLocalDownloadHandler(this.objects);
     }
+}
+
+function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : 'Storage delete failed';
 }

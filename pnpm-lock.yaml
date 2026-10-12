@@ -285,6 +285,9 @@ importers:
       openai:
         specifier: ^7.10.0
         version: 7.10.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@7.29.0)(ws@8.21.3)(zod@3.25.76)
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
       prisma:
         specifier: 8.0.0-rc.11
         version: 8.0.0-rc.11(@types/node@24.13.3)(@types/react@19.2.18)(@vercel/nft@1.11.0(supports-color@8.1.1))(magicast@0.5.4)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1124.0))(mysql2@3.24.3(@types/node@24.13.3))(pg@8.22.0)(supports-color@8.1.1)(typanion@3.14.0)(typescript@6.0.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(vitest@5.0.3(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)))(ws@8.21.3)
@@ -328,6 +331,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.2
         version: 8.0.2
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.4
       '@types/supertest':
         specifier: ^7.0.0
         version: 7.2.1
