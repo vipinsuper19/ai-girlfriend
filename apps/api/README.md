@@ -54,7 +54,9 @@ clients hide the matching controls, so nothing is faked.
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Session tokens |
 | `JWT_RESET_SECRET` | Password reset tokens. Falls back to a value derived from `JWT_ACCESS_SECRET` |
 | `APP_URL` | Web origin used in reset links, e.g. `https://app.example.com` |
-| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL` mail is written to the log, which is for development only |
+| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL` mail is written to the log, which is for development only. Account-deletion requests are emailed to `CONTACT_EMAIL` when SMTP is set |
+| `CONTACT_EMAIL` | Address on `/privacy` and `/account-deletion`, and the inbox for deletion requests. Until it is set, the pages show `TODO` |
+| `DEVELOPER_NAME` | Developer name on those pages. Until it is set, the pages show `TODO` |
 | `GOOGLE_CLIENT_IDS` | Comma-separated OAuth client ids accepted by `POST /auth/google` (web) |
 | `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
@@ -90,6 +92,8 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
+
+Play Store pages are outside `/api/v1`: `GET /privacy` and `GET /account-deletion`. The deletion form `POST`s to `/account-deletion` (5 requests per hour per client). Signed-in deletion in the app is `DELETE /api/v1/users/me`.
 
 Neither auth route is rate limited yet; put a limit in front of `password/forgot` before going public.
 

@@ -74,3 +74,12 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Optional. Public address on /privacy and /account-deletion.
+      # Until it is set, those pages show the placeholder TODO.
+      # Deletion requests are emailed here when SMTP_URL is set.
+      # Do not set value: "" — a later Blueprint sync can wipe a real address.
+      - key: CONTACT_EMAIL
+        sync: false
+      # Optional. Developer name on the same pages. Placeholder TODO until set.
+      - key: DEVELOPER_NAME
+        sync: false
