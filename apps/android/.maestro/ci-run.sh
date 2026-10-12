@@ -15,18 +15,21 @@ mkdir -p "${artifacts}"
 log="${DIR}/out/run-all.log"
 
 # A cold API 34 emulator ANRs Pixel Launcher and leaves that dialog over the
-# app, so Maestro never sees welcome_get_started. Tap Wait while it is in front.
+# app, so Maestro never sees welcome_get_started. Stop the launcher, and if
+# the dialog is already up, tap Close app (pixel_6, 1080x2400).
+adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+echo "Window focus before flows:"
+adb shell dumpsys window | grep -m1 mCurrentFocus || true
+
 dismiss_anr_dialogs() {
   while true; do
-    focus="$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus || true)"
-    case "${focus}" in
-      *"Not Responding"*)
-        echo "Dismissing ANR dialog: ${focus}"
-        # Wait is the lower button on a pixel_6 ANR dialog (1080x2400).
-        adb shell input tap 540 1359 || true
-        sleep 2
-        ;;
-    esac
+    if adb shell dumpsys window 2>/dev/null | grep -q "responding"; then
+      echo "Dismissing ANR dialog"
+      # Close app is the upper button. This dialog is the launcher, not the app.
+      adb shell input tap 540 1233 || true
+      sleep 2
+    fi
     sleep 2
   done
 }
