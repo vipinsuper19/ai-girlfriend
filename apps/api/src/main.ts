@@ -26,6 +26,13 @@ async function bootstrap(): Promise<void> {
   // const configService = app.get(ConfigService);
 
   app.use(helmet());
+  // Render terminates TLS and appends the client to X-Forwarded-For.
+  // One trusted hop makes req.ip that client. TRUST_PROXY_HOPS=0 keeps the socket address.
+  const trustProxyHops = Number(process.env['TRUST_PROXY_HOPS'] ?? 1);
+  app.set(
+    'trust proxy',
+    Number.isInteger(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1,
+  );
   // app.setGlobalPrefix('api');
 
   // app.enableVersioning({
@@ -56,7 +63,8 @@ async function bootstrap(): Promise<void> {
     ]
   });
 
-  app.setGlobalPrefix(API_BASE_PATH);
+  // /health stays unprefixed for the Render health check.
+  app.setGlobalPrefix(API_BASE_PATH, { exclude: ['health'] });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -87,7 +95,7 @@ async function bootstrap(): Promise<void> {
 
   //const port =configService.get<number>('app.port') ?? 3001;
   const port = Number(process.env['PORT'] ?? 3001);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`API running on http://localhost:${port}/${API_BASE_PATH}`);
   // console.log(

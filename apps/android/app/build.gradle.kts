@@ -1,5 +1,11 @@
 import com.android.build.api.variant.BuildConfigField
+import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
@@ -13,6 +19,13 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.parcelize)
 }
+
+// v1 leaves these off. Set one to true and rebuild to show that feature again.
+val featureVoice = false
+val featureGallery = false
+val featurePush = false
+val featureBilling = false
+val featurePhoneSignIn = false
 
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -175,6 +188,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("boolean", "FEATURE_VOICE", featureVoice.toString())
+        buildConfigField("boolean", "FEATURE_GALLERY", featureGallery.toString())
+        buildConfigField("boolean", "FEATURE_PUSH", featurePush.toString())
+        buildConfigField("boolean", "FEATURE_BILLING", featureBilling.toString())
+        buildConfigField("boolean", "FEATURE_PHONE_SIGN_IN", featurePhoneSignIn.toString())
+        manifestPlaceholders["pushServiceEnabled"] = featurePush.toString()
     }
 
     signingConfigs {
@@ -210,10 +230,20 @@ android {
     }
 }
 
+val featureFlagManifest = tasks.register<FeatureFlagManifestTask>("writeFeatureFlagManifest") {
+    voiceEnabled.set(featureVoice)
+    pushEnabled.set(featurePush)
+    billingEnabled.set(featureBilling)
+    outputManifest.set(layout.buildDirectory.file("generated/featureFlags/AndroidManifest.xml"))
+}
+
 // One API_BASE_URL per variant. Debug falls back to the emulator host. Release fails
 // unless a URL is configured, or -PallowPlaceholderApi=true opts into the placeholder.
 androidComponents {
     onVariants { variant ->
+        variant.sources.manifests.addGeneratedManifestFile(featureFlagManifest) { task ->
+            task.outputManifest
+        }
         val flavors = variant.productFlavors.map { it.second }
         val buildType = variant.buildType.orEmpty()
         val resolved = apiBaseUrl(buildType, flavors)
@@ -229,6 +259,41 @@ androidComponents {
                 comment = "REST API base URL",
             ),
         )
+    }
+}
+
+abstract class FeatureFlagManifestTask : DefaultTask() {
+    @get:Input
+    abstract val voiceEnabled: Property<Boolean>
+
+    @get:Input
+    abstract val pushEnabled: Property<Boolean>
+
+    @get:Input
+    abstract val billingEnabled: Property<Boolean>
+
+    @get:OutputFile
+    abstract val outputManifest: RegularFileProperty
+
+    @TaskAction
+    fun write() {
+        fun permission(name: String, enabled: Boolean): String {
+            val node = if (enabled) "" else """ tools:node="remove""""
+            return """    <uses-permission android:name="$name"$node />"""
+        }
+        val xml = """
+            |<?xml version="1.0" encoding="utf-8"?>
+            |<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            |    xmlns:tools="http://schemas.android.com/tools">
+            |${permission("android.permission.RECORD_AUDIO", voiceEnabled.get())}
+            |${permission("android.permission.POST_NOTIFICATIONS", pushEnabled.get())}
+            |${permission("com.android.vending.BILLING", billingEnabled.get())}
+            |</manifest>
+            |
+        """.trimMargin()
+        val file = outputManifest.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(xml)
     }
 }
 
@@ -283,6 +348,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation("org.mockito:mockito-core:5.18.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

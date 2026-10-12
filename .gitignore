@@ -11,6 +11,27 @@ build/
 out/
 coverage/
 
+# Turborepo local cache
+.turbo/
+
+# TypeScript incremental compilation cache
+*.tsbuildinfo
+
+# Compiled output emitted beside TypeScript sources.
+# nest/tsc write emit to dist/; these patterns stop a stray in-source emit
+# (JavaScript, source maps, declarations) from being committed next to .ts files.
+# Hand-written scripts use .mjs. The Prisma schema contract is generated source
+# and stays tracked.
+apps/**/src/**/*.js
+apps/**/src/**/*.js.map
+apps/**/src/**/*.d.ts
+apps/**/src/**/*.d.ts.map
+packages/**/src/**/*.js
+packages/**/src/**/*.js.map
+packages/**/src/**/*.d.ts
+packages/**/src/**/*.d.ts.map
+!apps/api/src/prisma/contract.d.ts
+
 # Environment files
 .env
 .env.local
