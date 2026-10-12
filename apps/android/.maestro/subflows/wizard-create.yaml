@@ -12,7 +12,7 @@ tags:
     timeout: 15000
 - assertVisible:
     id: wizard_step
-    text: "Step 1 of 3"
+- assertVisible: "Step 1 of 3"
 - tapOn: "Illustrated"
 - takeScreenshot: ${SHOT}-wizard-look
 - tapOn:
@@ -22,7 +22,7 @@ tags:
     timeout: 15000
 - assertVisible:
     id: wizard_step
-    text: "Step 2 of 3"
+- assertVisible: "Step 2 of 3"
 - scrollUntilVisible:
     element:
       text: "Witty"
@@ -38,7 +38,7 @@ tags:
     timeout: 15000
 - assertVisible:
     id: wizard_step
-    text: "Step 3 of 3"
+- assertVisible: "Step 3 of 3"
 - tapOn:
     id: wizard_name
 - eraseText: 30

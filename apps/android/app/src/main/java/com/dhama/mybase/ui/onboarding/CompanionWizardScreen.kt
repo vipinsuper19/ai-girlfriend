@@ -52,11 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.text
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -227,20 +224,18 @@ private fun StepHeader(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             val stepLabel = "Step $index of $total"
-            Text(
-                stepLabel,
-                modifier = Modifier
-                    .weight(1f)
-                    .testId("wizard_step")
-                    .semantics {
-                        // A weighted label between two buttons was omitted from the
-                        // accessibility tree. Set the text explicitly so Maestro can see it.
-                        text = AnnotatedString(stepLabel)
-                        contentDescription = stepLabel
-                    },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // weight() on the Text itself dropped it from the accessibility tree.
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    stepLabel,
+                    modifier = Modifier.testId("wizard_step"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (showSkip) {
                 TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
             } else {
