@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Delete account
 tags:
   - account
+env:
+  SHOT: 09-delete-account
 ---
 # Deletes the account from You, returns to welcome, then the same email and password must not sign in.
 - runFlow:
@@ -16,22 +18,26 @@ tags:
       id: settings_delete_account
     direction: DOWN
     timeout: 20000
+- takeScreenshot: ${SHOT}-delete-entry
 - tapOn:
     id: settings_delete_account
 - extendedWaitUntil:
     visible:
       id: settings_delete_field
     timeout: 10000
+- takeScreenshot: ${SHOT}-delete-dialog
 - tapOn:
     id: settings_delete_field
 - inputText: "DELETE"
 - hideKeyboard
+- takeScreenshot: ${SHOT}-delete-typed
 - tapOn:
     id: settings_delete_confirm
 - extendedWaitUntil:
     visible:
       id: welcome_get_started
     timeout: 60000
+- takeScreenshot: ${SHOT}-account-deleted
 - runFlow:
     file: ../subflows/login.yaml
 - extendedWaitUntil:
@@ -43,3 +49,4 @@ tags:
     id: home_talk
 - assertNotVisible:
     id: wizard_intro
+- takeScreenshot: ${SHOT}-login-rejected

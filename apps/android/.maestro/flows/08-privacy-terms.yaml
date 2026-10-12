@@ -3,6 +3,8 @@ name: Privacy and Terms
 tags:
   - known-failure
   - legal
+env:
+  SHOT: 08-privacy-terms
 ---
 # KNOWN FAILURE. Do not "fix" WelcomeScreen to make this pass.
 # Terms and Privacy Policy click handlers only call Log.d (WelcomeScreen.kt).
@@ -12,11 +14,13 @@ tags:
     file: ../subflows/launch-fresh.yaml
 - tapOn:
     id: welcome_terms
+- takeScreenshot: ${SHOT}-terms-tapped
 - extendedWaitUntil:
     notVisible:
       id: welcome_get_started
     timeout: 10000
 - assertVisible: ".*[Tt]erms of.*"
+- takeScreenshot: ${SHOT}-terms-page
 - back
 - launchApp:
     stopApp: false
@@ -26,8 +30,10 @@ tags:
     timeout: 10000
 - tapOn:
     id: welcome_privacy
+- takeScreenshot: ${SHOT}-privacy-tapped
 - extendedWaitUntil:
     notVisible:
       id: welcome_get_started
     timeout: 10000
 - assertVisible: "privacy policy"
+- takeScreenshot: ${SHOT}-privacy-page

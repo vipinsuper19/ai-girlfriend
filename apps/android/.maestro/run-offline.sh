@@ -56,12 +56,13 @@ network_on() {
 trap restore_network EXIT
 
 echo "======== 05 offline/retry ========"
-maestro_test "${DIR}/offline/05a-reach-chat.yaml"
+echo "Maestro artifacts: ${MAESTRO_OUT}"
+SHOT=05-offline-retry MAESTRO_REPORT=05-offline-retry-reach maestro_test "${DIR}/offline/05a-reach-chat.yaml"
 network_off
 status=0
-maestro_test "${DIR}/offline/05b-send-offline.yaml" || status=$?
+SHOT=05-offline-retry MAESTRO_REPORT=05-offline-retry-offline maestro_test "${DIR}/offline/05b-send-offline.yaml" || status=$?
 network_on || status=1
 if [[ "${status}" -eq 0 ]]; then
-  maestro_test "${DIR}/offline/05c-retry-online.yaml" || status=$?
+  SHOT=05-offline-retry MAESTRO_REPORT=05-offline-retry-restored maestro_test "${DIR}/offline/05c-retry-online.yaml" || status=$?
 fi
 exit "${status}"

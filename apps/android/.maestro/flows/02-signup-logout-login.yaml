@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Sign up, log out, log in
 tags:
   - auth
+env:
+  SHOT: 02-signup-logout-login
 ---
 # Log out lives on the You tab, which is reachable once a companion exists.
 # Logout clears the on-device age check, so login stops on Confirm your age, then home.
@@ -18,3 +20,4 @@ tags:
       id: home_talk
     timeout: 120000
 - assertVisible: ${output.companion}
+- takeScreenshot: ${SHOT}-home-after-login

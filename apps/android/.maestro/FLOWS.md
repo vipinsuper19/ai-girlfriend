@@ -2,7 +2,7 @@
 
 End-to-end UI flows for `apps/android`, aimed at a GitHub Actions emulator job. This directory does not add that workflow. Wire the job in `.github/workflows` separately.
 
-The entry point is [`run-all.sh`](run-all.sh). It builds the debug APK, installs it, and runs every flow below. [`run-offline.sh`](run-offline.sh) is the only flow that toggles the network.
+The entry point is [`run-all.sh`](run-all.sh). It builds the debug APK, installs it, and runs every flow below. [`run-offline.sh`](run-offline.sh) is the only flow that toggles the network. Screenshots and Maestro output are written to [`.maestro/out/`](#artifacts).
 
 ## What the job needs
 
@@ -163,9 +163,42 @@ Expected: welcome returns after deletion. Login stays on "Login to your account"
 
 The in-app delete calls `DELETE /users/me` and then signs Firebase out on the phone. It does not delete the Firebase Auth user. `ApiClient.establish` will also try to register again if the API login fails. If sign-in still succeeds after deletion, this flow fails until login is actually rejected. That is the assertion this flow is here to make.
 
+## Artifacts
+
+`run-all.sh` deletes `apps/android/.maestro/out/` at the start of the run, then writes everything for that run there. Upload the directory after the emulator step with `if: always()`, so a failed flow still keeps its screenshots. The repo gitignore already ignores `out/`, so this directory is not committed.
+
+```
+apps/android/.maestro/out/
+  run-all.log          # the whole script, including Gradle
+  screenshots/         # flattened takeScreenshot PNGs
+  reports/             # one JUnit XML per flow (flow 05 has three)
+  logs/                # Maestro console log per flow
+  maestro/             # raw Maestro tree: commands.json, device log, failure screenshots
+```
+
+Each `takeScreenshot` is named `NN-flow-step` and saved as `screenshots/NN-flow-step.png`. `NN-flow` is the flow prefix (`01-age-gate`, `02-signup-logout-login`, `05-offline-retry`, and so on). Shared subflows use that prefix, so the same wizard step from flow 03 is `03-companion-wizard-wizard-look.png` and from flow 04 is `04-chat-stream-wizard-look.png`. The credentials subflow only builds the throwaway email, so it has no screenshot.
+
+Shots after the meaningful steps include:
+
+| Prefix | Steps |
+|---|---|
+| `01-age-gate` | `welcome`, `signup-open`, `signup-fields`, `dob-signup_dob-01152015`, `under-18-rejected`, `dob-signup_dob-01151990`, `adult-allowed` |
+| `02-signup-logout-login` | sign-up and wizard shots, then `you`, `logged-out`, `login-form`, `confirm-age`, `confirm-age-ready`, `home-after-login` |
+| `03-companion-wizard` | sign-up and wizard shots, then `home-tabs` |
+| `04-chat-stream` | sign-up, wizard, `ai-disclosure`, `chat-ready`, `user-message`, `assistant-reply`, `stream-checked` |
+| `05-offline-retry` | sign-up and chat setup, then `chat-send-ready`, `offline-composer`, `offline-draft`, `retry`, `retry-ready`, `retry-reply` |
+| `06-composer-limit` | chat setup, then `cap` |
+| `07-report-message` | a streamed reply, then `report-menu`, `report-thanks` |
+| `08-privacy-terms` | `welcome`, `terms-tapped`. `terms-page` and the privacy shots are not produced while the links only log |
+| `09-delete-account` | `delete-entry`, `delete-dialog`, `delete-typed`, `account-deleted`, `login-form`, `login-rejected` |
+
+Wizard shots shared by the signed-in flows are `wizard-look`, `wizard-personality`, `wizard-name`, `home`, and `reach-home`. Flow 05 writes three reports: `reports/05-offline-retry-reach.xml`, `reports/05-offline-retry-offline.xml`, and `reports/05-offline-retry-restored.xml`. The other flows use `reports/NN-flow.xml`.
+
+A current Maestro CLI is required. `run-all.sh` passes `--test-output-dir` and `--debug-output` (both `out/maestro`) and `--format junit`.
+
 ## Suggested emulator step
 
-Not a workflow file. Drop this inside the job DevOps owns. `google-services.json` has to be on disk before `run-all.sh`.
+Not a workflow file. Drop this inside the job DevOps owns. `google-services.json` has to be on disk before `run-all.sh`. The upload step sits after the emulator step so it still runs when a flow fails.
 
 ```yaml
 - name: Maestro flows
@@ -184,6 +217,14 @@ Not a workflow file. Drop this inside the job DevOps owns. `google-services.json
       cd apps/android
       API_BASE_URL="${API_BASE_URL:-https://ai-girlfriend-tnu3.onrender.com/api/v1/}" \
         ./.maestro/run-all.sh
+
+- name: Upload Maestro artifacts
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: android-maestro
+    path: apps/android/.maestro/out/
+    if-no-files-found: warn
 ```
 
 Set the job timeout to 90 minutes. Cache Gradle the same way the existing Android job does, if this step shares that setup.

@@ -10,3 +10,4 @@ tags:
     file: signup-adult.yaml
 - runFlow:
     file: wizard-create.yaml
+- takeScreenshot: ${SHOT}-reach-home
