@@ -20,6 +20,22 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -31,6 +47,9 @@ jobs:
       - run: pnpm run lint
       - run: pnpm exec tsc --noEmit -p tsconfig.json
       - run: pnpm run test
+      - run: pnpm exec prisma migration check
+      - name: Apply migrations on a clean database
+        run: pnpm exec prisma db migrate --no-interactive
 
   android:
     name: Android (unit tests, bundleRelease)
@@ -62,6 +81,19 @@ jobs:
             echo "::notice::No KEYSTORE_BASE64 secret, so the release build will be unsigned."
           fi
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest
+      - name: assembleDebug without google-services.json
+        run: |
+          backup=""
+          if [ -f app/google-services.json ]; then
+            backup="$(mktemp)"
+            mv app/google-services.json "$backup"
+          fi
+          status=0
+          ./gradlew assembleDebug || status=$?
+          if [ -n "$backup" ]; then
+            mv "$backup" app/google-services.json
+          fi
+          exit "$status"
       - name: bundleRelease
         env:
           API_BASE_URL_RELEASE: ${{ vars.API_BASE_URL_RELEASE }}
@@ -70,8 +102,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$API_BASE_URL_RELEASE" ]; then
-            echo "::notice::Repo variable API_BASE_URL_RELEASE is unset; building with -PallowPlaceholderApi=true."
-            ./gradlew bundleRelease -PallowPlaceholderApi=true
+            echo "::notice::Repo variable API_BASE_URL_RELEASE is unset; building with -PallowPlaceholderApi=true -PdisableMappingUpload=true."
+            ./gradlew bundleRelease -PallowPlaceholderApi=true -PdisableMappingUpload=true
           else
             ./gradlew bundleRelease
           fi

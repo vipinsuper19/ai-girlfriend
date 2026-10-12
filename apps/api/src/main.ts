@@ -5,15 +5,15 @@ import {
   VersioningType
 } from '@nestjs/common';
 
-import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 import helmet from 'helmet';
 //import { ConfigService } from '@nestjs/config';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
-import { API_BASE_PATH } from './common/constants/api.constants.js';
+import { StorageService } from './storage/storage.service.js';
+import { API_BASE_PATH, UNPREFIXED_ROUTES } from './common/constants/api.constants.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
@@ -26,6 +26,13 @@ async function bootstrap(): Promise<void> {
   // const configService = app.get(ConfigService);
 
   app.use(helmet());
+  // Render terminates TLS and appends the client to X-Forwarded-For.
+  // One trusted hop makes req.ip that client. TRUST_PROXY_HOPS=0 keeps the socket address.
+  const trustProxyHops = Number(process.env['TRUST_PROXY_HOPS'] ?? 1);
+  app.set(
+    'trust proxy',
+    Number.isInteger(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1,
+  );
   // app.setGlobalPrefix('api');
 
   // app.enableVersioning({
@@ -56,8 +63,9 @@ async function bootstrap(): Promise<void> {
     ]
   });
 
-  // /health stays unprefixed for the Render health check.
-  app.setGlobalPrefix(API_BASE_PATH, { exclude: ['health'] });
+  // /health stays unprefixed for the Render health check. Play Store
+  // pages (/privacy, /account-deletion) stay unprefixed too.
+  app.setGlobalPrefix(API_BASE_PATH, { exclude: [...UNPREFIXED_ROUTES] });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -75,15 +83,13 @@ async function bootstrap(): Promise<void> {
   // );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(
-    new ResponseInterceptor()
+    new ResponseInterceptor(app.get(Reflector)),
   );
 
-  app.useStaticAssets(
-    join(process.cwd(), 'uploads'),
-    {
-      prefix: '/uploads/',
-    },
-  );
+  const downloads = app.get(StorageService).localDownloadHandler();
+  if (downloads) {
+    app.use('/uploads', downloads);
+  }
 
 
   //const port =configService.get<number>('app.port') ?? 3001;

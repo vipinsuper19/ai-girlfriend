@@ -6,6 +6,9 @@ import com.dhama.mybase.core.age.googleAuthRequestJson
 import com.dhama.mybase.core.age.registerRequestJson
 import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.ReportMessageBody
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
@@ -26,7 +29,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
@@ -126,9 +128,13 @@ class ApiClient(
                             events.forEach { onEvent(it) }
                         }
                     }
-                } catch (error: IOException) {
-                    if (!coroutineContext.isActive) throw CancellationException("Stopped", error)
+                } catch (error: CancellationException) {
+                    throw scrubCancellation(error)
+                } catch (error: ApiStatusException) {
                     throw error
+                } catch (error: Exception) {
+                    if (!coroutineContext.isActive) throw CancellationException("Stopped")
+                    throw scrubTransportFailure(error)
                 } finally {
                     call.cancel()
                 }
@@ -232,8 +238,16 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "memories$query", null, access)) }
     }
 
+    /**
+     * DELETE /users/me.
+     * A 404 from this call counts as success in [com.dhama.mybase.core.data.deleteServerAccount].
+     * A 401 after the refresh token is rejected keeps the session store intact and is reported
+     * as [ACCOUNT_DELETE_SIGN_IN_CODE] so the app can sign Firebase out before clearing it.
+     */
     suspend fun deleteAccount() {
-        withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
+        withAuth(keepSessionOnRefreshFailure = true) { access ->
+            execute(authed("DELETE", "users/me", null, access))
+        }
     }
 
     suspend fun usageSummary(): RemoteUsageSummary {
@@ -326,6 +340,18 @@ class ApiClient(
         val payload = agePatchJson(dateOfBirth, ageConfirmedAt, json)
         withAuth { access ->
             execute(authed("PATCH", AGE_PATCH_PATH, payload, access))
+        }
+    }
+
+    /**
+     * `POST /reports`. Returns the status and body, including 404 and 429.
+     * 201 `{id}` is a new report. 200 `{id}` is a duplicate. A 401 still refreshes the session.
+     */
+    suspend fun reportMessage(body: ReportMessageBody): ReportHttp {
+        return withAuth { access ->
+            val result = executeRaw(authed("POST", "reports", json.encodeToString(body), access))
+            if (result.status == 401) throw apiStatus(result.status, result.body, json)
+            result
         }
     }
 
@@ -425,19 +451,25 @@ class ApiClient(
         return unwrapData(execute(authed("POST", "auth/register", payload, null)), json)
     }
 
-    private suspend fun <T> withAuth(block: suspend (String) -> T): T {
+    private suspend fun <T> withAuth(
+        keepSessionOnRefreshFailure: Boolean = false,
+        block: suspend (String) -> T,
+    ): T {
         val existing = store.read()?.accessToken
             ?: throw ApiStatusException(401, "Sign in with email to reach her on the server.", null)
         try {
             return block(existing)
         } catch (error: ApiStatusException) {
             if (error.status != 401) throw error
-            val next = refresh(existing) ?: throw error
-            return block(next)
+            val next = refresh(existing, clearOnFailure = !keepSessionOnRefreshFailure)
+            if (next == null && keepSessionOnRefreshFailure) {
+                throw ApiStatusException(401, ACCOUNT_DELETE_SIGN_IN, ACCOUNT_DELETE_SIGN_IN_CODE)
+            }
+            return block(next ?: throw error)
         }
     }
 
-    private suspend fun refresh(failedAccess: String): String? {
+    private suspend fun refresh(failedAccess: String, clearOnFailure: Boolean = true): String? {
         return refreshMutex.withLock {
             val current = store.read()
             if (current != null && current.accessToken != failedAccess) {
@@ -451,7 +483,8 @@ class ApiClient(
                 )
             }
             if (renewed == null) {
-                store.clear()
+                // Account deletion leaves the store until Firebase is signed out.
+                if (clearOnFailure) store.clear()
                 null
             } else {
                 store.write(renewed)
@@ -484,13 +517,27 @@ class ApiClient(
         return builder.method(method, body).build()
     }
 
+    private suspend fun executeRaw(request: Request): ReportHttp = withContext(Dispatchers.IO) {
+        http.newCall(request).execute().use { response ->
+            ReportHttp(response.code, response.body?.string().orEmpty())
+        }
+    }
+
     private suspend fun execute(request: Request): String = execute(http, request)
 
     private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
-            raw
+        try {
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
+                raw
+            }
+        } catch (error: CancellationException) {
+            throw scrubCancellation(error)
+        } catch (error: ApiStatusException) {
+            throw error
+        } catch (error: Exception) {
+            throw scrubTransportFailure(error)
         }
     }
 

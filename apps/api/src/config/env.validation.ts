@@ -30,5 +30,42 @@ export const envValidationSchema = Joi.object({
     .default('30d'),
 
   CORS_ORIGIN: Joi.string()
-    .required()
+    .required(),
+
+  STORAGE_DRIVER: Joi.string()
+    .valid('local', 's3')
+    .default('local'),
+
+  STORAGE_SIGNED_URL_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(86400)
+    .default(3600),
+
+  STORAGE_LOCAL_DIR: Joi.string()
+    .optional(),
+
+  STORAGE_SIGNING_SECRET: Joi.string()
+    .min(16)
+    .optional(),
+
+  // Required together when STORAGE_DRIVER=s3. createObjectStorage enforces that.
+  S3_ENDPOINT: Joi.string()
+    .uri()
+    .optional(),
+
+  S3_REGION: Joi.string()
+    .optional(),
+
+  S3_BUCKET: Joi.string()
+    .optional(),
+
+  S3_ACCESS_KEY_ID: Joi.string()
+    .optional(),
+
+  S3_SECRET_ACCESS_KEY: Joi.string()
+    .optional(),
+
+  S3_FORCE_PATH_STYLE: Joi.boolean()
+    .optional(),
 });

@@ -11,6 +11,7 @@ import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 
+import { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
 import { UsersService } from './users.service.js';
 
@@ -32,6 +33,17 @@ export class UsersController {
     async exportMe(@CurrentUser() user: JwtPayload) {
         return this.usersService.exportMe(
             String(user.sub),
+        );
+    }
+
+    @Patch('me/age')
+    async confirmAge(
+        @CurrentUser() user: JwtPayload,
+        @Body() dto: ConfirmAgeDto,
+    ) {
+        return this.usersService.confirmAge(
+            String(user.sub),
+            dto,
         );
     }
 

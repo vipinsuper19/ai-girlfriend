@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from './auth/auth.module.js';
+import { RateLimitModule } from './rate-limit/rate-limit.module.js';
 import { CommonModule } from './common/common.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -16,11 +17,15 @@ import { UsageModule } from "./usage/usage.module.js";
 import { MailModule } from './mail/mail.module.js';
 import { ImagesModule } from './images/images.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { LegalModule } from './legal/legal.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+
 @Module({
   imports: [
     CommonModule,
     PrismaModule,
+    RateLimitModule,
     AuthModule,
     UsersModule,
     AvatarsModule,
@@ -36,6 +41,8 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     ImagesModule,
     NotificationsModule,
     HealthModule,
+    LegalModule,
+    ReportsModule,
   ],
 })
 export class AppModule { }
