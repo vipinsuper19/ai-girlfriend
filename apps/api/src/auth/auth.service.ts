@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
 
 import { accessTokenExpiresIn } from './access-token.js';
+import { parseAgeAttestation, type AgeInput } from './age.js';
 import { passwordChangeProblem } from './password-change.js';
 import { accountCanSignIn, sessionExpired } from './session-state.js';
 import {
@@ -61,6 +62,7 @@ export class AuthService {
 
     async register(dto: RegisterDto) {
         const db = this.prisma.client as any;
+        const age = parseAgeAttestation(dto, new Date());
 
         const email = dto.email.toLowerCase().trim();
 
@@ -81,6 +83,7 @@ export class AuthService {
                 email,
                 displayName: dto.displayName.trim(),
                 passwordHash,
+                ...age,
             });
 
         return this.createAuthResponse(user as UserRecord);
@@ -452,7 +455,7 @@ export class AuthService {
         };
     }
 
-    async googleLogin(idToken: string) {
+    async googleLogin(idToken: string, ageInput: AgeInput = {}) {
         const db = this.prisma.client as any;
         const claims = await this.googleTokens.verify(idToken);
         const { identity, problem } = googleIdentity(claims);
@@ -460,6 +463,8 @@ export class AuthService {
         if (!identity) {
             throw new UnauthorizedException(problem);
         }
+
+        const age = parseAgeAttestation(ageInput, new Date());
 
         const account = await db.orm.public.Account
             .where({ provider: 'GOOGLE', providerAccountId: identity.googleId })
@@ -479,11 +484,15 @@ export class AuthService {
         let user;
         if (plan.kind === 'existing') {
             user = await db.orm.public.User.where({ id: plan.userId }).first();
+            if (user && age) {
+                user = await db.orm.public.User.where({ id: user.id }).update(age);
+            }
         } else {
             user = await db.orm.public.User.create({
                 email: identity.email,
                 displayName: googleDisplayName(identity),
                 passwordHash: null,
+                ...age,
             });
             await db.orm.public.Account.create({
                 userId: user.id,

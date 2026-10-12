@@ -3,10 +3,12 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 
+import { parseAgeAttestation } from '../auth/age.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
 import { deleteAccountStorageFirst } from './account-deletion.js';
+import type { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import { exportRows, flagColumn, userView } from './user-view.js';
 
@@ -63,6 +65,23 @@ export class UsersService {
         return userView(updatedUser);
     }
 
+    /** Checks the date of birth, then stores only the confirmation time. */
+    async confirmAge(userId: string, dto: ConfirmAgeDto) {
+        const age = parseAgeAttestation(dto, new Date(), { required: true });
+        await this.requireUser(userId);
+
+        const db = this.prisma.client as any;
+        const updated = await db.orm.public.User.where({
+            id: Number(userId),
+        }).update(age);
+
+        if (!updated) {
+            throw new NotFoundException('User not found');
+        }
+
+        return age;
+    }
+
     /**
      * Everything stored for this account, as one JSON document. Media fields
      * are signed on the way out, the same as every other response.
@@ -98,7 +117,10 @@ export class UsersService {
 
         return {
             exportedAt: new Date().toISOString(),
-            user: userView(user),
+            user: {
+                ...userView(user),
+                ageConfirmedAt: user.ageConfirmedAt ?? null,
+            },
             companions: exportRows(companions),
             appearances: exportRows(await byCompanion('CompanionAppearance')),
             personalities: exportRows(await byCompanion('CompanionPersonality')),
