@@ -6,6 +6,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { REFUSAL_MESSAGE } from '../moderation/safety-policy.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { UsageLimitExceededException } from '../usage/usage.exceptions.js';
+import { acquireConversationLock } from './conversation-lock.js';
 import { IdempotencyKeyReusedException, NotLatestUserMessageException } from './messages.exceptions.js';
 import { MessagesService } from './messages.service.js';
 
@@ -54,6 +55,9 @@ function messageQuery(
     filters: Array<(row: Row) => boolean>,
     dir: 'asc' | 'desc',
     limited: number | null,
+    hideKeyedReads?: { left: number },
+    afterAll?: (call: number) => void | Promise<void>,
+    allCalls?: { n: number },
 ) {
     const apply = () => {
         let out = rows.filter((row) => filters.every((filter) => filter(row)));
@@ -72,6 +76,9 @@ function messageQuery(
                     [...filters, (row) => checks.every((check) => check(row))],
                     dir,
                     limited,
+                    hideKeyedReads,
+                    afterAll,
+                    allCalls,
                 );
             }
             return messageQuery(
@@ -79,21 +86,46 @@ function messageQuery(
                 [...filters, (row) => matches(row, filter as Record<string, unknown>)],
                 dir,
                 limited,
+                hideKeyedReads,
+                afterAll,
+                allCalls,
             );
         },
         orderBy(fn: (message: unknown) => unknown) {
             const orderDir = { value: 'asc' as 'asc' | 'desc' | null };
             fn(columnProxy([], orderDir));
-            return messageQuery(rows, filters, orderDir.value ?? 'asc', limited);
+            return messageQuery(
+                rows,
+                filters,
+                orderDir.value ?? 'asc',
+                limited,
+                hideKeyedReads,
+                afterAll,
+                allCalls,
+            );
         },
         limit(count: number) {
-            return messageQuery(rows, filters, dir, count);
+            return messageQuery(rows, filters, dir, count, hideKeyedReads, afterAll, allCalls);
         },
         async first() {
-            return apply()[0] ?? null;
+            const found = apply();
+            if (
+                hideKeyedReads
+                && hideKeyedReads.left > 0
+                && found.some((row) => row.idempotencyKey != null)
+            ) {
+                hideKeyedReads.left -= 1;
+                return null;
+            }
+            return found[0] ?? null;
         },
         async all() {
-            return apply();
+            const found = apply();
+            if (afterAll && allCalls) {
+                allCalls.n += 1;
+                await afterAll(allCalls.n);
+            }
+            return found;
         },
         async update(patch: Record<string, unknown>) {
             const targets = apply();
@@ -113,6 +145,9 @@ function harness(options: {
         options?: { signal?: AbortSignal },
     ) => AsyncGenerator<unknown>;
     persistAssistant?: boolean;
+    /** The next N reads of a keyed row return null, then the row is visible. */
+    idempotentReadMisses?: number;
+    afterMessageAll?: (call: number) => void | Promise<void>;
 } = {}) {
     const conversations = [{
         id: 5,
@@ -135,8 +170,11 @@ function harness(options: {
         createdAt: new Date().toISOString(),
     }];
     let nextId = Math.max(0, ...messages.map((row) => row.id)) + 1;
+    const hideKeyedReads = { left: options.idempotentReadMisses ?? 0 };
+    const allCalls = { n: 0 };
     const charges: Array<{ feature: string; quantity: number }> = [];
     let generated = 0;
+    let uniqueConflicts = 0;
 
     function persistAssistant(conversationId: number, content: string) {
         const saved: Row = {
@@ -181,6 +219,7 @@ function harness(options: {
                     row.userId === data.userId && row.idempotencyKey === data.idempotencyKey,
                 );
                 if (clash) {
+                    uniqueConflicts += 1;
                     const error = new Error(
                         'duplicate key value violates unique constraint "message_userId_idempotencyKey_key"',
                     ) as Error & { code: string };
@@ -198,7 +237,15 @@ function harness(options: {
             return saved;
         },
         where(filter: unknown) {
-            return messageQuery(messages, [], 'asc', null).where(filter);
+            return messageQuery(
+                messages,
+                [],
+                'asc',
+                null,
+                hideKeyedReads,
+                options.afterMessageAll,
+                allCalls,
+            ).where(filter);
         },
     };
 
@@ -245,6 +292,7 @@ function harness(options: {
         messagesService,
         messages,
         charges,
+        uniqueConflicts: () => uniqueConflicts,
         generated: () => generated,
     };
 }
@@ -626,4 +674,83 @@ test('a non-UUID Idempotency-Key is rejected', async () => {
         (error: unknown) => error instanceof BadRequestException,
     );
     assert.equal(generated(), 0);
+});
+
+test('a keyed stream rejects a newer user line that arrives while it waits for the lock', async () => {
+    let resumePrecheck: () => void = () => {};
+    const precheckWaiting = new Promise<void>((resolve) => {
+        resumePrecheck = resolve;
+    });
+    let sawPrecheck: () => void = () => {};
+    const precheckSaw = new Promise<void>((resolve) => {
+        sawPrecheck = resolve;
+    });
+    const { messagesService, messages, generated } = harness({
+        messages: [{
+            id: 8,
+            conversationId: 5,
+            userId: 1,
+            idempotencyKey: KEY,
+            role: 'USER',
+            content: 'Hi',
+            deletedAt: null,
+            createdAt: new Date().toISOString(),
+        }],
+        afterMessageAll(call) {
+            if (call !== 2) return undefined;
+            sawPrecheck();
+            return precheckWaiting;
+        },
+    });
+    const release = await acquireConversationLock(5);
+    const pending = collect(
+        messagesService.createAndStream('1', '5', { content: 'Hi' }, undefined, KEY),
+    );
+    await precheckSaw;
+    messages.push({
+        id: 9,
+        conversationId: 5,
+        userId: 1,
+        role: 'USER',
+        content: 'Later',
+        deletedAt: null,
+        createdAt: new Date().toISOString(),
+    });
+    resumePrecheck();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+
+    await assert.rejects(
+        pending,
+        (error: unknown) => {
+            assert.ok(error instanceof NotLatestUserMessageException);
+            const body = error.getResponse() as { code?: string };
+            assert.equal(body.code, 'NOT_LATEST_USER_MESSAGE');
+            return true;
+        },
+    );
+    assert.equal(generated(), 0);
+});
+
+test('a second unique violation returns the existing idempotent row', async () => {
+    const { messagesService, messages, generated, uniqueConflicts } = harness({
+        messages: [{
+            id: 8,
+            conversationId: 5,
+            userId: 1,
+            idempotencyKey: KEY,
+            role: 'USER',
+            content: 'Hi',
+            deletedAt: null,
+            createdAt: new Date().toISOString(),
+        }],
+        idempotentReadMisses: 2,
+    });
+
+    const sent = await messagesService.create('1', '5', { content: 'Hi again' }, KEY);
+    assert.equal(sent.userMessage.id, 8);
+    assert.equal(sent.userMessage.content, 'Hi');
+    assert.equal(messages.filter((row) => row.idempotencyKey === KEY).length, 1);
+    assert.equal(uniqueConflicts(), 2);
+    assert.equal(generated(), 1);
 });
