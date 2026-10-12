@@ -7,19 +7,25 @@ import {
     Param,
     Post,
     Query,
+    Req,
     Res,
     UseGuards,
 } from '@nestjs/common';
 
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { sendException } from '../common/filters/http-exception.filter.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
+import { isAbortError } from '../ai/abort-error.js';
+import { RateLimit } from '../rate-limit/rate-limit.decorator.js';
+import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 
+import { ClientDisconnectedError } from './client-disconnect.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import { ListMessagesDto } from './dto/list-messages.dto.js';
 import { MessagesService } from './messages.service.js';
-import { formatSseEvent, streamErrorPayload, writeServerSentEvents } from './sse-stream.js';
+import { formatSseEvent, SSE_KEEPALIVE_MS, streamErrorPayload, writeServerSentEvents } from './sse-stream.js';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -42,6 +48,8 @@ export class MessagesController {
     }
 
     @Post('conversations/:id/messages')
+    @RateLimit('messages')
+    @UseGuards(RateLimitGuard)
     async create(
         @CurrentUser() user: JwtPayload,
         @Param('id') conversationId: string,
@@ -66,6 +74,8 @@ export class MessagesController {
     }
 
     @Post('messages/:id/regenerate')
+    @RateLimit('messages')
+    @UseGuards(RateLimitGuard)
     async regenerate(
         @CurrentUser() user: JwtPayload,
         @Param('id') messageId: string,
@@ -93,12 +103,32 @@ export class MessagesController {
         'X-Accel-Buffering',
         'no',
     )
+    @RateLimit('messages')
+    @UseGuards(RateLimitGuard)
     async createAndStream(
         @CurrentUser() user: JwtPayload,
         @Param('id') conversationId: string,
         @Body() dto: CreateMessageDto,
+        @Req() request: Request,
         @Res() response: Response,
     ) {
+        const abort = new AbortController();
+        const onClose = () => {
+            if (!response.writableFinished) abort.abort();
+        };
+        request.on('close', onClose);
+
+        try {
+            await this.messagesService.assertCanReply(
+                String(user.sub),
+                conversationId,
+            );
+        } catch (error) {
+            request.off('close', onClose);
+            sendException(response, request, error);
+            return;
+        }
+
         response.flushHeaders();
 
         try {
@@ -107,17 +137,33 @@ export class MessagesController {
                     user.sub,
                     conversationId,
                     dto,
+                    abort.signal,
                 ),
                 (chunk) => {
+                    if (abort.signal.aborted || response.destroyed || !response.writable) {
+                        abort.abort();
+                        throw new ClientDisconnectedError();
+                    }
                     response.write(chunk);
                 },
+                SSE_KEEPALIVE_MS,
+                abort.signal,
+                () => abort.abort(),
             );
         } catch (error) {
-            response.write(
-                formatSseEvent('error', streamErrorPayload(error)),
-            );
+            if (
+                !response.destroyed
+                && response.writable
+                && !abort.signal.aborted
+                && !isAbortError(error)
+            ) {
+                response.write(
+                    formatSseEvent('error', streamErrorPayload(error)),
+                );
+            }
         } finally {
-            response.end();
+            request.off('close', onClose);
+            if (!response.writableEnded) response.end();
         }
     }
 }

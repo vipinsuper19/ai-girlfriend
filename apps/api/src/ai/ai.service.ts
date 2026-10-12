@@ -13,6 +13,7 @@ import {
     type AiChatMessage,
     type ChatProvider,
 } from './interfaces/chat-provider.interface.js';
+import { streamReply } from './stream-reply.js';
 
 @Injectable()
 export class AiService {
@@ -330,6 +331,7 @@ export class AiService {
     async *streamResponse(
         userId: string | number,
         conversationId: string | number,
+        options: { signal?: AbortSignal } = {},
     ): AsyncGenerator<
         | {
             type: 'delta';
@@ -487,62 +489,44 @@ export class AiService {
          * ------------------------------------------------------
          * 8. Stream AI response
          * ------------------------------------------------------
+         *
+         * The reply is persisted only when the provider stream finishes
+         * and the client is still connected. Stop / disconnect aborts
+         * `options.signal` and skips the insert.
          */
-        let fullResponse = '';
-
-        for await (
-            const chunk of this.chatProvider.streamChat({
+        yield* streamReply({
+            chunks: this.chatProvider.streamChat({
                 messages: aiMessages,
-            })
-        ) {
-            fullResponse += chunk;
+                signal: options.signal,
+            }),
+            signal: options.signal,
+            persist: async (text) => {
+                const now = new Date().toISOString();
 
-            yield {
-                type: 'delta',
-                content: chunk,
-            };
-        }
+                const assistantMessage =
+                    await this.db.orm.public.Message.create({
+                        conversationId: numericConversationId,
+                        role: 'ASSISTANT',
+                        type: 'TEXT',
+                        content: text,
+                        metadata: null,
+                        audioUrl: null,
+                        imageUrl: null,
+                        updatedAt: now,
+                    });
 
-        if (!fullResponse.trim()) {
-            throw new Error(
-                'AI provider returned an empty response',
-            );
-        }
+                await this.db.orm.public.Conversation
+                    .where({
+                        id: numericConversationId,
+                        userId: numericUserId,
+                    })
+                    .update({
+                        lastMessageAt: now,
+                        updatedAt: now,
+                    });
 
-        /*
-         * ------------------------------------------------------
-         * 9. Persist complete streamed response
-         * ------------------------------------------------------
-         */
-        const now =
-            new Date().toISOString();
-
-        const assistantMessage =
-            await this.db.orm.public.Message.create({
-                conversationId:
-                    numericConversationId,
-                role: 'ASSISTANT',
-                type: 'TEXT',
-                content: fullResponse.trim(),
-                metadata: null,
-                audioUrl: null,
-                imageUrl: null,
-                updatedAt: now,
-            });
-
-        await this.db.orm.public.Conversation
-            .where({
-                id: numericConversationId,
-                userId: numericUserId,
-            })
-            .update({
-                lastMessageAt: now,
-                updatedAt: now,
-            });
-
-        yield {
-            type: 'done',
-            message: assistantMessage,
-        };
+                return assistantMessage;
+            },
+        });
     }
 }

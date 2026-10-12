@@ -57,6 +57,20 @@ clients hide the matching controls, so nothing is faked.
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
 | `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
 | `CORS_ORIGIN`, `PORT` | HTTP server |
+| `TRUST_PROXY_HOPS` | Trusted proxy hops for client IP. Default `1` (Render). `0` uses the socket address |
+| `FREE_TIER_LLM_PERIOD` | `day` (default) or `month`. Free-tier chat cap window, UTC |
+| `FREE_TIER_LLM_MESSAGE_LIMIT` | Successful free-tier replies per window. Default `40`. `unlimited` removes it. `0` blocks new replies |
+| `FREE_TIER_LLM_TOKEN_LIMIT` | Estimated tokens (user text + reply) per window. Default `50000` |
+| `RATE_LIMIT_LOGIN_IP_MAX`, `RATE_LIMIT_LOGIN_IP_WINDOW_SEC` | Login attempts per IP. Default 20 / 15 minutes |
+| `RATE_LIMIT_LOGIN_USER_MAX`, `RATE_LIMIT_LOGIN_USER_WINDOW_SEC` | Login attempts per email. Default 10 / 15 minutes |
+| `RATE_LIMIT_REGISTER_IP_MAX`, `RATE_LIMIT_REGISTER_IP_WINDOW_SEC` | Registrations per IP. Default 10 / hour |
+| `RATE_LIMIT_REGISTER_USER_MAX`, `RATE_LIMIT_REGISTER_USER_WINDOW_SEC` | Registrations per email. Default 5 / hour |
+| `RATE_LIMIT_PASSWORD_RESET_IP_MAX`, `RATE_LIMIT_PASSWORD_RESET_IP_WINDOW_SEC` | Forgot/reset/check per IP. Default 10 / hour |
+| `RATE_LIMIT_PASSWORD_RESET_USER_MAX`, `RATE_LIMIT_PASSWORD_RESET_USER_WINDOW_SEC` | Same routes per email or reset token. Default 5 / hour |
+| `RATE_LIMIT_MESSAGES_IP_MAX`, `RATE_LIMIT_MESSAGES_IP_WINDOW_SEC` | Message send, stream, and regenerate per IP. Default 60 / minute |
+| `RATE_LIMIT_MESSAGES_USER_MAX`, `RATE_LIMIT_MESSAGES_USER_WINDOW_SEC` | Those routes per account. Default 30 / minute |
+
+A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
 ### Google Play subscriptions
 
@@ -85,7 +99,7 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
 
-Neither auth route is rate limited yet; put a limit in front of `password/forgot` before going public.
+Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it.
 
 ## Compile and run the project
 
