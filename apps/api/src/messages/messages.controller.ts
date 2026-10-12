@@ -89,6 +89,10 @@ export class MessagesController {
         'Connection',
         'keep-alive',
     )
+    @Header(
+        'X-Accel-Buffering',
+        'no',
+    )
     async createAndStream(
         @CurrentUser() user: JwtPayload,
         @Param('id') conversationId: string,

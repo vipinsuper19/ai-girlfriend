@@ -1,4 +1,4 @@
-export const SSE_KEEPALIVE_MS = 15_000;
+export const SSE_KEEPALIVE_MS = 20_000;
 export const SSE_KEEPALIVE = ': ping\n\n';
 
 export function formatSseEvent(type: string, data: unknown): string {

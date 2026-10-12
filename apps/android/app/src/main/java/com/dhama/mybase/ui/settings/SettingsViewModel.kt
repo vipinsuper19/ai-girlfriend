@@ -2,6 +2,7 @@ package com.dhama.mybase.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.personalityUpdatedLine
 import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AccountSync
@@ -53,19 +54,21 @@ class SettingsViewModel @Inject constructor(
     val notificationNote = _notificationNote.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            _pushAvailable.value = try {
-                pushRegistration.available()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                false
+        if (FeatureFlags.build.push) {
+            viewModelScope.launch {
+                _pushAvailable.value = try {
+                    pushRegistration.available()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    false
+                }
             }
         }
     }
 
     fun setNotifications(enabled: Boolean) {
-        if (_notificationSaving.value) return
+        if (!FeatureFlags.build.push || _notificationSaving.value) return
         viewModelScope.launch {
             _notificationSaving.value = true
             _notificationNote.value = null
