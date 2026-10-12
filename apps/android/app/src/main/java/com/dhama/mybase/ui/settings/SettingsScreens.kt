@@ -97,6 +97,10 @@ import com.dhama.mybase.core.usage.phonePlanUsage
 import com.dhama.mybase.core.usage.planCaption
 import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.BuildConfig
+import com.dhama.mybase.core.legal.openLegalPage
+import com.dhama.mybase.core.legal.privacyPolicyUrl
+import com.dhama.mybase.core.legal.termsUrl
 import com.dhama.mybase.ui.preview.sampleCompanion
 import com.dhama.mybase.ui.preview.sampleMemories
 import com.dhama.mybase.ui.theme.MyBaseTheme
@@ -317,6 +321,14 @@ private fun YouSettingsContent(
             }
         }
         Spacer(Modifier.height(8.dp))
+        SectionLabel("Legal")
+        val context = LocalContext.current
+        SettingsRow("Terms", "View") {
+            openLegalPage(context, termsUrl(BuildConfig.API_BASE_URL))
+        }
+        SettingsRow("Privacy Policy", "View") {
+            openLegalPage(context, privacyPolicyUrl(BuildConfig.API_BASE_URL))
+        }
         SectionLabel("Account")
         Row(
             Modifier

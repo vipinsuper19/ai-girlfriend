@@ -1,7 +1,6 @@
 package com.dhama.mybase.ui.screen
 
 import android.content.res.Configuration
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -23,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -35,6 +35,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dhama.mybase.BuildConfig
+import com.dhama.mybase.core.legal.openLegalPage
+import com.dhama.mybase.core.legal.privacyPolicyUrl
+import com.dhama.mybase.core.legal.termsUrl
 import com.dhama.mybase.ui.theme.MyBaseTheme
 
 @Composable
@@ -146,7 +150,9 @@ fun WelcomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Footnote with link interactions using modern LinkAnnotation
+            val context = LocalContext.current
+            val termsPage = termsUrl(BuildConfig.API_BASE_URL)
+            val privacyPage = privacyPolicyUrl(BuildConfig.API_BASE_URL)
             val footnoteText = buildAnnotatedString {
                 val grayStyle = SpanStyle(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
@@ -166,7 +172,7 @@ fun WelcomeScreen(
                     tag = "Terms",
                     styles = TextLinkStyles(style = linkStyle)
                 ) {
-                    Log.d("WelcomeScreen", "Terms clicked")
+                    openLegalPage(context, termsPage)
                 }
                 withLink(termsLink) {
                     append("Terms")
@@ -180,7 +186,7 @@ fun WelcomeScreen(
                     tag = "Privacy",
                     styles = TextLinkStyles(style = linkStyle)
                 ) {
-                    Log.d("WelcomeScreen", "Privacy clicked")
+                    openLegalPage(context, privacyPage)
                 }
                 withLink(privacyLink) {
                     append("Privacy Policy")
