@@ -1,4 +1,5 @@
 # Maestro UI flows on an API 34 emulator.
+# Re-run when apps/android or this file changes.
 # This pull request is based on cursor/android-maestro-flows-a17a (PR #34),
 # which owns the flows. The job runs apps/android/.maestro/run-all.sh.
 # It is non-blocking (continue-on-error) and is not a required check.
