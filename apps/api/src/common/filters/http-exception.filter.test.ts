@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, HttpStatus, type ArgumentsHost } from '@nestjs/common';
 
+import { AGE_UNDER_18, AgeRejectedException } from '../../auth/age.js';
 import { RateLimitedException } from '../../rate-limit/rate-limit.exception.js';
 import { UsageLimitExceededException } from '../../usage/usage.exceptions.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
@@ -81,6 +82,20 @@ test('rate limits are 429 with Retry-After', () => {
     assert.equal(body.code, 'RATE_LIMITED');
     assert.equal(body.retryAfterSeconds, 12);
     assert.equal(headers['Retry-After'], '12');
+});
+
+test('forwards the under-18 code', () => {
+    const { body } = capture(
+        new AgeRejectedException(
+            AGE_UNDER_18,
+            'You must be 18 or older.',
+            HttpStatus.FORBIDDEN,
+        ),
+    );
+
+    assert.equal(body.statusCode, 403);
+    assert.equal(body.code, 'UNDER_18');
+    assert.equal(body.message, 'You must be 18 or older.');
 });
 
 test('leaves validation errors without a code', () => {

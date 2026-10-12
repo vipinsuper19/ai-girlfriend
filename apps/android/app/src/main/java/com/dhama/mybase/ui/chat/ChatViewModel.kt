@@ -4,10 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.REPORT_NOTE_MAX
+import com.dhama.mybase.core.chat.REPORT_UNAVAILABLE
+import com.dhama.mybase.core.chat.ReportReason
+import com.dhama.mybase.core.chat.canOfferReport
 import com.dhama.mybase.core.chat.olderMessageCursor
+import com.dhama.mybase.core.chat.reportMessageBody
+import com.dhama.mybase.core.chat.reportUnavailableReason
 import com.dhama.mybase.core.chat.retriesByReload
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.ChatRepositoryImpl
+import com.dhama.mybase.core.data.MessageReportRepository
+import com.dhama.mybase.core.data.ReportResult
 import com.dhama.mybase.core.network.parseUsageSummary
 import com.dhama.mybase.core.usage.USAGE_LIMIT_CODE
 import com.dhama.mybase.core.usage.messageAllowanceClosed
@@ -54,6 +62,7 @@ class ChatViewModel @Inject constructor(
     private val dataStoreRepo: DataStoreRepo,
     private val accountSync: AccountSync,
     networkSignals: NetworkSignals,
+    private val reports: MessageReportRepository,
     companionRepository: CompanionRepository,
 ) : ViewModel() {
 
@@ -247,6 +256,67 @@ class ChatViewModel @Inject constructor(
         _regenerateNote.value = null
     }
 
+    private val _report = MutableStateFlow<MessageReportUi?>(null)
+    val report = _report.asStateFlow()
+    private var reportJob: Job? = null
+
+    fun openReport(message: ChatMessageEntity) {
+        if (!canOfferReport(message.role)) return
+        if (_report.value?.submitting == true) return
+        val serverId = serverRecordId(message.id)
+        val already = serverId != null && reports.alreadySent(serverId)
+        _report.value = MessageReportUi(
+            messageLocalId = message.id,
+            sent = already,
+            blocked = if (already) null else reportUnavailableReason(serverId, companion.value?.conversationId),
+        )
+    }
+
+    fun selectReportReason(reason: ReportReason) {
+        val current = _report.value ?: return
+        if (current.submitting || current.sent || current.blocked != null) return
+        _report.value = current.copy(selected = reason, error = null)
+    }
+
+    fun updateReportNote(value: String) {
+        val current = _report.value ?: return
+        if (current.submitting || current.sent || current.blocked != null) return
+        _report.value = current.copy(note = value.take(REPORT_NOTE_MAX))
+    }
+
+    fun dismissReport() {
+        if (_report.value?.submitting == true) return
+        _report.value = null
+    }
+
+    fun submitReport() {
+        val current = _report.value ?: return
+        if (current.submitting || current.sent || current.blocked != null) return
+        val reason = current.selected ?: return
+        if (reportJob?.isActive == true) return
+        val body = reportMessageBody(
+            serverRecordId(current.messageLocalId),
+            companion.value?.conversationId,
+            reason.code,
+            current.note,
+        )
+        if (body == null) {
+            _report.value = current.copy(error = REPORT_UNAVAILABLE)
+            return
+        }
+        _report.value = current.copy(submitting = true, error = null)
+        reportJob = viewModelScope.launch {
+            val result = reports.report(body)
+            val latest = _report.value ?: return@launch
+            if (latest.messageLocalId != current.messageLocalId) return@launch
+            _report.value = when (result) {
+                ReportResult.Sent, ReportResult.Duplicate ->
+                    latest.copy(submitting = false, sent = true, error = null)
+                is ReportResult.Failed -> latest.copy(submitting = false, error = result.message)
+            }
+        }
+    }
+
     fun speak(message: ChatMessageEntity) {
         if (!FeatureFlags.build.voice) return
         if (!canSpeakMessage(message.role, message.kind, message.delivery, message.text)) return
@@ -408,3 +478,13 @@ class ChatViewModel @Inject constructor(
         refreshUsage()
     }
 }
+
+data class MessageReportUi(
+    val messageLocalId: String,
+    val selected: ReportReason? = null,
+    val note: String = "",
+    val submitting: Boolean = false,
+    val error: String? = null,
+    val sent: Boolean = false,
+    val blocked: String? = null,
+)

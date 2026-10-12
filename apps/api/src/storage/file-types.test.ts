@@ -35,6 +35,7 @@ test('account deletion picks only her portrait files', () => {
 test('a deleted voice message removes only her own stored file', () => {
     const url = '/uploads/voice/3/0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.m4a';
     assert.equal(ownVoiceFile(url, 3), '0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.m4a');
+    assert.equal(ownVoiceFile(`${url}?exp=1&sig=abc`, 3), '0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.m4a');
     assert.equal(ownVoiceFile(url, 4), null);
     assert.equal(ownVoiceFile('/uploads/voice/3/../4/x.m4a', 3), null);
     assert.equal(ownVoiceFile(null, 3), null);

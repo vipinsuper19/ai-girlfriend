@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.dhama.mybase.BuildConfig
 import com.dhama.mybase.core.data.DataStoreSessionStore
+import com.dhama.mybase.core.data.MessageReportRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.SessionStore
@@ -37,5 +38,11 @@ object NetworkModule {
     @Singleton
     fun provideApiClient(http: OkHttpClient, store: SessionStore): ApiClient {
         return ApiClient(http, BuildConfig.API_BASE_URL, store)
+    }
+
+    @Provides
+    @Singleton
+    fun provideMessageReportRepository(api: ApiClient): MessageReportRepository {
+        return MessageReportRepository { body -> api.reportMessage(body) }
     }
 }

@@ -86,7 +86,19 @@ fun agePatchJson(
     return json.encodeToString(AgePatchRequest(dateOfBirth, ageConfirmedAt))
 }
 
-private val ageKey = Regex("(?i)date[_-]?of[_-]?birth|\\bdob\\b|birth[_-]?date|age[_-]?confirmed[_-]?at")
+private val ageKey = Regex(
+    "(?i)(?<![a-z0-9])(?:" +
+        "date[_-]?of[_-]?birth|" +
+        "dob|" +
+        "birth[_-]?date|" +
+        "birthdate|" +
+        "birthday|" +
+        "age[_-]?confirmed(?:[_-]?(?:at|\\d+))?|" +
+        "age[_-]?subject|" +
+        "user[_-]?age|" +
+        "age" +
+        ")(?![a-z0-9])",
+)
 
 private val jsonAgeField = Regex(
     """"(dateOfBirth|date_of_birth|dob|birthDate|birth_date|ageConfirmedAt|age_confirmed_at)"\s*:\s*"(?:\\.|[^"\\])*"""",

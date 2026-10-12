@@ -76,6 +76,28 @@ class ChatStreamTest {
     }
 
     @Test
+    fun streamErrorDropsChatContentAndPrompts() {
+        val secret = "I miss you tonight"
+        val raw = "event: error\ndata: {\"message\":\"$secret\",\"content\":\"$secret\",\"prompt\":\"be warm\",\"system_prompt\":\"stay close\",\"code\":\"CHAT\"}\n\n"
+        val (events, _) = consumeSse(raw)
+        val error = events.single() as ChatStreamEvent.Error
+        assertEquals("Streaming failed", error.message)
+        assertEquals("CHAT", error.code)
+        assertFalse(error.message.contains(secret))
+        assertFalse(error.message.contains("be warm"))
+        assertFalse(error.message.contains("stay close"))
+    }
+
+    @Test
+    fun streamErrorKeepsAShortServerMessageBesideChatContent() {
+        val secret = "I miss you tonight"
+        val raw = "event: error\ndata: {\"message\":\"The model stalled\",\"content\":\"$secret\",\"prompt\":\"be warm\"}\n\n"
+        val (events, _) = consumeSse(raw)
+        assertEquals(listOf(ChatStreamEvent.Error("The model stalled")), events)
+        assertFalse(events.single().toString().contains(secret))
+    }
+
+    @Test
     fun parsesErrorWhenMessageIsAString() {
         val raw = "event: error\ndata: {\"message\":\"The model stalled\"}\n\n"
         val (events, rest) = consumeSse(raw)

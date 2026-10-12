@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -67,6 +70,8 @@ import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.AiDisclosure
+import com.dhama.mybase.core.chat.ReportReason
+import com.dhama.mybase.core.chat.canOfferReport
 import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
@@ -131,6 +136,7 @@ fun ChatScreen(
     val regenerateNote by viewModel.regenerateNote.collectAsState()
     val rateLimitNote by viewModel.rateLimitNote.collectAsState()
     val replyNote by viewModel.replyNote.collectAsState()
+    val report by viewModel.report.collectAsState()
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
@@ -524,6 +530,21 @@ fun ChatScreen(
                         if (outgoing) "Copy it or remove it from this thread."
                         else "Copy it or remove it from this thread. Anything she already remembered stays in Memory.",
                     )
+                    if (canOfferReport(message.role)) {
+                        TextButton(
+                            onClick = {
+                                viewModel.openReport(message)
+                                selected = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "Report message",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -564,6 +585,95 @@ fun ChatScreen(
             },
         )
     }
+    report?.let { pending ->
+        ReportMessageDialog(
+            state = pending,
+            onSelect = viewModel::selectReportReason,
+            onNote = viewModel::updateReportNote,
+            onSubmit = viewModel::submitReport,
+            onDismiss = viewModel::dismissReport,
+        )
+    }
+}
+
+@Composable
+private fun ReportMessageDialog(
+    state: MessageReportUi,
+    onSelect: (ReportReason) -> Unit,
+    onNote: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val finished = state.sent || state.blocked != null
+    AlertDialog(
+        onDismissRequest = { if (!state.submitting) onDismiss() },
+        title = { Text("Report message") },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                when {
+                    state.blocked != null -> Text(state.blocked)
+                    state.sent -> Text("Thanks. We'll review this reply.")
+                    else -> {
+                        Text("What should we look at?")
+                        ReportReason.entries.forEach { reason ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = state.selected == reason,
+                                    onClick = { onSelect(reason) },
+                                    enabled = !state.submitting,
+                                )
+                                Text(reason.label)
+                            }
+                        }
+                        OutlinedTextField(
+                            value = state.note,
+                            onValueChange = onNote,
+                            enabled = !state.submitting,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            label = { Text("Add a note") },
+                            placeholder = { Text("Optional") },
+                            maxLines = 4,
+                        )
+                        state.error?.let { message ->
+                            Text(
+                                message,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (finished) {
+                TextButton(onClick = onDismiss) { Text("OK") }
+            } else {
+                TextButton(
+                    onClick = onSubmit,
+                    enabled = state.selected != null && !state.submitting,
+                ) {
+                    Text(if (state.submitting) "Sending…" else "Send report")
+                }
+            }
+        },
+        dismissButton = if (finished || state.submitting) {
+            null
+        } else {
+            { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        },
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

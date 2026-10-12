@@ -9,17 +9,23 @@ import com.dhama.mybase.core.network.SessionTokens
 import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.apiOrigin
 import com.dhama.mybase.core.network.apiStatus
+import com.dhama.mybase.core.network.dataElement
 import com.dhama.mybase.core.network.idempotencyKeyFor
 import com.dhama.mybase.core.network.idempotencyKeyOrNull
 import com.dhama.mybase.core.network.rateLimitNotice
 import com.dhama.mybase.core.network.remoteSendFailure
+import com.dhama.mybase.core.network.scrubCancellation
+import com.dhama.mybase.core.network.scrubTransportFailure
 import com.dhama.mybase.core.network.sessionDisplayName
 import com.dhama.mybase.core.network.unwrapData
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CancellationException
 
 class ApiCodecTest {
 
@@ -81,6 +87,78 @@ class ApiCodecTest {
         assertEquals(key, idempotencyKeyFor(key, conversationId = 7, boundConversationId = null))
         assertEquals(null, idempotencyKeyFor(key, conversationId = 8, boundConversationId = 7))
         assertEquals(null, idempotencyKeyFor("server-1", conversationId = 7, boundConversationId = null))
+    }
+
+    @Test
+    fun statusExceptionDropsBodiesPromptsAndHasNoCause() {
+        val secret = "I miss you tonight"
+        val echoed = apiStatus(
+            400,
+            """{"message":"$secret","content":"$secret","prompt":"be warm","code":"CHAT"}""",
+        )
+        assertEquals("Request failed", echoed.message)
+        assertEquals("CHAT", echoed.code)
+        assertNull(echoed.cause)
+        assertFalse(echoed.toString().contains(secret))
+        assertTrue(echoed.suppressed.isEmpty())
+
+        val body = apiStatus(
+            500,
+            """{"message":"{\"content\":\"$secret\",\"prompt\":\"be warm\"}"}""",
+        )
+        assertEquals("Request failed", body.message)
+        assertNull(body.cause)
+        assertFalse(body.toString().contains(secret))
+
+        val contact = apiStatus(400, """{"message":"reach ada@example.com or +1 415 555 2671"}""")
+        assertEquals("Request failed", contact.message)
+        assertNull(contact.cause)
+        assertFalse(contact.toString().contains("ada@"))
+        assertFalse(contact.toString().contains("415"))
+    }
+
+    @Test
+    fun decodeFailureDoesNotKeepTheResponseBody() {
+        val secret = "I miss you tonight"
+        val error = runCatching {
+            unwrapData<SessionTokens>("""{"success":true,"data":{"content":"$secret","prompt":"be warm"}}""")
+        }.exceptionOrNull()
+        assertNotNull(error)
+        assertEquals("Request failed", error!!.message)
+        assertNull(error.cause)
+        assertTrue(error.suppressed.isEmpty())
+        assertFalse(error.toString().contains(secret))
+        assertFalse(error.toString().contains("be warm"))
+
+        val broken = runCatching { dataElement("""{"content":"$secret","prompt":"be warm"""") }.exceptionOrNull()
+        assertNotNull(broken)
+        assertEquals("Request failed", broken!!.message)
+        assertNull(broken.cause)
+        assertFalse(broken.toString().contains(secret))
+    }
+
+    @Test
+    fun transportAndCancellationDropCausesThatHoldABody() {
+        val secret = """{"content":"I miss you","prompt":"system"}"""
+        val transport = scrubTransportFailure(
+            IllegalStateException("socket closed", IllegalStateException(secret)),
+        )
+        assertEquals("socket closed", transport.message)
+        assertNull(transport.cause)
+        assertFalse(transport.toString().contains("I miss you"))
+
+        val leaked = scrubTransportFailure(IllegalStateException(secret))
+        assertEquals("Request failed", leaked.message)
+        assertNull(leaked.cause)
+        assertFalse(leaked.toString().contains("prompt"))
+
+        val cancelled = CancellationException("Stopped").apply {
+            initCause(IllegalStateException(secret))
+        }
+        val scrubbed = scrubCancellation(cancelled)
+        assertEquals("Stopped", scrubbed.message)
+        assertNull(scrubbed.cause)
+        assertFalse(scrubbed.toString().contains("I miss you"))
     }
 
     @Test

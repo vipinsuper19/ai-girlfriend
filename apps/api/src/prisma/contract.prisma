@@ -198,6 +198,9 @@ deletedAt    TimestamptzString?
 memoryPausedAt         TimestamptzString?
 // Set while the user wants push notifications.
 notificationsEnabledAt TimestamptzString?
+// When the person confirmed they are 18 or older. The date of birth is checked
+// and then discarded; it is not stored.
+ageConfirmedAt         TimestamptzString?
 
 accounts     Account[]
 sessions     Session[]
@@ -831,5 +834,20 @@ onDelete: Cascade
 @@index([status, createdAt])
 @@index([messageId])
 @@index([conversationId])
+}
+
+// ============================================================
+// STORAGE CLEANUP
+// ============================================================
+
+// Object deletes that failed during account deletion. No foreign key to
+// user: the row is removed after these keys are recorded, and Android treats
+// a later 404 as success, so the retry cannot depend on the account.
+model StorageCleanup {
+objectKey String            @id
+lastError String
+attempts  Int               @default(1)
+createdAt TimestamptzString @default(now())
+updatedAt TimestamptzString @default(now())
 }
 
