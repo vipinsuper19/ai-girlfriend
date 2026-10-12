@@ -76,6 +76,7 @@ import com.dhama.mybase.R
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
+import com.dhama.mybase.core.FeatureFlags
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -231,7 +232,7 @@ fun SignUpContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (mobileSignUp) {
+            if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
                 TextField(
                     value = mobile,
                     onValueChange = { mobile = it },
@@ -436,10 +437,11 @@ fun SignUpContent(
                 text = "Sign up",
                 textLoading = "Signing up..."
             ) {
-                if (mobileSignUp)
-                    onSignUp(email, password)
-                else
-                    onSignUp(mobile, password)
+                when {
+                    !FeatureFlags.build.phoneSignIn -> if (canSubmit) onSignUp(email.trim(), password)
+                    mobileSignUp -> onSignUp(email, password)
+                    else -> onSignUp(mobile, password)
+                }
             }
 
 
@@ -479,12 +481,12 @@ fun SignUpContent(
                     /* Handle Google Sign Up */
                     googleSignIn()
                 }
-                if (mobileSignUp) {
+                if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
                     SocialLoginButton(iconRes = R.drawable.outline_mail_24, "Sign up with email") {
                         /* Handle Facebook Sign Up */
                         updateMobileSignUp(false)
                     }
-                } else {
+                } else if (FeatureFlags.build.phoneSignIn) {
                     SocialLoginButton(
                         iconRes = R.drawable.baseline_phone_24,
                         "Sign up with mobile"

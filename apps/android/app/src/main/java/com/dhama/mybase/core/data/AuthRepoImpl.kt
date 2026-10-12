@@ -7,6 +7,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.model.AuthState
 import com.dhama.mybase.core.network.ApiStatusException
@@ -201,6 +202,7 @@ class AuthRepoImpl(
 
     override suspend fun sendOtp(phoneNumber: String, activity: Activity,
                                  callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks) {
+        if (!FeatureFlags.build.phoneSignIn) return
 
         val options = PhoneAuthOptions.newBuilder(auth)
             .setPhoneNumber(phoneNumber)
@@ -213,6 +215,10 @@ class AuthRepoImpl(
     }
 
     override suspend fun signInWithOtp(verificationId: String, otp: String): Flow<AuthState> = flow {
+        if (!FeatureFlags.build.phoneSignIn) {
+            emit(AuthState.Initial)
+            return@flow
+        }
         emit(AuthState.Loading)
         try {
             val credential = PhoneAuthProvider.getCredential(verificationId, otp)
