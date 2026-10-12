@@ -17,6 +17,7 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.regenerableReplyId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -48,6 +49,7 @@ class ChatViewModel @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val dataStoreRepo: DataStoreRepo,
     private val accountSync: AccountSync,
+    networkSignals: NetworkSignals,
     companionRepository: CompanionRepository,
 ) : ViewModel() {
 
@@ -92,6 +94,8 @@ class ChatViewModel @Inject constructor(
 
     private val _voiceStage = MutableStateFlow<String?>(null)
     val voiceStage = _voiceStage.asStateFlow()
+
+    val serverWake = networkSignals.status
 
     init {
         viewModelScope.launch {

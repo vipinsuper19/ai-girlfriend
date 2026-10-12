@@ -5,13 +5,14 @@ import androidx.datastore.preferences.core.Preferences
 import com.dhama.mybase.BuildConfig
 import com.dhama.mybase.core.data.DataStoreSessionStore
 import com.dhama.mybase.core.network.ApiClient
+import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.SessionStore
+import com.dhama.mybase.core.network.coldStartOkHttp
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @InstallIn(SingletonComponent::class)
@@ -20,13 +21,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttp(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
-    }
+    fun provideNetworkSignals(): NetworkSignals = NetworkSignals()
+
+    @Provides
+    @Singleton
+    fun provideOkHttp(signals: NetworkSignals): OkHttpClient = coldStartOkHttp(signals)
 
     @Provides
     @Singleton

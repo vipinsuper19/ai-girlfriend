@@ -5,15 +5,20 @@ import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -22,6 +27,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
@@ -31,11 +38,11 @@ class ApiClient(
     private val baseUrl: String,
     private val store: SessionStore,
     private val json: Json = apiJson(),
+    private val streamIdleMillis: Long = STREAM_IDLE_TIMEOUT_MS,
+    private val firstReadMillis: Long = FIRST_READ_TIMEOUT_MS,
 ) {
     private val refreshMutex = Mutex()
-    private val streamHttp = http.newBuilder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
+    private val streamHttp = streamOkHttp(http, firstReadMillis)
     private val imageHttp = http.newBuilder()
         .readTimeout(90, TimeUnit.SECONDS)
         .build()
@@ -101,28 +108,57 @@ class ApiClient(
                     ),
                 )
                 try {
-                    call.execute().use { response ->
-                        val raw = if (response.isSuccessful) null else response.body?.string().orEmpty()
-                        if (!response.isSuccessful) throw apiStatus(response.code, raw.orEmpty(), json)
-                        val source = response.body?.source() ?: return@withAuth
-                        val pending = StringBuilder()
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val line = source.readUtf8Line() ?: break
-                            pending.append(line).append('\n')
-                            val (events, rest) = consumeSse(pending.toString())
-                            pending.clear()
-                            pending.append(rest)
-                            events.forEach { onEvent(it) }
+                    // The body read blocks a thread, so Stop cancels the Call from the
+                    // cancellation handler. That closes the socket and the server sees it.
+                    coroutineScope {
+                        val scope = this
+                        suspendCancellableCoroutine { continuation ->
+                            continuation.invokeOnCancellation { call.cancel() }
+                            val reader = scope.launch {
+                                readStream(call, onEvent)
+                            }
+                            reader.invokeOnCompletion { error ->
+                                if (error == null && continuation.isActive) continuation.resume(Unit)
+                            }
                         }
                     }
-                } catch (error: IOException) {
-                    if (!coroutineContext.isActive) throw CancellationException("Stopped", error)
-                    throw error
                 } finally {
                     call.cancel()
                 }
             }
+        }
+    }
+
+    private suspend fun readStream(
+        call: Call,
+        onEvent: suspend (ChatStreamEvent) -> Unit,
+    ) {
+        try {
+            call.execute().use { response ->
+                val raw = if (response.isSuccessful) null else response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw apiStatus(response.code, raw.orEmpty(), json)
+                val source = response.body?.source() ?: return
+                val timeout = source.timeout()
+                timeout.clearDeadline()
+                timeout.timeout(streamIdleMillis, TimeUnit.MILLISECONDS)
+                val pending = StringBuilder()
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val line = try {
+                        source.readUtf8Line()
+                    } catch (error: IOException) {
+                        throw error.streamFailure(coroutineContext.isActive)
+                    } ?: break
+                    pending.append(line).append('\n')
+                    val (events, rest) = consumeSse(pending.toString())
+                    pending.clear()
+                    pending.append(rest)
+                    events.forEach { onEvent(it) }
+                }
+            }
+        } catch (error: IOException) {
+            if (!coroutineContext.isActive) throw CancellationException("Stopped", error)
+            throw error
         }
     }
 
@@ -464,6 +500,17 @@ class ApiClient(
     private companion object {
         val JSON = "application/json".toMediaType()
     }
+}
+
+private fun IOException.streamFailure(active: Boolean): Throwable {
+    if (!active) return CancellationException("Stopped", this)
+    if (isReadStall()) return StreamIdleException()
+    return this
+}
+
+private fun IOException.isReadStall(): Boolean {
+    if (this is SocketTimeoutException) return true
+    return this is InterruptedIOException && message?.contains("timeout", ignoreCase = true) == true
 }
 
 private suspend fun <T> attempt(block: suspend () -> T): T? {

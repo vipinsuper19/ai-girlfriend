@@ -6,6 +6,7 @@ import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.droppedStreamLine
 import com.dhama.mybase.core.chat.DROPPED_DELIVERY
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.idleStallDelivery
 import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.localReply
 import com.dhama.mybase.core.chat.replyFailureDelivery
@@ -16,6 +17,8 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.RemoteMessage
+import com.dhama.mybase.core.network.STALLED_STREAM
+import com.dhama.mybase.core.network.StreamIdleException
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.voice.resolveVoiceUrl
@@ -218,6 +221,14 @@ class ChatRepositoryImpl(
         } catch (error: CancellationException) {
             dao.delete(assistantId)
             throw error
+        } catch (error: StreamIdleException) {
+            markReplyFailed(
+                assistantId,
+                built.toString(),
+                now,
+                error.message ?: STALLED_STREAM,
+                idleStallDelivery(userAccepted, built.isNotEmpty()),
+            )
         } catch (error: Exception) {
             if (isUsageLimit(error)) {
                 dao.delete(assistantId)

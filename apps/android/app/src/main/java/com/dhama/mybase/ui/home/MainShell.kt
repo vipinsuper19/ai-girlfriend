@@ -109,6 +109,7 @@ fun MainShell(
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val planLabel by viewModel.planLabel.collectAsState()
     val displayName by viewModel.displayName.collectAsState()
+    val waking by viewModel.serverWake.collectAsState()
     val settings = rememberSettingsViewModel()
     val memoryViewModel: MemoryViewModel = hiltViewModel()
     val pendingDelete by memoryViewModel.pendingDelete.collectAsState()
@@ -185,6 +186,7 @@ fun MainShell(
                         warningDismissed = warningDismissed,
                         planLabel = planLabel,
                         displayName = displayName,
+                        waking = waking,
                         onDismissWarning = {
                             usage?.periodStartEpochMs?.let(viewModel::dismissUsageWarning)
                         },
@@ -228,6 +230,7 @@ private fun HomeTab(
     warningDismissed: String,
     planLabel: String,
     displayName: String,
+    waking: String? = null,
     onDismissWarning: () -> Unit,
     onTalk: () -> Unit,
     onMemories: () -> Unit,
@@ -289,7 +292,7 @@ private fun HomeTab(
                     .clearAndSetSemantics {},
             )
             Text(
-                "  ${presenceLine(companion.conversationId != null)}",
+                "  ${presenceLine(companion.conversationId != null, waking)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

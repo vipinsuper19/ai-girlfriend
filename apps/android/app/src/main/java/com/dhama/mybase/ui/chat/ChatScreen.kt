@@ -65,6 +65,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -117,6 +118,7 @@ fun ChatScreen(
     val speakingId by viewModel.speakingId.collectAsState()
     val speakNote by viewModel.speakNote.collectAsState()
     val voiceStage by viewModel.voiceStage.collectAsState()
+    val waking by viewModel.serverWake.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val planUsage by viewModel.planUsage.collectAsState()
     val usageBlocked by viewModel.usageBlocked.collectAsState()
@@ -271,22 +273,27 @@ fun ChatScreen(
                 TextButton(onClick = onHistory) { Text("History") }
             }
         }
+        val status = chatStatusLine(
+            recording = recording,
+            waking = waking,
+            voiceStage = voiceStage,
+            streaming = streaming,
+            onServer = companion?.conversationId != null,
+        )
         Text(
-            when {
-                recording -> "Recording…"
-                !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
-                streaming -> "Typing…"
-                companion?.conversationId != null -> "Active now"
-                else -> "On this phone"
-            },
+            status,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .semantics {
-                    if (recording) contentDescription = "Recording"
-                    else if (!voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
-                    else if (streaming) contentDescription = "$name is typing"
+                    contentDescription = when {
+                        recording -> "Recording"
+                        !waking.isNullOrBlank() -> status
+                        !voiceStage.isNullOrBlank() -> status
+                        streaming -> "$name is typing"
+                        else -> status
+                    }
                 },
         )
         if (companion?.conversationId == null) {
@@ -381,6 +388,9 @@ fun ChatScreen(
                                 onToggleVoice = { player.toggle(message.audioPath) },
                                 onLongClick = { selected = message },
                                 onRetry = { viewModel.retry(message) },
+                                wakeLabel = waking?.takeIf {
+                                    message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING && message.text.isBlank()
+                                },
                                 speakCaption = when {
                                     speakingId == message.id -> "Preparing her voice…"
                                     note != null -> note
@@ -522,6 +532,7 @@ private fun MessageRow(
     onRetry: () -> Unit,
     speakCaption: String? = null,
     speakFailed: Boolean = false,
+    wakeLabel: String? = null,
 ) {
     val outgoing = message.role == ChatRepositoryImpl.ROLE_USER
     val streaming = message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING
@@ -549,6 +560,7 @@ private fun MessageRow(
         val spoken = when {
             message.kind == ChatMessageEntity.KIND_AUDIO -> "$senderName. Voice note ${message.durationMs / 1000} seconds"
             message.kind == ChatMessageEntity.KIND_IMAGE -> "$senderName. Photo"
+            streaming && message.text.isBlank() && !wakeLabel.isNullOrBlank() -> "$senderName. $wakeLabel"
             streaming && message.text.isBlank() -> "$senderName is typing"
             outgoing -> "You. ${message.text}"
             else -> "$senderName. ${message.text}"
@@ -573,7 +585,11 @@ private fun MessageRow(
                             .padding(vertical = 4.dp, horizontal = 4.dp),
                     )
                     else -> Text(
-                        text = message.text.ifBlank { "…" },
+                        text = when {
+                            message.text.isNotBlank() -> message.text
+                            streaming && !wakeLabel.isNullOrBlank() -> wakeLabel
+                            else -> "…"
+                        },
                         color = color,
                         modifier = Modifier
                             .widthIn(max = 280.dp)

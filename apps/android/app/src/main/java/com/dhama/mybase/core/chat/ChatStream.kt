@@ -132,6 +132,14 @@ fun replyFailureDelivery(userAccepted: Boolean, replyStarted: Boolean, finished:
     }
 }
 
+/**
+ * Idle timeout after the stream is open. Retry stays on screen.
+ * A line the server already accepted is reloaded; otherwise the same send can be tried again.
+ */
+fun idleStallDelivery(userAccepted: Boolean, replyStarted: Boolean): String {
+    return if (userAccepted || replyStarted) DROPPED_DELIVERY else "FAILED"
+}
+
 fun retriesByReload(delivery: String): Boolean = delivery == DROPPED_DELIVERY
 
 fun retryCaption(delivery: String): String {
@@ -146,4 +154,22 @@ fun keptOnReload(delivery: String, kind: String): Boolean {
 /** Shown once, under a reply that arrived from the non-streaming route. */
 fun droppedStreamLine(): String {
     return "The live connection dropped, so this reply arrived all at once."
+}
+
+/** App-bar line while a send is in flight. A cold start replaces "Typing…". */
+fun chatStatusLine(
+    recording: Boolean,
+    waking: String?,
+    voiceStage: String?,
+    streaming: Boolean,
+    onServer: Boolean,
+): String {
+    return when {
+        recording -> "Recording…"
+        !waking.isNullOrBlank() -> waking
+        !voiceStage.isNullOrBlank() -> voiceStage
+        streaming -> "Typing…"
+        onServer -> "Active now"
+        else -> "On this phone"
+    }
 }
