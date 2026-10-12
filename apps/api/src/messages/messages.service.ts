@@ -6,12 +6,20 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { isUniqueViolation } from '../reports/unique-violation.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import type { ListMessagesDto } from './dto/list-messages.dto.js';
+import { acquireConversationLock, withConversationLock } from './conversation-lock.js';
+import { idempotencyFresh, parseIdempotencyKey } from './idempotency.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
+import {
+    IdempotencyKeyReusedException,
+    NotLatestUserMessageException,
+} from './messages.exceptions.js';
 import { regenerateProblem } from './regenerate.js';
+import { replyTargetProblem } from './reply-target.js';
 import { AiService } from '../ai/ai.service.js';
-import { safetyNoticeOf } from '../moderation/safety-policy.js';
+import { safetyNoticeOf, type SafetyNotice } from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { estimateTokens } from '../usage/estimate-tokens.js';
@@ -35,7 +43,9 @@ export class MessagesService {
         userId: string,
         conversationId: string,
         dto: CreateMessageDto,
+        idempotencyKey?: string | string[] | null,
     ) {
+        const key = parseIdempotencyKey(idempotencyKey);
         const numericUserId = Number(userId);
         const numericConversationId = Number(conversationId);
 
@@ -43,6 +53,16 @@ export class MessagesService {
             userId,
             conversationId,
         );
+
+        if (key) {
+            return this.createWithIdempotencyKey(
+                numericUserId,
+                numericConversationId,
+                conversation,
+                dto,
+                key,
+            );
+        }
 
         await this.assertWithinLlmCap(numericUserId);
 
@@ -60,52 +80,17 @@ export class MessagesService {
                 updatedAt: now,
             });
 
-        await this.db.orm.public.Conversation
-            .where({
-                id: numericConversationId,
-                userId: numericUserId,
-            })
-            .update({
-                lastMessageAt: now,
-                updatedAt: now,
-            });
+        await this.touchConversation(numericConversationId, numericUserId, now);
 
-        const assistantMessage =
-            await this.aiService.generateResponse(
+        return withConversationLock(numericConversationId, () =>
+            this.completeReply({
                 userId,
-                conversationId,
-            );
-
-        const safety = safetyNoticeOf(assistantMessage);
-        if (!safety) {
-            await this.chargeSuccessfulReply(
-                numericUserId,
-                numericConversationId,
-                dto.content,
-                messageContent(assistantMessage),
-            );
-            void this.memoryExtractorService.extractFromConversation(
-                numericUserId,
-                conversation.companionId,
-                numericConversationId,
-                message.content,
-                assistantMessage.content,
-            );
-        }
-
-        let userMessage = message;
-        if (safety && message?.id != null) {
-            const fresh = await this.db.orm.public.Message
-                .where({ id: message.id })
-                .first();
-            if (fresh && fresh.id === message.id) userMessage = fresh;
-        }
-
-        return {
-            userMessage,
-            assistantMessage,
-            ...(safety ? { safety } : {}),
-        };
+                conversationId: numericConversationId,
+                companionId: conversation.companionId,
+                userMessage: message,
+                userContent: dto.content,
+            }),
+        );
     }
 
     async findAll(
@@ -256,22 +241,27 @@ export class MessagesService {
         await this.assertWithinLlmCap(numericUserId);
 
         const now = new Date().toISOString();
-        await this.db.orm.public.Message
-            .where({ id: numericMessageId })
-            .update({ deletedAt: now, updatedAt: now });
-
         let assistantMessage: { content?: string; metadata?: unknown };
+        const release = await acquireConversationLock(conversation.id);
         try {
-            assistantMessage =
-                await this.aiService.generateResponse(
-                    numericUserId,
-                    conversation.id,
-                );
-        } catch (error) {
             await this.db.orm.public.Message
                 .where({ id: numericMessageId })
-                .update({ deletedAt: null, updatedAt: new Date().toISOString() });
-            throw error;
+                .update({ deletedAt: now, updatedAt: now });
+
+            try {
+                assistantMessage =
+                    await this.aiService.generateResponse(
+                        numericUserId,
+                        conversation.id,
+                    );
+            } catch (error) {
+                await this.db.orm.public.Message
+                    .where({ id: numericMessageId })
+                    .update({ deletedAt: null, updatedAt: new Date().toISOString() });
+                throw error;
+            }
+        } finally {
+            release();
         }
 
         const safety = safetyNoticeOf(assistantMessage);
@@ -290,6 +280,413 @@ export class MessagesService {
             assistantMessage,
             ...(safety ? { safety } : {}),
         };
+    }
+
+    private async createWithIdempotencyKey(
+        userId: number,
+        conversationId: number,
+        conversation: { id: number; companionId: number },
+        dto: CreateMessageDto,
+        key: string,
+    ) {
+        const existing = await this.freshIdempotentMessage(userId, key);
+        if (existing) {
+            return this.finishIdempotentSend(
+                existing,
+                conversation,
+                userId,
+                conversationId,
+            );
+        }
+
+        await this.assertWithinLlmCap(userId);
+        const release = await acquireConversationLock(conversationId);
+        try {
+            const inserted = await this.insertIdempotentMessage(
+                userId,
+                conversationId,
+                dto,
+                key,
+            );
+            if (inserted.reused) {
+                return this.continueIdempotentSend(
+                    inserted.message,
+                    conversation,
+                    userId,
+                    conversationId,
+                );
+            }
+
+            await this.touchConversation(
+                conversationId,
+                userId,
+                new Date().toISOString(),
+            );
+            return this.completeReply({
+                userId,
+                conversationId,
+                companionId: conversation.companionId,
+                userMessage: inserted.message,
+                userContent: dto.content,
+            });
+        } finally {
+            release();
+        }
+    }
+
+    private async finishIdempotentSend(
+        message: { id: number; conversationId: number; content?: string | null },
+        conversation: { id: number; companionId: number },
+        userId: number,
+        conversationId: number,
+    ) {
+        if (message.conversationId !== conversationId) {
+            throw new IdempotencyKeyReusedException();
+        }
+        const reply = await this.followingAssistant(message);
+        if (reply) return this.replyResult(message, reply);
+        if (await this.hasLaterUserMessage(message)) {
+            throw new NotLatestUserMessageException();
+        }
+
+        await this.assertWithinLlmCap(userId);
+        const release = await acquireConversationLock(conversationId);
+        try {
+            return this.continueIdempotentSend(
+                message,
+                conversation,
+                userId,
+                conversationId,
+            );
+        } finally {
+            release();
+        }
+    }
+
+    /**
+     * Caller holds the conversation lock. Returns the saved reply, or
+     * generates one when this user line is still the latest and unanswered.
+     */
+    private async continueIdempotentSend(
+        message: { id: number; conversationId: number; content?: string | null },
+        conversation: { companionId: number },
+        userId: number,
+        conversationId: number,
+    ) {
+        if (message.conversationId !== conversationId) {
+            throw new IdempotencyKeyReusedException();
+        }
+        const reply = await this.followingAssistant(message);
+        if (reply) return this.replyResult(message, reply);
+        if (await this.hasLaterUserMessage(message)) {
+            throw new NotLatestUserMessageException();
+        }
+        return this.completeReply({
+            userId,
+            conversationId,
+            companionId: conversation.companionId,
+            userMessage: message,
+            userContent: messageContent(message),
+        });
+    }
+
+    private async *createAndStreamWithKey(
+        userId: string,
+        conversationId: string,
+        dto: CreateMessageDto,
+        key: string,
+        signal?: AbortSignal,
+    ) {
+        const numericUserId = Number(userId);
+        const numericConversationId = Number(conversationId);
+        await this.getOwnedConversation(userId, conversationId);
+        const existing = await this.freshIdempotentMessage(
+            numericUserId,
+            key,
+        );
+
+        if (existing) {
+            if (existing.conversationId !== numericConversationId) {
+                throw new IdempotencyKeyReusedException();
+            }
+            const reply = await this.followingAssistant(existing);
+            if (reply) {
+                yield { type: 'message', message: existing };
+                yield this.doneEvent(reply);
+                return;
+            }
+            if (await this.hasLaterUserMessage(existing)) {
+                throw new NotLatestUserMessageException();
+            }
+            await this.assertWithinLlmCap(numericUserId);
+            const release = await acquireConversationLock(numericConversationId);
+            try {
+                const again = await this.followingAssistant(existing);
+                yield { type: 'message', message: existing };
+                if (again) {
+                    yield this.doneEvent(again);
+                    return;
+                }
+                yield* this.billableStream(
+                    userId,
+                    numericConversationId,
+                    messageContent(existing),
+                    signal,
+                );
+            } finally {
+                release();
+            }
+            return;
+        }
+
+        await this.assertWithinLlmCap(numericUserId);
+        const release = await acquireConversationLock(numericConversationId);
+        try {
+            const inserted = await this.insertIdempotentMessage(
+                numericUserId,
+                numericConversationId,
+                dto,
+                key,
+            );
+            if (inserted.reused) {
+                if (inserted.message.conversationId !== numericConversationId) {
+                    throw new IdempotencyKeyReusedException();
+                }
+                const reply = await this.followingAssistant(inserted.message);
+                yield { type: 'message', message: inserted.message };
+                if (reply) {
+                    yield this.doneEvent(reply);
+                    return;
+                }
+                yield* this.billableStream(
+                    userId,
+                    numericConversationId,
+                    messageContent(inserted.message),
+                    signal,
+                );
+                return;
+            }
+
+            await this.touchConversation(
+                numericConversationId,
+                numericUserId,
+                new Date().toISOString(),
+            );
+            yield { type: 'message', message: inserted.message };
+            yield* this.billableStream(
+                userId,
+                numericConversationId,
+                dto.content,
+                signal,
+            );
+        } finally {
+            release();
+        }
+    }
+
+    private async *billableStream(
+        userId: string | number,
+        conversationId: number,
+        userContent: string,
+        signal?: AbortSignal,
+    ) {
+        for await (
+            const event of this.aiService.streamResponse(
+                userId,
+                conversationId,
+                { signal },
+            )
+        ) {
+            if (event.type === 'done') {
+                const notice =
+                    event.safety ??
+                    safetyNoticeOf(event.message as { metadata?: unknown });
+                if (!notice) {
+                    await this.chargeSuccessfulReply(
+                        Number(userId),
+                        conversationId,
+                        userContent,
+                        messageContent(event.message),
+                    );
+                }
+            }
+            if (signal?.aborted) return;
+            yield event;
+        }
+    }
+
+    private async completeReply(args: {
+        userId: string | number;
+        conversationId: number;
+        companionId: number;
+        userMessage: { id?: number; content?: string | null };
+        userContent: string;
+    }) {
+        const assistantMessage = await this.aiService.generateResponse(
+            args.userId,
+            args.conversationId,
+        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.chargeSuccessfulReply(
+                Number(args.userId),
+                args.conversationId,
+                args.userContent,
+                messageContent(assistantMessage),
+            );
+            void this.memoryExtractorService.extractFromConversation(
+                Number(args.userId),
+                args.companionId,
+                args.conversationId,
+                messageContent(args.userMessage),
+                messageContent(assistantMessage),
+            );
+        }
+
+        let userMessage: any = args.userMessage;
+        if (safety && userMessage?.id != null) {
+            const fresh = await this.db.orm.public.Message
+                .where({ id: userMessage.id })
+                .first();
+            if (fresh && fresh.id === userMessage.id) userMessage = fresh;
+        }
+
+        return this.replyResult(userMessage, assistantMessage, safety);
+    }
+
+    private replyResult<TUser, TAssistant extends { metadata?: unknown }>(
+        userMessage: TUser,
+        assistantMessage: TAssistant,
+        safety: SafetyNotice | null = safetyNoticeOf(assistantMessage),
+    ) {
+        return {
+            userMessage,
+            assistantMessage,
+            ...(safety ? { safety } : {}),
+        };
+    }
+
+    private doneEvent(message: { metadata?: unknown }) {
+        const safety = safetyNoticeOf(message);
+        return {
+            type: 'done' as const,
+            message,
+            ...(safety ? { safety } : {}),
+        };
+    }
+
+    private async freshIdempotentMessage(userId: number, key: string) {
+        const row = await this.db.orm.public.Message
+            .where({ userId, idempotencyKey: key })
+            .first();
+        if (!row) return null;
+        if (row.deletedAt != null || !idempotencyFresh(row.createdAt)) {
+            await this.db.orm.public.Message
+                .where({ id: row.id })
+                .update({
+                    idempotencyKey: null,
+                    updatedAt: new Date().toISOString(),
+                });
+            return null;
+        }
+        return row;
+    }
+
+    private async insertIdempotentMessage(
+        userId: number,
+        conversationId: number,
+        dto: CreateMessageDto,
+        key: string,
+    ) {
+        const now = new Date().toISOString();
+        const data = {
+            conversationId,
+            userId,
+            idempotencyKey: key,
+            role: 'USER',
+            type: 'TEXT',
+            content: dto.content.trim(),
+            metadata: dto.metadata ?? null,
+            audioUrl: null,
+            imageUrl: null,
+            updatedAt: now,
+        };
+
+        try {
+            return {
+                message: await this.db.orm.public.Message.create(data),
+                reused: false,
+            };
+        } catch (error) {
+            if (!isUniqueViolation(error)) throw error;
+            const raced = await this.freshIdempotentMessage(userId, key);
+            if (raced) return { message: raced, reused: true };
+            return {
+                message: await this.db.orm.public.Message.create(data),
+                reused: false,
+            };
+        }
+    }
+
+    private async liveMessage(messageId: number) {
+        if (!Number.isInteger(messageId) || messageId <= 0) return null;
+        return this.db.orm.public.Message
+            .where({ id: messageId, deletedAt: null })
+            .first();
+    }
+
+    private async followingAssistant(userMessage: {
+        id: number;
+        conversationId: number;
+    }) {
+        const rows = await this.db.orm.public.Message
+            .where({
+                conversationId: userMessage.conversationId,
+                deletedAt: null,
+            })
+            .where((message: { id: { gt(value: number): unknown } }) =>
+                message.id.gt(userMessage.id),
+            )
+            .orderBy((message: { id: { asc(): unknown } }) => message.id.asc())
+            .limit(1)
+            .all();
+        const next = rows[0];
+        if (!next || next.role !== 'ASSISTANT') return null;
+        return next;
+    }
+
+    private async hasLaterUserMessage(userMessage: {
+        id: number;
+        conversationId: number;
+    }) {
+        const rows = await this.db.orm.public.Message
+            .where({
+                conversationId: userMessage.conversationId,
+                role: 'USER',
+                deletedAt: null,
+            })
+            .where((message: { id: { gt(value: number): unknown } }) =>
+                message.id.gt(userMessage.id),
+            )
+            .limit(1)
+            .all();
+        return rows.length > 0;
+    }
+
+    private async touchConversation(
+        conversationId: number,
+        userId: number,
+        now: string,
+    ) {
+        await this.db.orm.public.Conversation
+            .where({
+                id: conversationId,
+                userId,
+            })
+            .update({
+                lastMessageAt: now,
+                updatedAt: now,
+            });
     }
 
     private async getOwnedConversation(
@@ -344,75 +741,174 @@ export class MessagesService {
         await this.assertWithinLlmCap(Number(userId));
     }
 
+    /**
+     * Ownership, idempotent replay, and the free-tier cap, before any bytes
+     * are flushed. A completed send is replayed without the cap check.
+     */
+    async prepareSend(
+        userId: string,
+        conversationId: string,
+        idempotencyKey?: string | string[] | null,
+    ) {
+        const key = parseIdempotencyKey(idempotencyKey);
+        const conversation = await this.getOwnedConversation(
+            userId,
+            conversationId,
+        );
+        if (!key) {
+            await this.assertWithinLlmCap(Number(userId));
+            return;
+        }
+
+        const existing = await this.freshIdempotentMessage(Number(userId), key);
+        if (!existing) {
+            await this.assertWithinLlmCap(Number(userId));
+            return;
+        }
+        if (existing.conversationId !== conversation.id) {
+            throw new IdempotencyKeyReusedException();
+        }
+        if (await this.followingAssistant(existing)) return;
+        if (await this.hasLaterUserMessage(existing)) {
+            throw new NotLatestUserMessageException();
+        }
+        await this.assertWithinLlmCap(Number(userId));
+    }
+
+    /**
+     * 404 / 409 / 403 before the reply stream flushes headers.
+     * An assistant reply that already follows this user line skips the cap.
+     */
+    async prepareReplyStream(
+        userId: string,
+        conversationId: string,
+        userMessageId: string,
+    ) {
+        const conversation = await this.getOwnedConversation(
+            userId,
+            conversationId,
+        );
+        const message = await this.liveMessage(Number(userMessageId));
+        const later = message ? await this.hasLaterUserMessage(message) : false;
+        const problem = replyTargetProblem(message, conversation.id, later);
+        if (problem === 'not_found' || !message) {
+            throw new NotFoundException('Message not found');
+        }
+        if (problem === 'not_latest') {
+            throw new NotLatestUserMessageException();
+        }
+        if (!(await this.followingAssistant(message))) {
+            await this.assertWithinLlmCap(Number(userId));
+        }
+    }
+
     async *createAndStream(
         userId: string,
         conversationId: string,
         dto: CreateMessageDto,
         signal?: AbortSignal,
+        idempotencyKey?: string | string[] | null,
     ) {
-        const numericUserId = Number(userId);
-        const numericConversationId =
-            Number(conversationId);
+        const key = parseIdempotencyKey(idempotencyKey);
+        if (key) {
+            yield* this.createAndStreamWithKey(
+                userId,
+                conversationId,
+                dto,
+                key,
+                signal,
+            );
+            return;
+        }
 
-        await this.getOwnedConversation(
+        const numericUserId = Number(userId);
+        const numericConversationId = Number(conversationId);
+
+        const conversation = await this.getOwnedConversation(
             userId,
             conversationId,
         );
 
         await this.assertWithinLlmCap(numericUserId);
 
-        const now = new Date().toISOString();
+        const release = await acquireConversationLock(numericConversationId);
+        try {
+            const now = new Date().toISOString();
+            const userMessage =
+                await this.db.orm.public.Message.create({
+                    conversationId: numericConversationId,
+                    role: 'USER',
+                    type: 'TEXT',
+                    content: dto.content.trim(),
+                    metadata: dto.metadata ?? null,
+                    audioUrl: null,
+                    imageUrl: null,
+                    updatedAt: now,
+                });
 
-        const userMessage =
-            await this.db.orm.public.Message.create({
-                conversationId: numericConversationId,
-                role: 'USER',
-                type: 'TEXT',
-                content: dto.content.trim(),
-                metadata: dto.metadata ?? null,
-                audioUrl: null,
-                imageUrl: null,
-                updatedAt: now,
-            });
+            await this.touchConversation(
+                numericConversationId,
+                conversation.userId,
+                now,
+            );
 
-        await this.db.orm.public.Conversation
-            .where({
-                id: numericConversationId,
-            })
-            .update({
-                lastMessageAt: now,
-                updatedAt: now,
-            });
+            yield {
+                type: 'message',
+                message: userMessage,
+            };
 
-        yield {
-            type: 'message',
-            message: userMessage,
-        };
-
-        for await (
-            const event of this.aiService.streamResponse(
+            yield* this.billableStream(
                 userId,
-                conversationId,
-                { signal },
-            )
-        ) {
-            if (event.type === 'done') {
-                const notice =
-                    event.safety ??
-                    safetyNoticeOf(
-                        event.message as { metadata?: unknown },
-                    );
-                if (!notice) {
-                    await this.chargeSuccessfulReply(
-                        numericUserId,
-                        numericConversationId,
-                        dto.content,
-                        messageContent(event.message),
-                    );
-                }
+                numericConversationId,
+                dto.content,
+                signal,
+            );
+        } finally {
+            release();
+        }
+    }
+
+    /**
+     * Generate the assistant reply for a user line that was already saved.
+     * If one already follows it, emit `done` and do not charge.
+     */
+    async *streamReply(
+        userId: string,
+        conversationId: string,
+        userMessageId: string,
+        signal?: AbortSignal,
+    ) {
+        const conversation = await this.getOwnedConversation(
+            userId,
+            conversationId,
+        );
+        const release = await acquireConversationLock(conversation.id);
+        try {
+            const message = await this.liveMessage(Number(userMessageId));
+            const later = message ? await this.hasLaterUserMessage(message) : false;
+            const problem = replyTargetProblem(message, conversation.id, later);
+            if (problem === 'not_found' || !message) {
+                throw new NotFoundException('Message not found');
             }
-            if (signal?.aborted) return;
-            yield event;
+            if (problem === 'not_latest') {
+                throw new NotLatestUserMessageException();
+            }
+
+            const reply = await this.followingAssistant(message);
+            if (reply) {
+                yield this.doneEvent(reply);
+                return;
+            }
+
+            await this.assertWithinLlmCap(Number(userId));
+            yield* this.billableStream(
+                userId,
+                conversation.id,
+                messageContent(message),
+                signal,
+            );
+        } finally {
+            release();
         }
     }
 
