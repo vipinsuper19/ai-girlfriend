@@ -7,6 +7,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
+import com.dhama.mybase.core.age.redactAge
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.model.AuthState
 import com.dhama.mybase.core.network.ApiStatusException
@@ -48,7 +49,12 @@ class AuthRepoImpl(
         return auth.currentUser
     }
 
-    override suspend fun register(email: String, password: String): Boolean {
+    override suspend fun register(
+        email: String,
+        password: String,
+        dateOfBirth: String?,
+        ageConfirmedAt: String?,
+    ): Boolean {
         try {
             val result = suspendCoroutine { continuation ->
                 Firebase.auth
@@ -56,11 +62,11 @@ class AuthRepoImpl(
                     .addOnSuccessListener {
                         println("$tag register successful.")
                         CoroutineScope(Dispatchers.IO).launch {
-                            continuation.resume(login(email,password))
+                            continuation.resume(login(email, password, dateOfBirth, ageConfirmedAt))
                         }
                     }
                     .addOnFailureListener {
-                        println("$tag Login failed: ${it.message}")
+                        println(redactAge("$tag Login failed: ${it.message}"))
                         continuation.resume(false)
                     }
             }
@@ -68,14 +74,22 @@ class AuthRepoImpl(
             return result
 
         } catch (e: Exception) {
-           e.printStackTrace()
             if(e is CancellationException) throw e
-            println(tag + "register exception ${e.message}")
+            println(redactAge("$tag register exception ${e.message}"))
             return false
         }
     }
 
-   override suspend fun login(email: String, password: String) : Boolean{
+    override suspend fun submitAge(dateOfBirth: String, ageConfirmedAt: String) {
+        api.patchAge(dateOfBirth, ageConfirmedAt)
+    }
+
+   override suspend fun login(
+       email: String,
+       password: String,
+       dateOfBirth: String?,
+       ageConfirmedAt: String?,
+   ) : Boolean{
        try {
            val result = suspendCoroutine { continuation ->
                Firebase.auth
@@ -85,14 +99,14 @@ class AuthRepoImpl(
                        continuation.resume(true)
                    }
                    .addOnFailureListener {
-                       println("$tag Login failed: ${it.message}")
+                       println(redactAge("$tag Login failed: ${it.message}"))
                        continuation.resume(false)
                    }
            }
 
            if (result) {
                try {
-                   api.establish(email, password)
+                   api.establish(email, password, dateOfBirth, ageConfirmedAt)
                } catch (error: CancellationException) {
                    throw error
                } catch (_: Exception) {
@@ -102,9 +116,8 @@ class AuthRepoImpl(
            return result
 
        } catch (e: Exception) {
-           e.printStackTrace()
            if(e is CancellationException) throw e
-           println(tag + "login exception ${e.message}")
+           println(redactAge("$tag login exception ${e.message}"))
            return false
        }
     }
@@ -139,25 +152,32 @@ class AuthRepoImpl(
         }
     }
 
-    override suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean {
+    override suspend fun signInWithGoogle(
+        result: GetCredentialResponse,
+        dateOfBirth: String?,
+        ageConfirmedAt: String?,
+    ): Boolean {
         if(isLoggedIn())
             return true
         try {
 
             //val result = buildCredentialRequest()
-            return handleSignIn(result)
+            return handleSignIn(result, dateOfBirth, ageConfirmedAt)
 
         }catch (e : Exception){
-            e.printStackTrace()
             if(e is kotlin.coroutines.cancellation.CancellationException) throw e
 
-            println("$tag login exception ${e.message}")
+            println(redactAge("$tag login exception ${e.message}"))
             return false
         }
     }
 
 
-    private suspend fun handleSignIn(result: GetCredentialResponse): Boolean{
+    private suspend fun handleSignIn(
+        result: GetCredentialResponse,
+        dateOfBirth: String?,
+        ageConfirmedAt: String?,
+    ): Boolean{
         val credential = result.credential
         if(
             credential is CustomCredential &&
@@ -178,7 +198,7 @@ class AuthRepoImpl(
                 if (user != null) {
                     // Google sign-in stands either way. Without an API session, chat stays on this phone.
                     val firebaseToken = runCatching { user.getIdToken(false).await().token }.getOrNull()
-                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken)
+                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken, dateOfBirth, ageConfirmedAt)
                     return true
                 }
                 return false
@@ -186,8 +206,7 @@ class AuthRepoImpl(
 
 
             }catch (e: GoogleIdTokenParsingException){
-                e.printStackTrace()
-                println(tag + "GoogleIdTokenParsingException ${e.message}")
+                println(redactAge("$tag GoogleIdTokenParsingException ${e.message}"))
                 return false
             }
 

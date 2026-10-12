@@ -11,6 +11,7 @@ import com.dhama.mybase.ui.home.MainShell
 import com.dhama.mybase.ui.home.PostAuthDestination
 import com.dhama.mybase.ui.home.PostAuthViewModel
 import com.dhama.mybase.ui.onboarding.CompanionWizardScreen
+import com.dhama.mybase.ui.screen.AgeConfirmScreen
 import com.dhama.mybase.ui.screen.LoginScreen
 import com.dhama.mybase.ui.screen.SignUpScreen
 import com.dhama.mybase.ui.screen.SplashScreen
@@ -36,6 +37,7 @@ fun AppNavHost(
             LaunchedEffect(Unit) {
                 val destination = when (viewModel.destination()) {
                     PostAuthDestination.Welcome -> Welcome
+                    PostAuthDestination.AgeConfirm -> AgeConfirm
                     PostAuthDestination.Onboarding -> Onboarding
                     PostAuthDestination.Home -> Main
                 }
@@ -90,6 +92,21 @@ fun AppNavHost(
                 },
                 onForgotPassword = { },
                 viewModel
+            )
+        }
+
+        composable<AgeConfirm> {
+            AgeConfirmScreen(
+                onConfirmed = {
+                    navController.navigate(Gate) {
+                        popUpTo(AgeConfirm) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    navController.navigate(Welcome) {
+                        popUpTo(AgeConfirm) { inclusive = true }
+                    }
+                },
             )
         }
 

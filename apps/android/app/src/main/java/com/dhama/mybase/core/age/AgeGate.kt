@@ -14,6 +14,7 @@ object AgeGateCopy {
     const val CONFIRM = "Confirm that you are 18 or older."
     const val ENTER_DATE = "Enter your date of birth."
     const val UNDER_AGE = "You must be 18 or older to create an account."
+    const val BLOCKED = "You must be 18 or older to use this app."
     const val FUTURE = "Enter a date of birth in the past."
 }
 

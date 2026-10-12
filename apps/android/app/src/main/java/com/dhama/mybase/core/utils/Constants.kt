@@ -42,5 +42,7 @@ object PreferencesKeys {
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
     val DATE_OF_BIRTH = stringPreferencesKey("date_of_birth")
     val AGE_CONFIRMED = booleanPreferencesKey("age_confirmed_18")
+    val AGE_CONFIRMED_AT = stringPreferencesKey("age_confirmed_at")
+    val AGE_SUBJECT = stringPreferencesKey("age_subject")
     val AI_DISCLOSURE_ACKNOWLEDGED = booleanPreferencesKey("ai_disclosure_acknowledged")
 }

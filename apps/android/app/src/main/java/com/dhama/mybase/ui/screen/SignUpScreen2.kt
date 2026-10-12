@@ -137,7 +137,7 @@ fun SignUpScreen(
             viewModel.sendOtp(mobile, context as androidx.activity.ComponentActivity)
         },
         onLogin = onLogin,
-        googleSignIn = {
+        googleSignIn = { dateOfBirth ->
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(
                     GetGoogleIdOption.Builder()
@@ -151,7 +151,7 @@ fun SignUpScreen(
                 .build()
             coroutineScope.launch { // Launch a coroutine
                 val response = credentialManager.getCredential(request = request, context = context)
-                viewModel.googleSignIn(response)
+                viewModel.googleSignIn(response, dateOfBirth)
             }
 
         },
@@ -173,7 +173,7 @@ fun SignUpContent(
     onSignUp: (email: String, password: String, dateOfBirth: String) -> Unit,
     onMobileSignUp: (mobile: String) -> Unit,
     onLogin: () -> Unit,
-    googleSignIn: () -> Unit,
+    googleSignIn: (dateOfBirth: String) -> Unit,
     facebookSignIn: () -> Unit,
     twitterSignIn: () -> Unit,
     isValidEmail: (email: String) -> Boolean,
@@ -577,8 +577,10 @@ fun SignUpContent(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 SocialLoginButton(iconRes = R.drawable.ic_google, "Sign up with google") {
-                    /* Handle Google Sign Up */
-                    googleSignIn()
+                    attempted = true
+                    val birth = dateOfBirthIso.takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
+                    val gate = evaluateAgeGate(confirmedAdult, birth, LocalDate.now())
+                    if (gate.allowed && birth != null) googleSignIn(birth.toString())
                 }
                 if (PHONE_SIGN_IN_ENABLED && mobileSignUp) {
                     SocialLoginButton(iconRes = R.drawable.outline_mail_24, "Sign up with email") {
@@ -718,7 +720,7 @@ fun PreviewSignUpScreen() {
         onSignUp = { _, _, _ -> },
         onMobileSignUp = { _ -> },
         onLogin = { },
-        googleSignIn = { },
+        googleSignIn = { _ -> },
         facebookSignIn = { },
         twitterSignIn = { },
         isValidEmail = { true },
