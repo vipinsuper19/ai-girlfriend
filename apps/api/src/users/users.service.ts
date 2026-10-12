@@ -4,11 +4,11 @@ import {
 } from '@nestjs/common';
 
 import { parseAgeAttestation } from '../auth/age.js';
-import { deleteDeletionRequestsForEmail } from '../legal/deletion-request.store.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
 import { deleteAccountStorageFirst } from './account-deletion.js';
+import { deleteAccountRecords } from './delete-account.js';
 import type { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import { exportRows, flagColumn, userView } from './user-view.js';
@@ -160,52 +160,27 @@ export class UsersService {
 
     async deleteMe(userId: string) {
         const db = this.prisma.client as any;
-        const user = await db.orm.public.User.where({
-            id: userId,
-        }).first();
+        const id = Number(userId);
+        if (!Number.isInteger(id)) {
+            throw new NotFoundException('User not found');
+        }
 
+        const user = await db.orm.public.User.where({ id }).first();
         if (!user) {
             throw new NotFoundException('User not found');
         }
 
-        const companions =
-            await db.orm.public.Companion.where({
-                userId: Number(userId),
-            }).all();
+        const companions = await db.orm.public.Companion.where({ userId: id }).all();
+        const companionIds = companions.map((companion: { id: number }) => companion.id);
 
         // Earlier failed deletes are retried while this account still exists.
         // A cleanup-table error stops here so the user row is not removed first.
         await this.cleanup.retryPending();
 
         await deleteAccountStorageFirst({
-            removeFiles: () => this.storage.removeUserFiles(
-                Number(userId),
-                companions.map((companion: { id: number }) => Number(companion.id)),
-            ),
+            removeFiles: () => this.storage.removeUserFiles(id, companionIds),
             recordFailures: (failures) => this.cleanup.record(failures),
-            deleteUser: async () => {
-                /*
-                 * Delete all active sessions first.
-                 * This prevents orphan sessions if your database
-                 * schema does not use ON DELETE CASCADE.
-                 */
-                const sessions =
-                    await db.orm.public.Session.where({
-                        userId,
-                    }).all();
-
-                for (const session of sessions) {
-                    await db.orm.public.Session.where({
-                        id: session.id,
-                    }).delete();
-                }
-
-                await deleteDeletionRequestsForEmail(db, user.email);
-
-                await db.orm.public.User.where({
-                    id: userId,
-                }).delete();
-            },
+            deleteUser: () => deleteAccountRecords(db, id),
         });
 
         return {

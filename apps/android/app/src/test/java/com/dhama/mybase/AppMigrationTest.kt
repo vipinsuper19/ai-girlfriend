@@ -12,6 +12,7 @@ import com.dhama.mybase.core.db.AppMigrations
 import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -30,22 +31,22 @@ class AppMigrationTest {
     )
 
     @Test
-    fun migrationsCoverEveryCommittedStepAndLeaveVersion8ForTheNotesDrop() {
+    fun migrationsCoverEveryCommittedStepThroughVersion8() {
         assertEquals(
-            listOf(4 to 5, 5 to 6, 6 to 7),
+            listOf(4 to 5, 5 to 6, 6 to 7, 7 to 8),
             AppMigrations.ALL.map { it.startVersion to it.endVersion },
         )
     }
 
     @Test
-    fun migrateFrom4KeepsUserAndNotes() {
+    fun migrateFrom4KeepsUserAndDropsNotes() {
         seed(4) { db ->
             insertUser(db)
             insertNote(db)
         }
         val migrated = migrate("from-4")
         assertEquals("Ada", text(migrated, "SELECT name FROM `User` WHERE uid = 1"))
-        assertEquals("A note", text(migrated, "SELECT `desc` FROM notes WHERE id = 1"))
+        assertNotesGone(migrated)
         assertEquals(0, count(migrated, "chat_messages"))
         assertEquals(0, count(migrated, "memories"))
         migrated.close()
@@ -56,7 +57,7 @@ class AppMigrationTest {
     }
 
     @Test
-    fun migrateFrom5KeepsChatAndFillsVoiceColumns() {
+    fun migrateFrom5KeepsChatAndDropsNotes() {
         seed(5) { db ->
             insertUser(db)
             insertNote(db)
@@ -67,7 +68,8 @@ class AppMigrationTest {
         assertEquals("TEXT", text(migrated, "SELECT kind FROM chat_messages WHERE id = 'm1'"))
         assertEquals("", text(migrated, "SELECT audioPath FROM chat_messages WHERE id = 'm1'"))
         assertEquals(0, countQuery(migrated, "SELECT durationMs FROM chat_messages WHERE id = 'm1'"))
-        assertEquals("A note", text(migrated, "SELECT `desc` FROM notes WHERE id = 1"))
+        assertEquals(0, count(migrated, "memories"))
+        assertNotesGone(migrated)
         migrated.close()
         openRoom("from-5").useRoom { room ->
             val messages = runBlocking { room.chatMessageDao().snapshot() }
@@ -78,11 +80,12 @@ class AppMigrationTest {
             assertEquals(0L, messages[0].durationMs)
             assertEquals("USER", messages[0].role)
             assertEquals(1_000L, messages[0].createdAtEpochMs)
+            assertEquals(0, runBlocking { room.memoryDao().snapshot() }.size)
         }
     }
 
     @Test
-    fun migrateFrom6KeepsChatAndMemory() {
+    fun migrateFrom6KeepsChatAndMemoryAndDropsNotes() {
         seed(6) { db ->
             insertUser(db)
             insertNote(db)
@@ -93,6 +96,7 @@ class AppMigrationTest {
         assertEquals("likes tea", text(migrated, "SELECT content FROM memories WHERE id = 'mem1'"))
         assertEquals("hi", text(migrated, "SELECT text FROM chat_messages WHERE id = 'm1'"))
         assertEquals("Ada", text(migrated, "SELECT name FROM `User` WHERE uid = 1"))
+        assertNotesGone(migrated)
         migrated.close()
         openRoom("from-6").useRoom { room ->
             val memories = runBlocking { room.memoryDao().snapshot() }
@@ -103,8 +107,42 @@ class AppMigrationTest {
             assertEquals(0.5f, memories[0].confidence)
             assertEquals("chat", memories[0].source)
             val messages = runBlocking { room.chatMessageDao().snapshot() }
+            assertEquals("hi", messages.single().text)
             assertEquals("TEXT", messages.single().kind)
             assertTrue(messages.single().audioPath.isEmpty())
+        }
+    }
+
+    @Test
+    fun migrateFrom7DropsNotesAndKeepsChatAndMemory() {
+        seed(7) { db ->
+            insertUser(db)
+            insertNote(db)
+            insertChatV7(db)
+            insertMemory(db)
+        }
+        val migrated = migrate("from-7")
+        assertEquals("Ada", text(migrated, "SELECT name FROM `User` WHERE uid = 1"))
+        assertEquals("hi", text(migrated, "SELECT text FROM chat_messages WHERE id = 'm1'"))
+        assertEquals("AUDIO", text(migrated, "SELECT kind FROM chat_messages WHERE id = 'm1'"))
+        assertEquals("/tmp/a.m4a", text(migrated, "SELECT audioPath FROM chat_messages WHERE id = 'm1'"))
+        assertEquals(1500, countQuery(migrated, "SELECT durationMs FROM chat_messages WHERE id = 'm1'"))
+        assertEquals("likes tea", text(migrated, "SELECT content FROM memories WHERE id = 'mem1'"))
+        assertNotesGone(migrated)
+        migrated.close()
+        openRoom("from-7").useRoom { room ->
+            val messages = runBlocking { room.chatMessageDao().snapshot() }
+            assertEquals(1, messages.size)
+            assertEquals("hi", messages[0].text)
+            assertEquals(ChatMessageEntity.KIND_AUDIO, messages[0].kind)
+            assertEquals("/tmp/a.m4a", messages[0].audioPath)
+            assertEquals(1500L, messages[0].durationMs)
+            val memories = runBlocking { room.memoryDao().snapshot() }
+            assertEquals("likes tea", memories.single().content)
+            assertEquals("FACT", memories.single().type)
+            assertEquals(2, memories.single().importance)
+            assertEquals(0.5f, memories.single().confidence)
+            assertEquals("chat", memories.single().source)
         }
     }
 
@@ -115,7 +153,7 @@ class AppMigrationTest {
     }
 
     private fun migrate(name: String): SupportSQLiteDatabase {
-        return helper.runMigrationsAndValidate(name, 7, true, *AppMigrations.ALL)
+        return helper.runMigrationsAndValidate(name, 8, true, *AppMigrations.ALL)
     }
 
     private fun name(version: Int) = "from-$version"
@@ -124,6 +162,7 @@ class AppMigrationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(*AppMigrations.ALL)
+            .fallbackToDestructiveMigrationFrom(1, 2, 3)
             .build()
         helper.closeWhenFinished(room)
         return room
@@ -145,11 +184,29 @@ class AppMigrationTest {
         )
     }
 
+    private fun insertChatV7(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "INSERT INTO chat_messages (id, role, text, createdAtEpochMs, delivery, kind, audioPath, durationMs) " +
+                "VALUES ('m1', 'USER', 'hi', 1000, 'SENT', 'AUDIO', '/tmp/a.m4a', 1500)",
+        )
+    }
+
     private fun insertMemory(db: SupportSQLiteDatabase) {
         db.execSQL(
             "INSERT INTO memories (id, type, content, importance, confidence, source, createdAtEpochMs, updatedAtEpochMs) " +
                 "VALUES ('mem1', 'FACT', 'likes tea', 2, 0.5, 'chat', 1000, 2000)",
         )
+    }
+
+    private fun assertNotesGone(db: SupportSQLiteDatabase) {
+        assertFalse(tableExists(db, "notes"))
+    }
+
+    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean {
+        return countQuery(
+            db,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '$table'",
+        ) == 1
     }
 
     private fun text(db: SupportSQLiteDatabase, sql: String): String {

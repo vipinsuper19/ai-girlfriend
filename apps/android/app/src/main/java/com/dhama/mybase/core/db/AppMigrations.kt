@@ -9,11 +9,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 5 adds chat_messages.
  * 6 adds memories.
  * 7 adds voice-note columns on chat_messages.
+ * 8 drops the unused notes table ([AppDatabase.MIGRATION_7_8]).
  *
- * Versions 1–3 are not in the repository, so there is no migration for them.
- * PR #22 (not on main) adds version 8 with `DROP TABLE IF EXISTS notes`.
- * That step stays 7 → 8 and should be registered here when that change lands.
- * Do not reuse version 7 for a different schema.
+ * Versions 1–3 are not in the repository. The database builder uses
+ * fallbackToDestructiveMigrationFrom only for those versions.
+ * Do not reuse version 7 or 8 for a different schema.
  */
 object AppMigrations {
     val MIGRATION_4_5: Migration = object : Migration(4, 5) {
@@ -56,5 +56,10 @@ object AppMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        AppDatabase.MIGRATION_7_8,
+    )
 }
