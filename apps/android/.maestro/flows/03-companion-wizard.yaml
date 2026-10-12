@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Companion wizard
 tags:
   - wizard
+env:
+  SHOT: 03-companion-wizard
 ---
 # Creates a companion named from COMPANION_NAME (default Mae) and lands on Home.
 - runFlow:
@@ -9,3 +11,4 @@ tags:
 - assertVisible:
     id: tab_chat
 - assertVisible: "Say hello"
+- takeScreenshot: ${SHOT}-home-tabs

@@ -12,6 +12,7 @@ tags:
     timeout: 15000
 - assertVisible: "Step 1 of 3"
 - tapOn: "Illustrated"
+- takeScreenshot: ${SHOT}-wizard-look
 - tapOn:
     id: wizard_continue
 - extendedWaitUntil:
@@ -24,6 +25,7 @@ tags:
     direction: DOWN
     timeout: 15000
 - tapOn: "Witty"
+- takeScreenshot: ${SHOT}-wizard-personality
 - tapOn:
     id: wizard_continue
 - extendedWaitUntil:
@@ -36,6 +38,7 @@ tags:
 - eraseText: 30
 - inputText: ${output.companion}
 - hideKeyboard
+- takeScreenshot: ${SHOT}-wizard-name
 - tapOn:
     id: wizard_create
 - extendedWaitUntil:
@@ -44,3 +47,4 @@ tags:
     timeout: 120000
 - assertVisible: ${output.companion}
 - assertVisible: "Say hello"
+- takeScreenshot: ${SHOT}-home

@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Chat stream
 tags:
   - chat
+env:
+  SHOT: 04-chat-stream
 ---
 # Sends one line and waits until a non-empty assistant bubble exists.
 # chat_assistant_reply does not include the greeting or a failed send, and the flow does not read the reply.
@@ -11,3 +13,4 @@ tags:
     file: ../subflows/open-chat.yaml
 - runFlow:
     file: ../subflows/send-and-wait-reply.yaml
+- takeScreenshot: ${SHOT}-stream-checked

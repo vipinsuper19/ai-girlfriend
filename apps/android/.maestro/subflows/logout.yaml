@@ -7,6 +7,7 @@ tags:
 - extendedWaitUntil:
     visible: "Display name"
     timeout: 15000
+- takeScreenshot: ${SHOT}-you
 - scrollUntilVisible:
     element:
       id: settings_logout
@@ -18,3 +19,4 @@ tags:
     visible:
       id: welcome_get_started
     timeout: 20000
+- takeScreenshot: ${SHOT}-logged-out

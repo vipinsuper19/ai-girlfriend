@@ -8,6 +8,7 @@ tags:
 - extendedWaitUntil:
     visible: "Create your account"
     timeout: 15000
+- takeScreenshot: ${SHOT}-signup
 - runFlow:
     file: fill-signup-fields.yaml
 - runFlow:
@@ -36,3 +37,4 @@ tags:
       id: wizard_intro
     timeout: 120000
 - assertNotVisible: "You must be 18 or older to create an account."
+- takeScreenshot: ${SHOT}-wizard-intro

@@ -9,3 +9,4 @@ tags:
     visible:
       id: welcome_get_started
     timeout: 20000
+- takeScreenshot: ${SHOT}-welcome

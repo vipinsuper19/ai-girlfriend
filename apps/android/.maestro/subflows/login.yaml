@@ -16,5 +16,6 @@ tags:
     id: login_password
 - inputText: ${output.password}
 - hideKeyboard
+- takeScreenshot: ${SHOT}-login-form
 - tapOn:
     id: login_submit

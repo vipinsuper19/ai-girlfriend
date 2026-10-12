@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Age gate
 tags:
   - age-gate
+env:
+  SHOT: 01-age-gate
 ---
 # Under 18 is rejected on the sign-up form. An adult date is allowed through to the wizard.
 # January 15, 2015 is under 18 until 2033. January 15, 1990 is an adult.
@@ -14,6 +16,7 @@ tags:
 - extendedWaitUntil:
     visible: "Create your account"
     timeout: 15000
+- takeScreenshot: ${SHOT}-signup-open
 - runFlow:
     file: ../subflows/fill-signup-fields.yaml
 - runFlow:
@@ -46,6 +49,7 @@ tags:
     id: signup_submit
 - assertNotVisible:
     id: wizard_intro
+- takeScreenshot: ${SHOT}-under-18-rejected
 - runFlow:
     file: ../subflows/pick-dob.yaml
     env:
@@ -65,3 +69,4 @@ tags:
       id: wizard_intro
     timeout: 120000
 - assertNotVisible: "You must be 18 or older to create an account."
+- takeScreenshot: ${SHOT}-adult-allowed

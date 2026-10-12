@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Retry after network restore
 tags:
   - offline-part
+env:
+  SHOT: 05-offline-retry
 ---
 # Run only from run-offline.sh, after airplane mode is off and ping works.
 - launchApp:
@@ -10,9 +12,11 @@ tags:
     visible:
       id: chat_retry
     timeout: 20000
+- takeScreenshot: ${SHOT}-retry-ready
 - tapOn:
     id: chat_retry
 - extendedWaitUntil:
     visible:
       id: chat_assistant_reply
     timeout: 180000
+- takeScreenshot: ${SHOT}-retry-reply

@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Report assistant message
 tags:
   - chat
+env:
+  SHOT: 07-report-message
 ---
 - runFlow:
     file: ../subflows/reach-home.yaml
@@ -15,6 +17,7 @@ tags:
     visible:
       id: chat_report
     timeout: 10000
+- takeScreenshot: ${SHOT}-report-menu
 - tapOn:
     id: chat_report
 - extendedWaitUntil:
@@ -29,3 +32,4 @@ tags:
       id: report_thanks
       text: "Thanks. We'll review this reply."
     timeout: 60000
+- takeScreenshot: ${SHOT}-report-thanks

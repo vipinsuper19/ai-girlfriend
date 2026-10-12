@@ -2,6 +2,8 @@ appId: com.dhama.mybase
 name: Composer 7000 character cap
 tags:
   - chat
+env:
+  SHOT: 06-composer-limit
 ---
 # Pastes 7100 characters. Passes when the field keeps 7000, or when it keeps more and the counter/error is shown.
 - runFlow:
@@ -25,3 +27,4 @@ tags:
       - assertVisible:
           id: chat_draft_limit
           text: "[0-9]+ / 7000.*"
+- takeScreenshot: ${SHOT}-cap

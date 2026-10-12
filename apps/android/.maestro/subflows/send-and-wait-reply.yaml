@@ -13,7 +13,9 @@ tags:
 - assertVisible:
     id: chat_user_message
     text: "Hello from the emulator"
+- takeScreenshot: ${SHOT}-user-message
 - extendedWaitUntil:
     visible:
       id: chat_assistant_reply
     timeout: 180000
+- takeScreenshot: ${SHOT}-assistant-reply
