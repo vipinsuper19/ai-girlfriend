@@ -881,3 +881,18 @@ createdAt TimestamptzString @default(now())
 updatedAt TimestamptzString @default(now())
 }
 
+// ============================================================
+// FIREBASE AUTH CLEANUP
+// ============================================================
+
+// Firebase Auth deletes that failed after the user row was removed.
+// No foreign key: the account is already gone, and a later 404 from
+// DELETE /users/me is success, so the retry cannot depend on the account.
+model AuthCleanup {
+subject   String            @id
+lastError String
+attempts  Int               @default(1)
+createdAt TimestamptzString @default(now())
+updatedAt TimestamptzString @default(now())
+}
+

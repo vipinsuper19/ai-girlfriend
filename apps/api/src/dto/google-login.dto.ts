@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Equals, IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class GoogleLoginDto {
     @IsString()
@@ -6,15 +6,9 @@ export class GoogleLoginDto {
     @MaxLength(8192)
     idToken!: string;
 
-    /** ISO calendar date (YYYY-MM-DD). Checked, then discarded. Omit both age fields, or send both. */
+    /** Optional 18+ attestation. true stores ageConfirmedAt. A date of birth is not accepted. */
     @IsOptional()
-    @IsString()
-    @MaxLength(10)
-    dateOfBirth?: string;
-
-    /** ISO-8601 timestamp for when the person confirmed they are 18 or older. */
-    @IsOptional()
-    @IsString()
-    @MaxLength(40)
-    ageConfirmedAt?: string;
+    @IsBoolean()
+    @Equals(true)
+    ageConfirmed?: true;
 }

@@ -11,6 +11,7 @@ import { UsersController } from '../users/users.controller.js';
 import {
     AgeConfirmedGuard,
     AgeRequiredException,
+    ageGateEnforced,
     ageIsConfirmed,
 } from './age-confirmed.guard.js';
 
@@ -45,13 +46,46 @@ function guardClasses(target: object): unknown[] {
     return Reflect.getMetadata(GUARDS_METADATA, target) ?? [];
 }
 
-test('chat stays closed until ageConfirmedAt is set', async () => {
+test('the age gate is off unless AGE_GATE_ENFORCED is set', () => {
+    assert.equal(ageGateEnforced(undefined), false);
+    assert.equal(ageGateEnforced(''), false);
+    assert.equal(ageGateEnforced('false'), false);
+    assert.equal(ageGateEnforced('off'), false);
+    assert.equal(ageGateEnforced('true'), true);
+    assert.equal(ageGateEnforced('1'), true);
+    assert.equal(ageGateEnforced('YES'), true);
+});
+
+test('a disabled age gate allows chat without reading the user', async () => {
+    let queried = false;
+    const guard = new AgeConfirmedGuard({
+        client: {
+            orm: {
+                public: {
+                    User: {
+                        where() {
+                            queried = true;
+                            return this;
+                        },
+                        async first() {
+                            return null;
+                        },
+                    },
+                },
+            },
+        },
+    } as never, false);
+    assert.equal(await guard.canActivate(context(1)), true);
+    assert.equal(queried, false);
+});
+
+test('chat stays closed until ageConfirmedAt is set when the gate is on', async () => {
     assert.equal(ageIsConfirmed(null), false);
     assert.equal(ageIsConfirmed(''), false);
     assert.equal(ageIsConfirmed('   '), false);
     assert.equal(ageIsConfirmed('2026-10-12T00:00:00.000Z'), true);
 
-    const closed = new AgeConfirmedGuard(prisma({ id: 1, ageConfirmedAt: null }) as never);
+    const closed = new AgeConfirmedGuard(prisma({ id: 1, ageConfirmedAt: null }) as never, true);
     await assert.rejects(
         () => closed.canActivate(context(1)),
         (error: unknown) => {
@@ -63,11 +97,12 @@ test('chat stays closed until ageConfirmedAt is set', async () => {
         },
     );
 
-    const missing = new AgeConfirmedGuard(prisma(null) as never);
+    const missing = new AgeConfirmedGuard(prisma(null) as never, true);
     await assert.rejects(() => missing.canActivate(context(1)), AgeRequiredException);
 
     const open = new AgeConfirmedGuard(
         prisma({ id: 1, ageConfirmedAt: '2026-10-12T00:00:00.000Z' }) as never,
+        true,
     );
     assert.equal(await open.canActivate(context('1')), true);
 });

@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BadRequestException, HttpStatus, type ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
 
 import { GenerationTemporarilyUnavailableException } from '../../ai/generation-unavailable.js';
-import { AGE_UNDER_18, AgeRejectedException } from '../../auth/age.js';
 import { AgeRequiredException } from '../../auth/age-confirmed.guard.js';
 import { ModerationTemporarilyUnavailableException } from '../../moderation/moderation-unavailable.exception.js';
 import { RateLimitedException } from '../../rate-limit/rate-limit.exception.js';
@@ -85,20 +84,6 @@ test('rate limits are 429 with Retry-After', () => {
     assert.equal(body.code, 'RATE_LIMITED');
     assert.equal(body.retryAfterSeconds, 12);
     assert.equal(headers['Retry-After'], '12');
-});
-
-test('forwards the under-18 code', () => {
-    const { body } = capture(
-        new AgeRejectedException(
-            AGE_UNDER_18,
-            'You must be 18 or older.',
-            HttpStatus.FORBIDDEN,
-        ),
-    );
-
-    assert.equal(body.statusCode, 403);
-    assert.equal(body.code, 'UNDER_18');
-    assert.equal(body.message, 'You must be 18 or older.');
 });
 
 test('age confirmation is 403 AGE_REQUIRED', () => {

@@ -65,8 +65,9 @@ clients hide the matching controls, so nothing is faked.
 | `DEVELOPER_NAME` | Developer name on those pages. Until it is set, the pages show `TODO` |
 | `GOOGLE_CLIENT_IDS` | Comma-separated OAuth client ids accepted by `POST /auth/google` (web) |
 | `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM, and `auth.deleteUser` when `DELETE /users/me` removes a Firebase/Google account. Raw JSON or base64. A missing or invalid value does not block boot; production with `FIREBASE_PROJECT_ID` logs an error until it is set |
 | `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL`, `GEMINI_STT_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_IMAGE_MODEL` | Chat, voice, and images |
+| `AGE_GATE_ENFORCED` | `false` (default). `true` returns `403` `AGE_REQUIRED` on chat and `POST /avatars` until `PATCH /users/me/age` with `{ "ageConfirmed": true }` sets `ageConfirmedAt`. Left off so current clients that never call that route keep working |
 | `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
 | `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
@@ -97,7 +98,7 @@ clients hide the matching controls, so nothing is faked.
 
 Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
 
-The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success. After the user row is gone, a stored Firebase uid (or, for an older Google link, one lookup by email) is passed to Firebase Admin `deleteUser`. `auth/user-not-found` counts as success. Any other Auth failure is written to `authCleanup` and retried, and the HTTP deletion still succeeds. Password accounts skip that call.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
@@ -122,12 +123,12 @@ Put these in the Render dashboard (Blueprint `sync: false` on the service). They
 | `JWT_RESET_SECRET` | No. Falls back to a value derived from `JWT_ACCESS_SECRET` |
 | `OPENAI_API_KEY` | No. Moderation when that provider is selected, and a one-shot fallback when Gemini moderation is unavailable |
 | `STORAGE_SIGNING_SECRET` | No. Local downloads fall back to `JWT_ACCESS_SECRET` |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | No. Push stays off until it is set |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | No. Push and Firebase Auth user deletion stay off until it is set. Production still boots, and logs an error, when `FIREBASE_PROJECT_ID` is set without a valid JSON key |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | No. Play billing stays off until it is set |
 
 These are not credentials, but they differ per deploy, so they are `sync: false` as well: `CORS_ORIGIN`, `APP_URL`, `MAIL_FROM`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`.
 
-Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. Account deletion retries `storageCleanup`, then `deleteAccountStorageFirst` calls `StorageService.removeUserFiles` and records any failures before `deleteAccountRecords` removes the user row.
+Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. Account deletion retries `storageCleanup`, then `deleteAccountStorageFirst` calls `StorageService.removeUserFiles` and records any failures before `deleteAccountRecords` removes the user row. `FirebaseAuthDeletion` then calls `deleteUser` and records failures on `authCleanup`. The HTTP deletion still succeeds. `data.firebaseUserDeleted` is `true` only when each `deleteUser` for that account succeeded or returned `auth/user-not-found`, and `false` when there is no Firebase uid, Admin is not configured, or any other Auth call fails. A failure to queue that retry does not fail the request, because the user row is already gone.
 
 ### Google Play subscriptions
 
@@ -141,7 +142,11 @@ re-sends owned purchases on the Plan screen; a lapsed `expiresAt` drops the user
 
 All under `/api/v1`, wrapped as `{ data }`.
 
-Chat stays closed until `PATCH /users/me/age` sets `ageConfirmedAt`. Until then, every conversation route, `POST /conversations/:id/messages`, `POST /conversations/:id/messages/stream`, `POST /conversations/:conversationId/messages/:userMessageId/reply/stream`, `POST /messages/:id/regenerate`, and `POST /avatars` return `403` with `code: "AGE_REQUIRED"`. Register still succeeds without a date of birth. Auth, `GET` and `PATCH /users/me`, `PATCH /users/me/age`, export, deletion, and the public pages stay open.
+`AGE_GATE_ENFORCED` defaults to `false`, and the age guard is then a no-op. Set it to `true` to close chat until `ageConfirmedAt` is set. While it is on, every conversation route, `POST /conversations/:id/messages`, `POST /conversations/:id/messages/stream`, `POST /conversations/:conversationId/messages/:userMessageId/reply/stream`, `POST /messages/:id/regenerate`, and `POST /avatars` return `403` with `code: "AGE_REQUIRED"`. Auth, `GET` and `PATCH /users/me`, `PATCH /users/me/age`, export, deletion, and the public pages stay open either way.
+
+Age is an 18+ attestation. The server never receives or stores a date of birth. `PATCH /users/me/age` takes `{ "ageConfirmed": true }`, sets `ageConfirmedAt` to the server time, keeps that first timestamp on a later call, and returns `{ ageConfirmedAt }`. `false`, a missing field, or any other body is `400`. `dateOfBirth` is not a field: with `forbidNonWhitelisted`, sending it (or `ageConfirmedAt`) is `400`, and the date itself is not logged. `POST /auth/register` and `POST /auth/google` accept optional `ageConfirmed: true` and set `ageConfirmedAt` the same way; omitting it leaves the timestamp unset, and `false` is `400`. `GET /users/me` and the `user` object on register, login, refresh, and Google/Firebase session responses include `ageConfirmedAt` as an ISO string, or `null` when it has not been set.
+
+`DELETE /users/me` returns `data.firebaseUserDeleted`: `true` when Firebase Admin `deleteUser` succeeded or returned `auth/user-not-found`, and `false` when the account has no Firebase uid, Admin is not configured, or the Auth call failed. The account row is still removed in every successful response. The Admin client reuses `FIREBASE_SERVICE_ACCOUNT_JSON` (already used for push). There is no new secret. Production with `FIREBASE_PROJECT_ID` logs if that JSON is missing or invalid and still boots.
 
 Path ids are positive 32-bit integers (`1` through `2147483647`). Anything else, including `abc` and integers that overflow Postgres `integer`, is `400`. Auth runs before that check, so a missing token is still `401`. JSON and urlencoded bodies larger than 64kb are `413` in the JSON error envelope. Unknown routes use that same envelope with `404`, not an HTML page. `POST /account-deletion` with an empty form is `400` HTML that redisplays the form and the error.
 

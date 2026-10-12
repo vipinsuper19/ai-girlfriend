@@ -10,10 +10,11 @@ import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
 
 import { accessTokenExpiresIn } from './access-token.js';
-import { parseAgeAttestation, type AgeInput } from './age.js';
+import { attestedAt } from './age.js';
 import { passwordChangeProblem } from './password-change.js';
 import { accountCanSignIn, sessionExpired } from './session-state.js';
 import {
+    accountProviderData,
     googleDisplayName,
     googleIdentity,
     googleSignInPlan,
@@ -33,6 +34,7 @@ import type { LoginDto } from '../dto/login.dto.js';
 import type { RegisterDto } from '../dto/register.dto.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { sessionUser } from '../users/user-view.js';
 
 type UserRecord = {
     id: string | number;
@@ -40,6 +42,7 @@ type UserRecord = {
     displayName: string;
     passwordHash: string | null;
     createdAt: Date;
+    ageConfirmedAt?: unknown;
 };
 
 type SessionRecord = {
@@ -62,7 +65,7 @@ export class AuthService {
 
     async register(dto: RegisterDto) {
         const db = this.prisma.client as any;
-        const age = parseAgeAttestation(dto, new Date());
+        const ageConfirmedAt = attestedAt(dto.ageConfirmed, new Date());
 
         const email = dto.email.toLowerCase().trim();
 
@@ -83,7 +86,7 @@ export class AuthService {
                 email,
                 displayName: dto.displayName.trim(),
                 passwordHash,
-                ...age,
+                ...(ageConfirmedAt ? { ageConfirmedAt } : {}),
             });
 
         return this.createAuthResponse(user as UserRecord);
@@ -198,11 +201,7 @@ export class AuthService {
         });
 
         return {
-            user: {
-                id: user.id,
-                email: user.email,
-                displayName: user.displayName,
-            },
+            user: sessionUser(user),
             accessToken,
             refreshToken: newRefreshToken,
         };
@@ -455,7 +454,7 @@ export class AuthService {
         };
     }
 
-    async googleLogin(idToken: string, ageInput: AgeInput = {}) {
+    async googleLogin(idToken: string, ageConfirmed = false) {
         const db = this.prisma.client as any;
         const claims = await this.googleTokens.verify(idToken);
         const { identity, problem } = googleIdentity(claims);
@@ -464,7 +463,7 @@ export class AuthService {
             throw new UnauthorizedException(problem);
         }
 
-        const age = parseAgeAttestation(ageInput, new Date());
+        const ageConfirmedAt = attestedAt(ageConfirmed, new Date());
 
         const account = await db.orm.public.Account
             .where({ provider: 'GOOGLE', providerAccountId: identity.googleId })
@@ -484,21 +483,27 @@ export class AuthService {
         let user;
         if (plan.kind === 'existing') {
             user = await db.orm.public.User.where({ id: plan.userId }).first();
-            if (user && age) {
-                user = await db.orm.public.User.where({ id: user.id }).update(age);
+            if (user && ageConfirmedAt && !user.ageConfirmedAt) {
+                user = await db.orm.public.User.where({ id: user.id }).update({ ageConfirmedAt });
             }
         } else {
             user = await db.orm.public.User.create({
                 email: identity.email,
                 displayName: googleDisplayName(identity),
                 passwordHash: null,
-                ...age,
+                ...(ageConfirmedAt ? { ageConfirmedAt } : {}),
             });
             await db.orm.public.Account.create({
                 userId: user.id,
                 provider: 'GOOGLE',
                 providerAccountId: identity.googleId,
-                providerData: { email: identity.email },
+                providerData: accountProviderData(null, identity),
+            });
+        }
+
+        if (plan.kind === 'existing' && account && identity.firebaseUid) {
+            await db.orm.public.Account.where({ id: account.id }).update({
+                providerData: accountProviderData(account.providerData, identity),
             });
         }
 
@@ -590,11 +595,7 @@ export class AuthService {
         }
 
         return {
-            user: {
-                id: user.id,
-                email: user.email,
-                displayName: user.displayName,
-            },
+            user: sessionUser(user),
             accessToken,
             refreshToken,
         };

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const migrationsRoot = fileURLToPath(new URL('../../migrations/app', import.meta.url));
 const DELETION_HASH = '87ad90ce3a7336ae8a589d64aec851b075387fc822fca3dc3d6d374880de4fa1';
 const MIGRATION = '20261012T1020_add_message_idempotency_key';
+const AUTH_CLEANUP = '20261012T1527_add_auth_cleanup';
 
 test('the idempotency migration sorts after deletion request and chains from it', () => {
     assert.ok(MIGRATION > '20261012T1013_deletion_request_after_storage');
@@ -26,7 +27,14 @@ test('the idempotency migration sorts after deletion request and chains from it'
         .join('\n');
 
     assert.equal(manifest.from, DELETION_HASH);
-    assert.equal(ref.hash, manifest.to);
+    const authDir = join(migrationsRoot, AUTH_CLEANUP);
+    const auth = JSON.parse(readFileSync(join(authDir, 'migration.json'), 'utf8')) as {
+        from: string;
+        to: string;
+    };
+    assert.ok(AUTH_CLEANUP > MIGRATION);
+    assert.equal(auth.from, manifest.to);
+    assert.equal(ref.hash, auth.to);
     assert.match(sql, /ALTER TABLE "public"\."message" ADD COLUMN "idempotencyKey" text/);
     assert.match(sql, /ALTER TABLE "public"\."message" ADD COLUMN "userId" int4/);
     assert.match(
