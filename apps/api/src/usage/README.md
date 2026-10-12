@@ -38,6 +38,11 @@ Chat replies (`MessagesService`) call `check` first, then `charge` only after a
 successful assistant reply. A provider error, an empty reply, or a client
 disconnect / Stop does not write a usage row.
 
+Accepted MVP limitation: that check and the later charge are not one
+transaction. Two requests can both pass the check and both finish, so a free
+account can sit slightly over the cap. There is no reservation row. The next
+request is refused.
+
 Images, voice, and other operations that still reserve capacity up front call:
 
 ```ts

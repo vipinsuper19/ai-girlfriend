@@ -99,7 +99,7 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
 
-Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it.
+Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it. The cap is checked before the model call and recorded only after a successful reply, so concurrent requests can finish slightly over the limit. That overshoot is accepted for the MVP; the following request is refused.
 
 ## Compile and run the project
 

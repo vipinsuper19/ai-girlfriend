@@ -393,6 +393,12 @@ export class MessagesService {
         }
     }
 
+    /**
+     * Check only. `chargeSuccessfulReply` writes the row after the reply exists.
+     * Two requests can both pass this check and both finish, so a free account
+     * can land slightly over the cap. That overshoot is an accepted MVP
+     * limitation: there is no reservation row and no row lock.
+     */
     private async assertWithinLlmCap(userId: number) {
         await this.usageService.check(
             userId,

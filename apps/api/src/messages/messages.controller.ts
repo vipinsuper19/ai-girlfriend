@@ -113,10 +113,13 @@ export class MessagesController {
         @Res() response: Response,
     ) {
         const abort = new AbortController();
+        // `request` closes as soon as the POST body is read, which is before
+        // the SSE response finishes. The response closes when the client
+        // disconnects or when we end it. Abort only in the first case.
         const onClose = () => {
             if (!response.writableFinished) abort.abort();
         };
-        request.on('close', onClose);
+        response.on('close', onClose);
 
         try {
             await this.messagesService.assertCanReply(
@@ -124,7 +127,7 @@ export class MessagesController {
                 conversationId,
             );
         } catch (error) {
-            request.off('close', onClose);
+            response.off('close', onClose);
             sendException(response, request, error);
             return;
         }
@@ -162,7 +165,7 @@ export class MessagesController {
                 );
             }
         } finally {
-            request.off('close', onClose);
+            response.off('close', onClose);
             if (!response.writableEnded) response.end();
         }
     }

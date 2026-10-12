@@ -149,6 +149,9 @@ export class UsageService {
      * Persist usage for work that already succeeded. Does not re-check the
      * cap: the caller checked before spending provider time, and a reply
      * that finished must count even if a concurrent request landed first.
+     *
+     * Accepted MVP limitation: check and charge are not one transaction, so
+     * overlapping requests can record a few units past the free-tier cap.
      */
     async charge(
         userId: number,
