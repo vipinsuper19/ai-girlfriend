@@ -11,6 +11,7 @@ import com.dhama.mybase.ui.home.MainShell
 import com.dhama.mybase.ui.home.PostAuthDestination
 import com.dhama.mybase.ui.home.PostAuthViewModel
 import com.dhama.mybase.ui.onboarding.CompanionWizardScreen
+import com.dhama.mybase.ui.screen.AgeConfirmScreen
 import com.dhama.mybase.ui.screen.LoginScreen
 import com.dhama.mybase.ui.screen.SignUpScreen
 import com.dhama.mybase.ui.screen.SplashScreen
@@ -36,6 +37,7 @@ fun AppNavHost(
             LaunchedEffect(Unit) {
                 val destination = when (viewModel.destination()) {
                     PostAuthDestination.Welcome -> Welcome
+                    PostAuthDestination.AgeConfirm -> AgeConfirm
                     PostAuthDestination.Onboarding -> Onboarding
                     PostAuthDestination.Home -> Main
                 }
@@ -49,9 +51,6 @@ fun AppNavHost(
         composable<Welcome> {
             WelcomeScreen(
                 onGetStarted = { navController.navigate(SignUp) },
-                onSkip = {
-                    navController.navigate(Onboarding)
-                },
                 onLogin = { navController.navigate(Login) }
             )
         }
@@ -93,6 +92,21 @@ fun AppNavHost(
             )
         }
 
+        composable<AgeConfirm> {
+            AgeConfirmScreen(
+                onConfirmed = {
+                    navController.navigate(Gate) {
+                        popUpTo(AgeConfirm) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    navController.navigate(Welcome) {
+                        popUpTo(AgeConfirm) { inclusive = true }
+                    }
+                },
+            )
+        }
+
         composable<Onboarding> {
             CompanionWizardScreen(
                 onExit = { navController.popBackStack() },
@@ -111,6 +125,11 @@ fun AppNavHost(
                         popUpTo(Main) { inclusive = true }
                     }
                 },
+                onSignIn = {
+                    navController.navigate(Login) {
+                        popUpTo(Main) { inclusive = true }
+                    }
+                },
                 onArchived = {
                     navController.navigate(Onboarding) {
                         popUpTo(Main) { inclusive = true }
@@ -123,6 +142,11 @@ fun AppNavHost(
             MainShell(
                 onLoggedOut = {
                     navController.navigate(Welcome) {
+                        popUpTo(Home) { inclusive = true }
+                    }
+                },
+                onSignIn = {
+                    navController.navigate(Login) {
                         popUpTo(Home) { inclusive = true }
                     }
                 },

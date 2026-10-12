@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +71,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalContext
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.memory.togetherLine
 import com.dhama.mybase.core.network.ARCHIVE_NOTICE
 import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
@@ -109,12 +111,14 @@ private val traitOptions = listOf(
 fun YouSettingsScreen(
     onProfile: () -> Unit,
     onPrivacy: () -> Unit,
-    onPlans: () -> Unit,
+    onPlans: (() -> Unit)?,
     onLogout: () -> Unit,
     viewModel: SettingsViewModel = rememberSettingsViewModel(),
 ) {
     val displayName by viewModel.displayName.collectAsState()
     val plan by viewModel.planLabel.collectAsState()
+    val accountDeleting by viewModel.accountDeleting.collectAsState()
+    val accountDeleteError by viewModel.accountDeleteError.collectAsState()
     val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
     val passwordNote by viewModel.passwordNote.collectAsState()
@@ -153,8 +157,11 @@ fun YouSettingsScreen(
         onScreenPrivacy = viewModel::setScreenPrivacy,
         onTheme = viewModel::setThemeMode,
         onDeleteAccount = viewModel::deleteAccount,
+        accountDeleting = accountDeleting,
+        accountDeleteError = accountDeleteError,
+        onDismissDeleteError = viewModel::clearAccountDeleteError,
         notifications = NotificationRowState(
-            visible = pushAvailable,
+            visible = FeatureFlags.build.push && pushAvailable,
             on = notificationsOn,
             saving = notificationSaving,
             note = notificationNote,
@@ -195,7 +202,7 @@ private fun YouSettingsContent(
     companionName: String?,
     onProfile: () -> Unit,
     onPrivacy: () -> Unit,
-    onPlans: () -> Unit,
+    onPlans: (() -> Unit)?,
     onLogout: () -> Unit,
     onSaveName: (String) -> Unit,
     onChangePassword: (String, String) -> Unit,
@@ -204,9 +211,12 @@ private fun YouSettingsContent(
     onDeleteAccount: () -> Unit,
     notifications: NotificationRowState = NotificationRowState(),
     onNotifications: (Boolean) -> Unit = {},
+    accountDeleting: Boolean = false,
+    accountDeleteError: String? = null,
+    onDismissDeleteError: () -> Unit = {},
 ) {
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxSize()
@@ -273,12 +283,14 @@ private fun YouSettingsContent(
                 onSave = onChangePassword,
             )
         }
-        SectionLabel("Subscription")
-        SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
+        if (FeatureFlags.build.billing && onPlans != null) {
+            SectionLabel("Subscription")
+            SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
+        }
         SectionLabel("App")
         Text("Theme", style = MaterialTheme.typography.bodyLarge)
         ThemePicker(selected = theme.ifBlank { "system" }, onSelect = onTheme)
-        if (notifications.visible) {
+        if (FeatureFlags.build.push && notifications.visible) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -304,30 +316,48 @@ private fun YouSettingsContent(
                 Text(notifications.note.orEmpty(), color = MaterialTheme.colorScheme.error)
             }
         }
-        Spacer(Modifier.height(24.dp))
-        TextButton(
-            onClick = { confirmDelete = true },
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .semantics { role = Role.Button },
-        ) { Text("Delete account", color = MaterialTheme.colorScheme.error) }
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(8.dp))
+        SectionLabel("Account")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .clickable(enabled = !accountDeleting) {
+                    onDismissDeleteError()
+                    confirmDelete = true
+                }
+                .semantics(mergeDescendants = true) { role = Role.Button },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Text("Delete account", color = MaterialTheme.colorScheme.error)
+                Text(
+                    "Permanently delete this account and its data",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         TextButton(
             onClick = onLogout,
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
                 .heightIn(min = 48.dp)
                 .semantics { role = Role.Button },
         ) { Text("Log out", color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(24.dp))
     }
-    if (confirmDelete) {
+    if (confirmDelete || accountDeleting) {
         DeleteAccountDialog(
-            onDismiss = { confirmDelete = false },
-            onConfirm = {
-                confirmDelete = false
-                onDeleteAccount()
+            deleting = accountDeleting,
+            error = accountDeleteError,
+            onDismiss = {
+                if (!accountDeleting) {
+                    confirmDelete = false
+                    onDismissDeleteError()
+                }
             },
+            onConfirm = onDeleteAccount,
         )
     }
 }
@@ -439,7 +469,9 @@ private fun CompanionProfileContent(
         Spacer(Modifier.height(16.dp))
         GroupLine("Look", saved.lookLine())
         GroupLine("Gender", genderLabel(saved.gender))
-        GroupLine("Voice", "${saved.voiceLabel} voice")
+        if (FeatureFlags.build.voice) {
+            GroupLine("Voice", "${saved.voiceLabel} voice")
+        }
         GroupLine("Memory", "$memoryCount things remembered")
         Spacer(Modifier.height(28.dp))
         TextButton(
@@ -607,8 +639,10 @@ private fun EditBody(
             LookField("Height", height) { height = it }
             LookField("Clothing", clothing) { clothing = it }
             LookField("Hair style", hairStyle) { hairStyle = it }
-            Text("Voice", style = MaterialTheme.typography.labelLarge)
-            ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
+            if (FeatureFlags.build.voice) {
+                Text("Voice", style = MaterialTheme.typography.labelLarge)
+                ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
+            }
             Level("Warmth", warmth) { warmth = it }
             Level("Humour", humour) { humour = it }
             Level("Flirtiness", flirt) { flirt = it }
@@ -662,6 +696,7 @@ private fun EditBody(
 
 @Composable
 fun SubscriptionScreen(onBack: () -> Unit) {
+    if (!FeatureFlags.build.billing) return
     val viewModel = rememberSettingsViewModel()
     val messages by viewModel.messages.collectAsState()
     val plan by viewModel.planLabel.collectAsState()
@@ -794,29 +829,51 @@ private fun PlanCard(
 }
 
 @Composable
-private fun DeleteAccountDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
+private fun DeleteAccountDialog(
+    deleting: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    var typed by rememberSaveable { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!deleting) onDismiss() },
         title = { Text("Delete account") },
         text = {
             Column {
-                Text("This removes the account, her, every conversation, and everything she remembers. Type DELETE to confirm.")
+                Text("This permanently deletes the account, her, every conversation, and everything she remembers. This can't be undone. Type DELETE to confirm.")
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !deleting,
                     label = { Text("Type DELETE") },
+                    singleLine = true,
                 )
+                if (deleting) {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(
+                        "Deleting your account…",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                if (!error.isNullOrBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = typed == "DELETE") {
-                Text("Delete account", color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onConfirm, enabled = typed == "DELETE" && !deleting) {
+                Text(if (deleting) "Deleting…" else "Delete account", color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) { Text("Cancel") }
+        },
     )
 }
 

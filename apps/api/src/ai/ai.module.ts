@@ -9,8 +9,9 @@ import {
 } from './interfaces/embedding.provider.js';
 import { GeminiEmbeddingProvider } from './providers/gemini-embedding.provider.js';
 import { MemoriesModule } from '../memories/memories.module.js';
+import { ModerationModule } from '../moderation/moderation.module.js';
 @Module({
-    imports: [forwardRef(() => MemoriesModule)],
+    imports: [forwardRef(() => MemoriesModule), ModerationModule],
     providers: [
         AiService,
         // OpenAiChatProvider,

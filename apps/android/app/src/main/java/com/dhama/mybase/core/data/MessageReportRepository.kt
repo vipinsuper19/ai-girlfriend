@@ -1,7 +1,10 @@
 package com.dhama.mybase.core.data
 
+import com.dhama.mybase.core.chat.REPORT_FAILED
 import com.dhama.mybase.core.chat.ReportMessageBody
-import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.ReportHttp
+import com.dhama.mybase.core.network.ReportHttpOutcome
+import com.dhama.mybase.core.network.interpretReportResponse
 import kotlin.coroutines.cancellation.CancellationException
 
 sealed class ReportResult {
@@ -14,11 +17,10 @@ sealed class ReportResult {
  * Sends one report per server message. A second submit while the first is in flight,
  * or after it succeeded, does not call the backend again. A failure can be retried.
  *
- * HTTP 409 means the server already stored this report, so it counts as success.
- * HTTP 404 is an error and does not count as sent.
+ * 201 and 200 both count as success. 404 and 429 do not.
  */
 class MessageReportRepository(
-    private val post: suspend (ReportMessageBody) -> Unit,
+    private val post: suspend (ReportMessageBody) -> ReportHttp,
 ) {
     private val lock = Any()
     private val sentIds = mutableSetOf<Int>()
@@ -42,32 +44,20 @@ class MessageReportRepository(
             inFlight += body.messageId
         }
         return try {
-            post(body)
-            markSent(body.messageId)
-            ReportResult.Sent
+            val http = post(body)
+            when (val outcome = interpretReportResponse(http.status, http.body)) {
+                is ReportHttpOutcome.Accepted -> {
+                    markSent(body.messageId)
+                    ReportResult.Sent
+                }
+                is ReportHttpOutcome.Rejected -> ReportResult.Failed(outcome.message)
+            }
         } catch (error: CancellationException) {
             throw error
-        } catch (error: ApiStatusException) {
-            if (error.status == 409) {
-                markSent(body.messageId)
-                ReportResult.Sent
-            } else {
-                ReportResult.Failed(reportFailureMessage(error))
-            }
         } catch (error: Exception) {
-            ReportResult.Failed(reportFailureMessage(error))
+            ReportResult.Failed(error.message?.takeIf { it.isNotBlank() } ?: REPORT_FAILED)
         } finally {
             synchronized(lock) { inFlight -= body.messageId }
         }
     }
-}
-
-private fun reportFailureMessage(error: Exception): String {
-    val fallback = if (error is ApiStatusException && error.status == 404) {
-        "That reply couldn't be found."
-    } else {
-        "Couldn't send that report."
-    }
-    val message = error.message?.takeIf { it.isNotBlank() && it != "Request failed" }
-    return message ?: fallback
 }

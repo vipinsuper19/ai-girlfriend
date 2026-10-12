@@ -2,10 +2,12 @@ package com.dhama.mybase.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.chat.REPORT_NOTE_MAX
 import com.dhama.mybase.core.chat.REPORT_UNAVAILABLE
 import com.dhama.mybase.core.chat.ReportReason
+import com.dhama.mybase.core.chat.canOfferReport
 import com.dhama.mybase.core.chat.olderMessageCursor
 import com.dhama.mybase.core.chat.reportMessageBody
 import com.dhama.mybase.core.chat.reportUnavailableReason
@@ -70,6 +72,12 @@ class ChatViewModel @Inject constructor(
 
     val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    /** Null until DataStore has loaded, so the first chat does not flash the notice for someone who already accepted it. */
+    val aiDisclosureAcknowledged = dataStoreRepo
+        .getBoolean(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED, false)
+        .map { acknowledged -> acknowledged as Boolean? }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val planUsage = dataStoreRepo.getString(PreferencesKeys.USAGE_SUMMARY, false)
         .map { parseUsageSummary(it) }
@@ -162,7 +170,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendVoice(path: String, durationMs: Long) {
-        if (path.isBlank() || sendJob?.isActive == true) return
+        if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true) return
         val conversationId = companion.value?.conversationId
         sendJob = viewModelScope.launch {
             val ticker = if (conversationId != null) {
@@ -235,14 +243,13 @@ class ChatViewModel @Inject constructor(
     private var reportJob: Job? = null
 
     fun openReport(message: ChatMessageEntity) {
-        if (message.role != ChatRepositoryImpl.ROLE_ASSISTANT) return
+        if (!canOfferReport(message.role)) return
         if (_report.value?.submitting == true) return
         val serverId = serverRecordId(message.id)
         val already = serverId != null && reports.alreadySent(serverId)
         _report.value = MessageReportUi(
             messageLocalId = message.id,
             sent = already,
-            alreadyReported = already,
             blocked = if (already) null else reportUnavailableReason(serverId, companion.value?.conversationId),
         )
     }
@@ -285,19 +292,15 @@ class ChatViewModel @Inject constructor(
             val latest = _report.value ?: return@launch
             if (latest.messageLocalId != current.messageLocalId) return@launch
             _report.value = when (result) {
-                ReportResult.Sent -> latest.copy(submitting = false, sent = true, error = null)
-                ReportResult.Duplicate -> latest.copy(
-                    submitting = false,
-                    sent = true,
-                    alreadyReported = true,
-                    error = null,
-                )
+                ReportResult.Sent, ReportResult.Duplicate ->
+                    latest.copy(submitting = false, sent = true, error = null)
                 is ReportResult.Failed -> latest.copy(submitting = false, error = result.message)
             }
         }
     }
 
     fun speak(message: ChatMessageEntity) {
+        if (!FeatureFlags.build.voice) return
         if (!canSpeakMessage(message.role, message.kind, message.delivery, message.text)) return
         val companionId = companion.value?.serverId
         val blocked = speakBlockReason(message.text, companionId)
@@ -338,6 +341,12 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun acknowledgeAiDisclosure() {
+        viewModelScope.launch {
+            dataStoreRepo.saveBoolean(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED, true)
+        }
+    }
+
     fun retry(failed: ChatMessageEntity) {
         val saved = companion.value ?: return
         if (sendJob?.isActive == true) return
@@ -367,6 +376,7 @@ class ChatViewModel @Inject constructor(
             if (source.id != failed.id) chatRepository.discard(source.id)
             try {
                 if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
+                    if (!FeatureFlags.build.voice) return@launch
                     chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
                 } else if (source.text.isNotBlank()) {
                     chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
@@ -405,6 +415,5 @@ data class MessageReportUi(
     val submitting: Boolean = false,
     val error: String? = null,
     val sent: Boolean = false,
-    val alreadyReported: Boolean = false,
     val blocked: String? = null,
 )

@@ -68,7 +68,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.FeatureFlags
+import com.dhama.mybase.core.chat.AiDisclosure
 import com.dhama.mybase.core.chat.ReportReason
+import com.dhama.mybase.core.chat.canOfferReport
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -116,6 +119,7 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
+    val aiDisclosureAcknowledged by viewModel.aiDisclosureAcknowledged.collectAsState()
     val companion by viewModel.companion.collectAsState()
     val draft by viewModel.draft.collectAsState()
     val speakingId by viewModel.speakingId.collectAsState()
@@ -132,7 +136,7 @@ fun ChatScreen(
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
-    val voiceClosed = onServer && voiceAllowanceClosed(allowance)
+    val voiceClosed = FeatureFlags.build.voice && onServer && voiceAllowanceClosed(allowance)
     val messageLimit = allowance?.messagesLimit
     val showWarning = allowance != null &&
         messageLimit != null &&
@@ -162,6 +166,7 @@ fun ChatScreen(
         micDenied = !granted
     }
     LaunchedEffect(player) {
+        if (!FeatureFlags.build.voice) return@LaunchedEffect
         viewModel.playRequest.collect { path -> player.toggle(path) }
     }
     DisposableEffect(recorder, player) {
@@ -184,7 +189,7 @@ fun ChatScreen(
     }
 
     fun beginRecording() {
-        if (recording || streaming || voiceClosed) return
+        if (!FeatureFlags.build.voice || aiDisclosureAcknowledged != true || recording || streaming || voiceClosed) return
         if (!micGranted()) {
             showRationale = true
             return
@@ -278,8 +283,8 @@ fun ChatScreen(
         }
         Text(
             when {
-                recording -> "Recording…"
-                !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
+                FeatureFlags.build.voice && recording -> "Recording…"
+                FeatureFlags.build.voice && !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
                 streaming -> "Typing…"
                 companion?.conversationId != null -> "Active now"
                 else -> "On this phone"
@@ -289,8 +294,8 @@ fun ChatScreen(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .semantics {
-                    if (recording) contentDescription = "Recording"
-                    else if (!voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
+                    if (FeatureFlags.build.voice && recording) contentDescription = "Recording"
+                    else if (FeatureFlags.build.voice && !voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
                     else if (streaming) contentDescription = "$name is typing"
                 },
         )
@@ -306,7 +311,7 @@ fun ChatScreen(
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
-        if (voiceClosed && !showWall) {
+        if (FeatureFlags.build.voice && voiceClosed && !showWall) {
             Text(
                 "You've used your voice minutes for this month.",
                 style = MaterialTheme.typography.bodySmall,
@@ -328,7 +333,7 @@ fun ChatScreen(
                 prompts.forEach { prompt ->
                     TextButton(
                         onClick = { viewModel.send(prompt) },
-                        enabled = !streaming && companion != null && !showWall,
+                        enabled = !streaming && companion != null && !showWall && aiDisclosureAcknowledged == true,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(prompt, modifier = Modifier.fillMaxWidth())
@@ -377,7 +382,11 @@ fun ChatScreen(
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                        } else {
+                        } else if (
+                            FeatureFlags.build.voice ||
+                            message.kind != ChatMessageEntity.KIND_AUDIO ||
+                            message.text.isNotBlank()
+                        ) {
                             val note = speakNote?.takeIf { it.first == message.id }?.second
                             MessageRow(
                                 message = message,
@@ -398,7 +407,7 @@ fun ChatScreen(
                 }
             }
         }
-        if (micDenied) {
+        if (FeatureFlags.build.voice && micDenied) {
             Text(
                 "Microphone is off. Allow it in system settings to record a voice note.",
                 style = MaterialTheme.typography.bodySmall,
@@ -417,7 +426,7 @@ fun ChatScreen(
             Composer(
                 value = draft,
                 streaming = streaming,
-                enabled = companion != null,
+                enabled = companion != null && aiDisclosureAcknowledged == true,
                 recording = recording,
                 locked = locked,
                 cancelling = cancelling,
@@ -435,7 +444,20 @@ fun ChatScreen(
         }
     }
 
-    if (showRationale) {
+    if (aiDisclosureAcknowledged?.let(AiDisclosure::shouldShow) == true) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(AiDisclosure.TITLE) },
+            text = { Text(AiDisclosure.BODY) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.acknowledgeAiDisclosure() }) {
+                    Text(AiDisclosure.ACKNOWLEDGE)
+                }
+            },
+        )
+    }
+
+    if (FeatureFlags.build.voice && showRationale) {
         AlertDialog(
             onDismissRequest = { showRationale = false },
             title = { Text("Microphone") },
@@ -474,7 +496,7 @@ fun ChatScreen(
                         if (outgoing) "Copy it or remove it from this thread."
                         else "Copy it or remove it from this thread. Anything she already remembered stays in Memory.",
                     )
-                    if (!outgoing) {
+                    if (canOfferReport(message.role)) {
                         TextButton(
                             onClick = {
                                 viewModel.openReport(message)
@@ -503,7 +525,7 @@ fun ChatScreen(
             },
             dismissButton = {
                 Row {
-                    if (canSpeakMessage(message.role, message.kind, message.delivery, message.text)) {
+                    if (FeatureFlags.build.voice && canSpeakMessage(message.role, message.kind, message.delivery, message.text)) {
                         TextButton(onClick = {
                             viewModel.speak(message)
                             selected = null
@@ -561,7 +583,6 @@ private fun ReportMessageDialog(
             ) {
                 when {
                     state.blocked != null -> Text(state.blocked)
-                    state.sent && state.alreadyReported -> Text("You already reported this reply.")
                     state.sent -> Text("Thanks. We'll review this reply.")
                     else -> {
                         Text("What should we look at?")
@@ -657,7 +678,8 @@ private fun MessageRow(
         val failed = message.delivery == ChatRepositoryImpl.DELIVERY_FAILED ||
             message.delivery == ChatRepositoryImpl.DELIVERY_DROPPED
         val spoken = when {
-            message.kind == ChatMessageEntity.KIND_AUDIO -> "$senderName. Voice note ${message.durationMs / 1000} seconds"
+            FeatureFlags.build.voice && message.kind == ChatMessageEntity.KIND_AUDIO ->
+                "$senderName. Voice note ${message.durationMs / 1000} seconds"
             message.kind == ChatMessageEntity.KIND_IMAGE -> "$senderName. Photo"
             streaming && message.text.isBlank() -> "$senderName is typing"
             outgoing -> "You. ${message.text}"
@@ -665,7 +687,12 @@ private fun MessageRow(
         }
         Column(horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
             Column(Modifier.alpha(if (failed) 0.5f else 1f)) {
-                when (message.kind) {
+                val shownKind = if (FeatureFlags.build.voice || message.kind != ChatMessageEntity.KIND_AUDIO) {
+                    message.kind
+                } else {
+                    ChatMessageEntity.KIND_TEXT
+                }
+                when (shownKind) {
                     ChatMessageEntity.KIND_IMAGE -> ImageNote(message.audioPath)
                     ChatMessageEntity.KIND_AUDIO -> VoiceNoteContent(
                         text = message.text,
@@ -682,27 +709,34 @@ private fun MessageRow(
                             .semantics { contentDescription = spoken }
                             .padding(vertical = 4.dp, horizontal = 4.dp),
                     )
-                    else -> Text(
-                        text = message.text.ifBlank { "…" },
-                        color = color,
-                        modifier = Modifier
-                            .widthIn(max = 280.dp)
-                            .clip(shape)
-                            .background(background)
-                            .combinedClickable(onClick = {}, onLongClick = onLongClick)
-                            .semantics {
-                                contentDescription = spoken
-                                if (streaming) liveRegion = LiveRegionMode.Polite
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                    )
+                    else -> if (
+                        FeatureFlags.build.voice ||
+                        message.kind != ChatMessageEntity.KIND_AUDIO ||
+                        message.text.isNotBlank()
+                    ) {
+                        Text(
+                            text = message.text.ifBlank { "…" },
+                            color = color,
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .clip(shape)
+                                .background(background)
+                                .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                                .semantics {
+                                    contentDescription = spoken
+                                    if (streaming) liveRegion = LiveRegionMode.Polite
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
                 }
             }
-            if (failed) {
+            if (failed && (FeatureFlags.build.voice || message.kind != ChatMessageEntity.KIND_AUDIO)) {
                 TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(retryCaption(message.delivery), color = MaterialTheme.colorScheme.error)
                 }
             } else if (
+                FeatureFlags.build.voice &&
                 message.kind == ChatMessageEntity.KIND_AUDIO &&
                 message.text.isBlank() &&
                 !message.audioPath.startsWith("http")
@@ -714,7 +748,7 @@ private fun MessageRow(
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
                 )
             }
-            if (speakCaption != null) {
+            if (FeatureFlags.build.voice && speakCaption != null) {
                 Text(
                     speakCaption,
                     style = MaterialTheme.typography.bodySmall,
@@ -767,7 +801,7 @@ private fun Composer(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (recording) {
+        if (FeatureFlags.build.voice && recording) {
             RecordingMeter(
                 amplitudes = amplitudes,
                 elapsedMs = elapsedMs,
@@ -789,7 +823,7 @@ private fun Composer(
                 maxLines = 4,
             )
         }
-        if (!locked) {
+        if (FeatureFlags.build.voice && !locked) {
             HoldMic(
                 enabled = enabled && !streaming,
                 recording = recording,
@@ -802,7 +836,7 @@ private fun Composer(
             streaming -> IconButton(onClick = onStop) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop")
             }
-            locked -> Row {
+            FeatureFlags.build.voice && locked -> Row {
                 TextButton(onClick = onVoiceCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 TextButton(onClick = onVoiceSend, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send") }
             }

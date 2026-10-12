@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.turbo
+.turbo
+**/.env
+**/.env.*
+apps/android
+apps/web
+apps/api/uploads
+docs
+.git
+.github
