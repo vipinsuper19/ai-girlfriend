@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.FeatureFlags
+import com.dhama.mybase.core.chat.AiDisclosure
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -113,6 +114,7 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
+    val aiDisclosureAcknowledged by viewModel.aiDisclosureAcknowledged.collectAsState()
     val companion by viewModel.companion.collectAsState()
     val draft by viewModel.draft.collectAsState()
     val speakingId by viewModel.speakingId.collectAsState()
@@ -181,7 +183,7 @@ fun ChatScreen(
     }
 
     fun beginRecording() {
-        if (!FeatureFlags.build.voice || recording || streaming || voiceClosed) return
+        if (!FeatureFlags.build.voice || aiDisclosureAcknowledged != true || recording || streaming || voiceClosed) return
         if (!micGranted()) {
             showRationale = true
             return
@@ -325,7 +327,7 @@ fun ChatScreen(
                 prompts.forEach { prompt ->
                     TextButton(
                         onClick = { viewModel.send(prompt) },
-                        enabled = !streaming && companion != null && !showWall,
+                        enabled = !streaming && companion != null && !showWall && aiDisclosureAcknowledged == true,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(prompt, modifier = Modifier.fillMaxWidth())
@@ -418,7 +420,7 @@ fun ChatScreen(
             Composer(
                 value = draft,
                 streaming = streaming,
-                enabled = companion != null,
+                enabled = companion != null && aiDisclosureAcknowledged == true,
                 recording = recording,
                 locked = locked,
                 cancelling = cancelling,
@@ -434,6 +436,19 @@ fun ChatScreen(
                 onVoiceCancel = ::discardRecording,
             )
         }
+    }
+
+    if (aiDisclosureAcknowledged?.let(AiDisclosure::shouldShow) == true) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(AiDisclosure.TITLE) },
+            text = { Text(AiDisclosure.BODY) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.acknowledgeAiDisclosure() }) {
+                    Text(AiDisclosure.ACKNOWLEDGE)
+                }
+            },
+        )
     }
 
     if (FeatureFlags.build.voice && showRationale) {
