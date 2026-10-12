@@ -395,6 +395,7 @@ dependencies {
 
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation("org.mockito:mockito-core:5.18.0")
     testImplementation("com.android.tools:r8:9.5.23")
     androidTestImplementation(libs.androidx.junit)

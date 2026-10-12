@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.chatDraftOverLimit
 import com.dhama.mybase.core.chat.REPORT_NOTE_MAX
 import com.dhama.mybase.core.chat.REPORT_UNAVAILABLE
 import com.dhama.mybase.core.chat.ReportReason
@@ -26,6 +27,10 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.NetworkSignals
+import com.dhama.mybase.core.network.RemoteSendFailure
+import com.dhama.mybase.core.network.rateLimitNotice
+import com.dhama.mybase.core.network.remoteSendFailure
 import com.dhama.mybase.core.network.regenerableReplyId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -57,6 +62,7 @@ class ChatViewModel @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val dataStoreRepo: DataStoreRepo,
     private val accountSync: AccountSync,
+    networkSignals: NetworkSignals,
     private val reports: MessageReportRepository,
     companionRepository: CompanionRepository,
 ) : ViewModel() {
@@ -109,6 +115,15 @@ class ChatViewModel @Inject constructor(
     private val _voiceStage = MutableStateFlow<String?>(null)
     val voiceStage = _voiceStage.asStateFlow()
 
+    val serverWake = networkSignals.status
+
+    private val _rateLimitNote = MutableStateFlow<String?>(null)
+    val rateLimitNote = _rateLimitNote.asStateFlow()
+    private var rateLimitUntilMs = 0L
+
+    private val _replyNote = MutableStateFlow<String?>(null)
+    val replyNote = _replyNote.asStateFlow()
+
     init {
         viewModelScope.launch {
             companionRepository.observe().collect { saved ->
@@ -154,9 +169,10 @@ class ChatViewModel @Inject constructor(
     fun send(prompt: String? = null) {
         val text = (prompt ?: _draft.value).trim()
         val saved = companion.value ?: return
-        if (text.isEmpty() || sendJob?.isActive == true) return
+        if (text.isEmpty() || chatDraftOverLimit(text) || sendJob?.isActive == true || rateLimitOpen()) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
+            _replyNote.value = null
             try {
                 chatRepository.send(text, saved.name, saved.relationship, saved.traits, saved.conversationId)
                 memoryRepository.notice(text)
@@ -164,15 +180,16 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
             }
         }
     }
 
     fun sendVoice(path: String, durationMs: Long) {
-        if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true) return
+        if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true || rateLimitOpen()) return
         val conversationId = companion.value?.conversationId
         sendJob = viewModelScope.launch {
+            _replyNote.value = null
             val ticker = if (conversationId != null) {
                 launch {
                     val started = System.currentTimeMillis()
@@ -192,7 +209,7 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
             } finally {
                 ticker?.cancel()
                 _voiceStage.value = null
@@ -217,7 +234,7 @@ class ChatViewModel @Inject constructor(
     val regenerateNote = _regenerateNote.asStateFlow()
 
     fun regenerate(message: ChatMessageEntity) {
-        if (message.id != regenerableId.value || sendJob?.isActive == true) return
+        if (message.id != regenerableId.value || sendJob?.isActive == true || rateLimitOpen()) return
         _regenerateNote.value = null
         sendJob = viewModelScope.launch {
             try {
@@ -226,8 +243,10 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
-                _regenerateNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't regenerate that."
+                noteApiFailure(error)
+                if (remoteSendFailure(error.status, error.code) == RemoteSendFailure.Other) {
+                    _regenerateNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't regenerate that."
+                }
             } catch (_: Exception) {
                 _regenerateNote.value = "Couldn't regenerate that. Her first reply is still here."
             }
@@ -347,16 +366,24 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun dismissReplyNote() {
+        _replyNote.value = null
+    }
+
     fun retry(failed: ChatMessageEntity) {
         val saved = companion.value ?: return
-        if (sendJob?.isActive == true) return
+        if (sendJob?.isActive == true || rateLimitOpen()) return
+        _replyNote.value = null
         if (retriesByReload(failed.delivery)) {
             val conversationId = saved.conversationId ?: return
             sendJob = viewModelScope.launch {
                 try {
-                    chatRepository.reload(conversationId)
+                    chatRepository.retryUnfinishedReply(conversationId)
+                    refreshUsage()
                 } catch (error: CancellationException) {
                     throw error
+                } catch (error: ApiStatusException) {
+                    noteApiFailure(error)
                 } catch (_: Exception) {
                     // The dropped reply stays, so Retry can be tapped again.
                 }
@@ -372,21 +399,66 @@ class ChatViewModel @Inject constructor(
             thread.getOrNull(index - 1)?.takeIf { it.role == ChatRepositoryImpl.ROLE_USER }
         } ?: return
         sendJob = viewModelScope.launch {
-            chatRepository.discard(failed.id)
-            if (source.id != failed.id) chatRepository.discard(source.id)
             try {
                 if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
                     if (!FeatureFlags.build.voice) return@launch
+                    chatRepository.discard(failed.id)
+                    if (source.id != failed.id) chatRepository.discard(source.id)
                     chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
                 } else if (source.text.isNotBlank()) {
-                    chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
+                    chatRepository.retryUnsent(
+                        source.text,
+                        saved.name,
+                        saved.relationship,
+                        saved.traits,
+                        saved.conversationId,
+                        clientMessageId = source.id,
+                        failedLocalId = failed.id,
+                    )
                     memoryRepository.notice(source.text)
                 }
                 refreshUsage()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
+            }
+        }
+    }
+
+    private fun rateLimitOpen(): Boolean = System.currentTimeMillis() < rateLimitUntilMs
+
+    private suspend fun noteApiFailure(error: ApiStatusException) {
+        when (remoteSendFailure(error.status, error.code)) {
+            RemoteSendFailure.UsageLimit -> noteUsageLimit(error)
+            RemoteSendFailure.RateLimited -> noteRateLimit(error)
+            RemoteSendFailure.Missing -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "That message isn't available."
+            }
+            RemoteSendFailure.NotLatest -> _replyNote.value = null
+            RemoteSendFailure.InvalidKey -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Couldn't send that. Try again."
+            }
+            RemoteSendFailure.KeyReused -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "That send belongs to another conversation. Try again."
+            }
+            RemoteSendFailure.Other -> noteUsageLimit(error)
+        }
+    }
+
+    private fun noteRateLimit(error: ApiStatusException) {
+        val seconds = (error.retryAfterSeconds ?: 1).coerceAtLeast(1)
+        val until = System.currentTimeMillis() + seconds * 1000L
+        rateLimitUntilMs = until
+        _rateLimitNote.value = rateLimitNotice(seconds)
+        viewModelScope.launch {
+            delay(seconds * 1000L)
+            if (rateLimitUntilMs == until) {
+                rateLimitUntilMs = 0L
+                _rateLimitNote.value = null
             }
         }
     }

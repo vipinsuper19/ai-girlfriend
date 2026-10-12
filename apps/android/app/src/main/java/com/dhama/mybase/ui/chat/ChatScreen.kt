@@ -70,8 +70,12 @@ import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.AiDisclosure
+import com.dhama.mybase.core.chat.CHAT_MESSAGE_MAX_CHARS
 import com.dhama.mybase.core.chat.ReportReason
 import com.dhama.mybase.core.chat.canOfferReport
+import com.dhama.mybase.core.chat.chatDraftLimitNote
+import com.dhama.mybase.core.chat.chatDraftOverLimit
+import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -125,6 +129,7 @@ fun ChatScreen(
     val speakingId by viewModel.speakingId.collectAsState()
     val speakNote by viewModel.speakNote.collectAsState()
     val voiceStage by viewModel.voiceStage.collectAsState()
+    val waking by viewModel.serverWake.collectAsState()
     val warningDismissed by viewModel.warningDismissedPeriod.collectAsState()
     val planUsage by viewModel.planUsage.collectAsState()
     val usageBlocked by viewModel.usageBlocked.collectAsState()
@@ -132,6 +137,8 @@ fun ChatScreen(
     val loadingOlder by viewModel.loadingOlder.collectAsState()
     val regenerableId by viewModel.regenerableId.collectAsState()
     val regenerateNote by viewModel.regenerateNote.collectAsState()
+    val rateLimitNote by viewModel.rateLimitNote.collectAsState()
+    val replyNote by viewModel.replyNote.collectAsState()
     val report by viewModel.report.collectAsState()
     val allowance = planUsage
     val onServer = companion?.conversationId != null
@@ -281,24 +288,51 @@ fun ChatScreen(
                 TextButton(onClick = onHistory) { Text("History") }
             }
         }
+        val status = chatStatusLine(
+            recording = FeatureFlags.build.voice && recording,
+            waking = waking,
+            voiceStage = voiceStage?.takeIf { FeatureFlags.build.voice },
+            streaming = streaming,
+            onServer = companion?.conversationId != null,
+        )
         Text(
-            when {
-                FeatureFlags.build.voice && recording -> "Recording…"
-                FeatureFlags.build.voice && !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
-                streaming -> "Typing…"
-                companion?.conversationId != null -> "Active now"
-                else -> "On this phone"
-            },
+            status,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .semantics {
-                    if (FeatureFlags.build.voice && recording) contentDescription = "Recording"
-                    else if (FeatureFlags.build.voice && !voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
-                    else if (streaming) contentDescription = "$name is typing"
+                    contentDescription = when {
+                        FeatureFlags.build.voice && recording -> "Recording"
+                        !waking.isNullOrBlank() -> status
+                        FeatureFlags.build.voice && !voiceStage.isNullOrBlank() -> status
+                        streaming -> "$name is typing"
+                        else -> status
+                    }
                 },
         )
+        rateLimitNote?.let { note ->
+            Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+        replyNote?.let { note ->
+            Row(
+                Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::dismissReplyNote) { Text("OK") }
+            }
+        }
         if (companion?.conversationId == null) {
             OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         }
@@ -395,6 +429,9 @@ fun ChatScreen(
                                 onToggleVoice = { player.toggle(message.audioPath) },
                                 onLongClick = { selected = message },
                                 onRetry = { viewModel.retry(message) },
+                                wakeLabel = waking?.takeIf {
+                                    message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING && message.text.isBlank()
+                                },
                                 speakCaption = when {
                                     speakingId == message.id -> "Preparing her voice…"
                                     note != null -> note
@@ -426,7 +463,7 @@ fun ChatScreen(
             Composer(
                 value = draft,
                 streaming = streaming,
-                enabled = companion != null && aiDisclosureAcknowledged == true,
+                enabled = companion != null && aiDisclosureAcknowledged == true && rateLimitNote == null,
                 recording = recording,
                 locked = locked,
                 cancelling = cancelling,
@@ -653,6 +690,7 @@ private fun MessageRow(
     onRetry: () -> Unit,
     speakCaption: String? = null,
     speakFailed: Boolean = false,
+    wakeLabel: String? = null,
 ) {
     val outgoing = message.role == ChatRepositoryImpl.ROLE_USER
     val streaming = message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING
@@ -681,6 +719,7 @@ private fun MessageRow(
             FeatureFlags.build.voice && message.kind == ChatMessageEntity.KIND_AUDIO ->
                 "$senderName. Voice note ${message.durationMs / 1000} seconds"
             message.kind == ChatMessageEntity.KIND_IMAGE -> "$senderName. Photo"
+            streaming && message.text.isBlank() && !wakeLabel.isNullOrBlank() -> "$senderName. $wakeLabel"
             streaming && message.text.isBlank() -> "$senderName is typing"
             outgoing -> "You. ${message.text}"
             else -> "$senderName. ${message.text}"
@@ -715,7 +754,11 @@ private fun MessageRow(
                         message.text.isNotBlank()
                     ) {
                         Text(
-                            text = message.text.ifBlank { "…" },
+                            text = when {
+                                message.text.isNotBlank() -> message.text
+                                streaming && !wakeLabel.isNullOrBlank() -> wakeLabel
+                                else -> "…"
+                            },
                             color = color,
                             modifier = Modifier
                                 .widthIn(max = 280.dp)
@@ -810,18 +853,37 @@ private fun Composer(
                 modifier = Modifier.weight(1f),
             )
         } else {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onChange,
-                enabled = enabled && !streaming,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 52.dp),
-                placeholder = { Text("Message") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-                maxLines = 4,
-            )
+            val overLimit = chatDraftOverLimit(value)
+            val limitNote = chatDraftLimitNote(value)
+            Column(Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onChange,
+                    enabled = enabled && !streaming,
+                    isError = overLimit || value.length == CHAT_MESSAGE_MAX_CHARS,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    placeholder = { Text("Message") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (!overLimit && value.isNotBlank()) onSend() },
+                    ),
+                    maxLines = 4,
+                )
+                if (limitNote != null) {
+                    Text(
+                        limitNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overLimit || value.length == CHAT_MESSAGE_MAX_CHARS) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                    )
+                }
+            }
         }
         if (FeatureFlags.build.voice && !locked) {
             HoldMic(
@@ -840,7 +902,10 @@ private fun Composer(
                 TextButton(onClick = onVoiceCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 TextButton(onClick = onVoiceSend, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send") }
             }
-            else -> IconButton(onClick = onSend, enabled = enabled && value.isNotBlank()) {
+            else -> IconButton(
+                onClick = onSend,
+                enabled = enabled && value.isNotBlank() && !chatDraftOverLimit(value),
+            ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
         }

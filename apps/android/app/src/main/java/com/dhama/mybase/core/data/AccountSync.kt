@@ -13,6 +13,7 @@ import com.dhama.mybase.core.network.RemoteAvatarSummary
 import com.dhama.mybase.core.network.RemoteConversation
 import com.dhama.mybase.core.network.RestoredMemory
 import com.dhama.mybase.core.network.RestoredMessage
+import com.dhama.mybase.core.network.isIdempotencyUuid
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.planLabel
@@ -21,6 +22,7 @@ import kotlinx.serialization.encodeToString
 import com.dhama.mybase.core.network.toSaved
 import com.dhama.mybase.core.utils.PreferencesKeys
 import kotlinx.coroutines.flow.first
+import java.util.UUID
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -179,9 +181,7 @@ class AccountSync @Inject constructor(
 
     private suspend fun replaceThread(saved: SavedCompanion, conversationId: Int) {
         val remoteMessages = api.listMessages(conversationId, limit = MESSAGE_PAGE)
-        val failedLocal = messages.snapshot().filter { message ->
-            message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null
-        }
+        val failedLocal = carriedFailures(conversationChanged = true)
         companions.save(saved)
         messages.clear()
         remoteMessages.forEach { remote ->
@@ -216,9 +216,10 @@ class AccountSync @Inject constructor(
         val saved = avatar.toSaved(conversationId, System.currentTimeMillis(), api.origin())
         val remoteMessages = api.listMessages(conversationId, limit = MESSAGE_PAGE)
         val remoteMemories = api.listMemories(id)
-        val failedLocal = messages.snapshot().filter { message ->
-            message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null
-        }
+        val previousConversation = local?.conversationId
+        val failedLocal = carriedFailures(
+            conversationChanged = previousConversation != null && previousConversation != conversationId,
+        )
         val serverContents = remoteMemories.map { it.content }.toSet()
         val keptLocal = memories.snapshot().filter { memory ->
             serverRecordId(memory.id) == null && memory.content !in serverContents
@@ -236,6 +237,25 @@ class AccountSync @Inject constructor(
         }
         keptLocal.forEach { memories.upsert(it) }
         return saved
+    }
+
+    /**
+     * A failed send keeps its Idempotency-Key while it stays in the same
+     * conversation. Moving it to another conversation mints a new UUID so the
+     * old key cannot 409 there.
+     */
+    private suspend fun carriedFailures(conversationChanged: Boolean): List<ChatMessageEntity> {
+        return messages.snapshot()
+            .filter { message ->
+                message.delivery == DELIVERY_FAILED && serverRecordId(message.id) == null
+            }
+            .map { message ->
+                if (conversationChanged && message.role == "USER" && isIdempotencyUuid(message.id)) {
+                    message.copy(id = UUID.randomUUID().toString())
+                } else {
+                    message
+                }
+            }
     }
 
     private companion object {

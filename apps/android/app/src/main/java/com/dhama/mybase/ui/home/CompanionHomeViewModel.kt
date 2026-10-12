@@ -13,6 +13,7 @@ import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.model.SavedCompanion
+import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.parseUsageSummary
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,7 +35,10 @@ class CompanionHomeViewModel @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val accountSync: AccountSync,
     private val pushRegistration: PushRegistration,
+    networkSignals: NetworkSignals,
 ) : ViewModel() {
+
+    val serverWake = networkSignals.status
 
     val companion: StateFlow<SavedCompanion?> = repository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
