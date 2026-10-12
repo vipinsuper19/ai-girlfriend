@@ -7,6 +7,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AiService } from '../ai/ai.service.js';
+import { safetyNoticeOf } from '../moderation/safety-policy.js';
 import { StorageService } from '../storage/storage.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { UsageService } from '../usage/usage.service.js';
@@ -401,6 +402,25 @@ export class VoiceService {
                 },
             );
 
+        const safety = safetyNoticeOf(aiResponse);
+
+        if (safety && userMessage?.id != null) {
+            const fresh =
+                await this.db.orm.public.Message
+                    .where({
+                        id: userMessage.id,
+                    })
+                    .first();
+            if (
+                fresh &&
+                fresh.id === userMessage.id &&
+                fresh.metadata
+            ) {
+                userMessage.metadata =
+                    fresh.metadata;
+            }
+        }
+
         const assistantText =
             aiResponse?.content?.trim();
 
@@ -462,6 +482,7 @@ export class VoiceService {
                         speech.voiceId,
                     mimeType:
                         speech.mimeType,
+                    ...(safety ? { safety } : {}),
                 },
                 audioUrl:
                     assistantAudioUrl,
@@ -499,6 +520,8 @@ export class VoiceService {
             userMessage,
 
             assistantMessage,
+
+            ...(safety ? { safety } : {}),
 
             audio: {
                 audioUrl:
