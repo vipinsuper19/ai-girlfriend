@@ -427,6 +427,14 @@ const RULES: Rule[] = [
     },
     {
         category: 'self_harm',
+        // Present tense can stand alone ("disappear forever"). Past tense needs "I",
+        // so "my phone disappeared forever" and "the pain vanished for good" stay ordinary.
+        pattern:
+            /\b(?:disappear|vanish)\s+(?:forever|for good)\b|\bdisappear\s+and never come back\b|\bi\s+(?:disappeared|vanished)\s+(?:forever|for good)\b|\bgone for good after tonight\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'self_harm',
         pattern: /\b(?:kill yourself|kys)\b/i,
         surfaces: OUTPUT_ONLY,
     },
@@ -442,6 +450,9 @@ const FIRST_PERSON_AGE =
     /\b(?:i\s*'m|i\s+am|i\s+m|im)\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
 const ME_AGE =
     /(?:^|[.!?]\s*|\n\s*)me\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
+/** "age: 15", "age-15", "my age is 15". Not "stone age" or "my son's age". */
+const LABEL_AGE =
+    /(?:^|[.!?\n]\s*|\bmy\s+)age\s*(?:is\s*)?[:-]?\s*([0-9]+|[a-z]+)\b/gi;
 const AGE_UNIT = /^(?:\s*(?:years?\s*old|yrs?\s*old|yo|y\/o))\b/i;
 const NOT_AN_AGE =
     /^(?:\s*(?:out\s+of|drinks?|steps?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?\s+ago|feet|foot|ft|inches|cm|meters?|metres?|kilos?|kgs?|pounds?|lbs?|times|percent|rupees|rs|dollars|bucks|km|miles?|o'?clock|am|pm))\b/i;
@@ -465,12 +476,15 @@ const SPELLED_MINOR: Record<string, number> = {
 };
 
 /**
- * High-precision present-age check. Only "I'm / Im / I am / i m / me" plus an
- * age under 18. Digits 2 and 4 count only with an age unit or at the end of
- * the clause, so "2 tired" and "4 you" stay ordinary words.
+ * High-precision present-age check. "I'm / Im / I am / i m / me" plus an age
+ * under 18, or a first-person label ("my age is 15", "age: 15", "age-15").
+ * Digits 2 and 4 count only with an age unit or at the end of the clause, so
+ * "2 tired" and "4 you" stay ordinary words. A label only counts when the
+ * number ends the claim, so "age 12 was my best year" and "age: 15 years
+ * experience" stay ordinary.
  */
 export function claimsFirstPersonMinor(text: string): boolean {
-    return scanAges(FIRST_PERSON_AGE, text) || scanAges(ME_AGE, text);
+    return scanAges(FIRST_PERSON_AGE, text) || scanAges(ME_AGE, text) || scanLabelAges(text);
 }
 
 function scanAges(pattern: RegExp, text: string): boolean {
@@ -479,6 +493,17 @@ function scanAges(pattern: RegExp, text: string): boolean {
         const token = (match[1] ?? '').toLowerCase();
         const rest = text.slice((match.index ?? 0) + match[0].length);
         if (ageTokenIsMinor(token, rest)) return true;
+    }
+    return false;
+}
+
+function scanLabelAges(text: string): boolean {
+    LABEL_AGE.lastIndex = 0;
+    for (const match of text.matchAll(LABEL_AGE)) {
+        const token = (match[1] ?? '').toLowerCase();
+        const rest = text.slice((match.index ?? 0) + match[0].length);
+        if (!ageTokenIsMinor(token, rest)) continue;
+        if (AGE_UNIT.test(rest) || /^\s*$/.test(rest) || /^\s*[.!?,;]/.test(rest)) return true;
     }
     return false;
 }

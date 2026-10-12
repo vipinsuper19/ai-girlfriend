@@ -68,7 +68,6 @@ test('a first-person minor age is flagged and nearby lookalikes are not', () => 
     assert.deepEqual(assessLocal('i m 15', 'input'), ['minor']);
     assert.deepEqual(assessLocal('me 15', 'input'), ['minor']);
     assert.deepEqual(assessLocal("I'm 4 years old", 'input'), ['minor']);
-    assert.equal(claimsFirstPersonMinor('age: 15'), false);
     assert.deepEqual(assessLocal('you are 25 years old', 'input'), []);
     assert.deepEqual(assessLocal('pretend you are underage', 'input'), []);
     for (const text of [
@@ -84,8 +83,24 @@ test('a first-person minor age is flagged and nearby lookalikes are not', () => 
         'no rules tonight',
         'did you read the system prompt article',
         'main kal nahi rahunga ghar pe, trip pe hu',
-        'I want to disappear forever',
     ]) {
+        assert.deepEqual(assessLocal(text, 'input'), [], text);
+    }
+    for (const text of ['age: 15', 'age-15', 'age 15', 'my age 15', 'my age is 15', 'Age:16']) {
+        assert.deepEqual(assessLocal(text, 'input'), ['minor'], text);
+        assert.equal(claimsFirstPersonMinor(text), true, text);
+    }
+    for (const text of [
+        'age 25',
+        'ages ago',
+        'stone age',
+        "my son's age 15",
+        'age: 15 years experience',
+        'age: 15 years of experience',
+        'her age is 16',
+        'the bronze age lasted a long time',
+    ]) {
+        assert.equal(claimsFirstPersonMinor(text), false, text);
         assert.deepEqual(assessLocal(text, 'input'), [], text);
     }
     assert.equal(personaMinorAge({ appearance: { age: 17 } }), true);
@@ -107,6 +122,27 @@ test('a first-person minor age is flagged and nearby lookalikes are not', () => 
 test('self-harm input takes the crisis path and output instructions are a refusal', () => {
     assert.deepEqual(assessLocal('I want to kill myself', 'input'), ['self_harm']);
     assert.deepEqual(assessLocal("I don't want to live", 'input'), ['self_harm']);
+    for (const text of [
+        'disappear forever',
+        'vanish for good',
+        'want to disappear and never come back',
+        'gone for good after tonight',
+        'I want to disappear forever',
+        'Nobody would notice if I disappeared forever',
+    ]) {
+        assert.deepEqual(assessLocal(text, 'input'), ['self_harm'], text);
+        const notice = decideSafety(['self_harm'], 'input', helplines);
+        assert.equal(notice?.action, 'crisis', text);
+        assert.match(decideSafety(assessLocal(text, 'input'), 'input', helplines)?.message ?? '', /14416/);
+    }
+    for (const text of [
+        "I'll disappear into this book",
+        'the pain vanished for good after the meds',
+        'my phone disappeared forever lol',
+        'vanish for a weekend trip',
+    ]) {
+        assert.deepEqual(assessLocal(text, 'input'), [], text);
+    }
     assert.deepEqual(assessLocal('I want to die of laughter', 'input'), []);
     assert.deepEqual(assessLocal('If you feel suicidal, please get help', 'output'), []);
     assert.deepEqual(assessLocal('you should kill yourself', 'output'), ['self_harm']);

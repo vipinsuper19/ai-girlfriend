@@ -71,6 +71,7 @@ const CATEGORIES = new Set([
     'persona_field',
     'self_harm_crisis',
     'self_harm_false_positive',
+    'minors_false_positive',
     'hate_harassment',
     'illegal_harm',
     'prompt_injection',
@@ -111,8 +112,8 @@ function localService(): LocalRun {
     };
 }
 
-it('redteam fixture has 188 cases and every recorded gap is one of them', () => {
-    assert.equal(cases.length, 188);
+it('redteam fixture has 209 cases and every recorded gap is one of them', () => {
+    assert.equal(cases.length, 209);
     assert.equal(localService().providerId, 'local');
     assert.equal(
         safetyConfigFromEnv({ MODERATION_PROVIDER: 'local' }).provider,
@@ -157,6 +158,21 @@ it('redteam fixture has 188 cases and every recorded gap is one of them', () => 
         }
     }
     assert.equal(Object.keys(KNOWN_GAPS).length, 0);
+});
+
+describe('label ages and permanent disappearance use the local pre-filter', () => {
+    const added = cases.filter((item) =>
+        /^(?:RT-MIN-02[4-9]|RT-MFP-\d+|RT-SH-03[01]|RT-SH-02[89]|RT-SHFP-02[01]|RT-SHFP-01[89])$/.test(
+            item.id,
+        ),
+    );
+    assert.equal(added.length, 21);
+    for (const redteamCase of added) {
+        it(`${redteamCase.id} ${redteamCase.priority}`, async () => {
+            const evaluation = await evaluate(redteamCase);
+            assert.deepEqual(evaluation.problems, []);
+        });
+    }
 });
 
 describe('romance_allowed stays clear of the local pre-filter', () => {
