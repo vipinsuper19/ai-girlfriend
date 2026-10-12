@@ -1,6 +1,7 @@
 package com.dhama.mybase.core.data
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +55,10 @@ class DataStoreRepo @Inject constructor(
         dataStore.edit { preferences ->
             preferences[key] = value
         }
+    }
+
+    suspend fun update(block: (MutablePreferences) -> Unit) {
+        dataStore.edit { preferences -> block(preferences) }
     }
 
 }

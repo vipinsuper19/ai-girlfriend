@@ -38,6 +38,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import kotlinx.coroutines.delay
@@ -45,6 +46,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun OtpScreen(onNavigateToHome:()->Unit,onNavigateToLogin: () -> Unit) {
+    if (!FeatureFlags.build.phoneSignIn) return
     var counter by  remember {
         mutableIntStateOf(30)
     }

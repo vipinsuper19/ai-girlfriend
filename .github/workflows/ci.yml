@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   api:
     name: API (lint, typecheck, test)
@@ -32,6 +35,10 @@ jobs:
   android:
     name: Android (unit tests, bundleRelease)
     runs-on: ubuntu-latest
+    # upload-artifact writes to the Actions artifact store, not the repo.
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: apps/android
