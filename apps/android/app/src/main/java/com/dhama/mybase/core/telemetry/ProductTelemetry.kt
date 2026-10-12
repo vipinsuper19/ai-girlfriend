@@ -18,20 +18,37 @@ object ProductTelemetry {
     @Volatile
     private var collecting: Boolean = false
 
+    /** Defaults to granted. An EU consent screen calls this with the user's choice. */
+    @Volatile
+    private var consentGranted: Boolean = true
+
     fun start(context: Context) {
-        val app = context.applicationContext
-        appContext = app
-        val firebaseReady = FirebaseApp.getApps(app).isNotEmpty()
-        val collect = firebaseReady && !BuildConfig.DEBUG
-        if (firebaseReady) {
-            FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = collect
-            FirebaseAnalytics.getInstance(app).setAnalyticsCollectionEnabled(collect)
-        }
-        collecting = collect
-        if (collect) {
+        appContext = context.applicationContext
+        pushCollection()
+        if (collecting) {
             logEvent("app_start")
             setCrashlyticsAttributes(mapOf("build_type" to "release"))
         }
+    }
+
+    /**
+     * Turns Analytics and Crashlytics collection on or off together.
+     * Debug builds stay off. Release collection follows this flag, which defaults to on.
+     */
+    fun setCollectionConsent(granted: Boolean) {
+        consentGranted = granted
+        pushCollection()
+    }
+
+    private fun pushCollection() {
+        val context = appContext ?: return
+        val firebaseReady = FirebaseApp.getApps(context).isNotEmpty()
+        val collect = firebaseReady && telemetryCollectionEnabled(BuildConfig.DEBUG, consentGranted)
+        if (firebaseReady) {
+            FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = collect
+            FirebaseAnalytics.getInstance(context).setAnalyticsCollectionEnabled(collect)
+        }
+        collecting = collect
     }
 
     fun logEvent(name: String, params: Map<String, String> = emptyMap()) {

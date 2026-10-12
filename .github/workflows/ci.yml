@@ -62,6 +62,19 @@ jobs:
             echo "::notice::No KEYSTORE_BASE64 secret, so the release build will be unsigned."
           fi
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest
+      - name: assembleDebug without google-services.json
+        run: |
+          backup=""
+          if [ -f app/google-services.json ]; then
+            backup="$(mktemp)"
+            mv app/google-services.json "$backup"
+          fi
+          status=0
+          ./gradlew assembleDebug || status=$?
+          if [ -n "$backup" ]; then
+            mv "$backup" app/google-services.json
+          fi
+          exit "$status"
       - name: bundleRelease
         env:
           API_BASE_URL_RELEASE: ${{ vars.API_BASE_URL_RELEASE }}

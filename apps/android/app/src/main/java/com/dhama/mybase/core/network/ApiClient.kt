@@ -26,7 +26,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
@@ -126,9 +125,13 @@ class ApiClient(
                             events.forEach { onEvent(it) }
                         }
                     }
-                } catch (error: IOException) {
-                    if (!coroutineContext.isActive) throw CancellationException("Stopped", error)
+                } catch (error: CancellationException) {
+                    throw scrubCancellation(error)
+                } catch (error: ApiStatusException) {
                     throw error
+                } catch (error: Exception) {
+                    if (!coroutineContext.isActive) throw CancellationException("Stopped")
+                    throw scrubTransportFailure(error)
                 } finally {
                     call.cancel()
                 }
@@ -487,10 +490,18 @@ class ApiClient(
     private suspend fun execute(request: Request): String = execute(http, request)
 
     private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
-            raw
+        try {
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
+                raw
+            }
+        } catch (error: CancellationException) {
+            throw scrubCancellation(error)
+        } catch (error: ApiStatusException) {
+            throw error
+        } catch (error: Exception) {
+            throw scrubTransportFailure(error)
         }
     }
 

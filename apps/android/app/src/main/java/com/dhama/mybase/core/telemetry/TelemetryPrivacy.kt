@@ -7,6 +7,11 @@ private val emailValue = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+/** NANP and E.164 numbers, including separators. Short counts such as "3" do not match. */
+private val phoneValue = Regex(
+    """(?<!\d)(?:\+\d{1,3}[\s.-]*)?(?:\(\d{3}\)|\d{3})[\s.-]*\d{3}[\s.-]*\d{4}(?!\d)|(?<!\d)\+\d{10,15}(?!\d)|(?<!\d)\d{10,15}(?!\d)""",
+)
+
 private val labeledAge = Regex(
     "(?i)(dateOfBirth|date_of_birth|date-of-birth|dob|birthDate|birth_date|birthday|" +
         "ageConfirmedAt|age_confirmed_at|age_confirmed_18|age_subject|user_age|age)" +
@@ -63,6 +68,7 @@ fun stripSensitiveTelemetry(attributes: Map<String, String>): Map<String, String
         val trimmedValue = value.trim()
         if (trimmedKey.isEmpty()) return@mapNotNull null
         if (isEmailKey(trimmedKey) || emailValue.containsMatchIn(trimmedValue)) return@mapNotNull null
+        if (phoneValue.containsMatchIn(trimmedValue)) return@mapNotNull null
         if (isChatContentKey(trimmedKey, trimmedValue)) return@mapNotNull null
         if (isSecretKey(trimmedKey)) return@mapNotNull null
         if (trimmedValue.length > 100 || trimmedValue.contains('\n') || trimmedValue.contains('\r')) {
@@ -70,6 +76,14 @@ fun stripSensitiveTelemetry(attributes: Map<String, String>): Map<String, String
         }
         trimmedKey to trimmedValue
     }.toMap()
+}
+
+/**
+ * Release collection follows consent. Debug builds stay off even when consent is granted.
+ * Consent defaults to granted until an EU prompt calls [com.dhama.mybase.core.telemetry.ProductTelemetry.setCollectionConsent].
+ */
+fun telemetryCollectionEnabled(debugBuild: Boolean, consentGranted: Boolean): Boolean {
+    return consentGranted && !debugBuild
 }
 
 /**
@@ -82,7 +96,9 @@ fun telemetryAttributes(attributes: Map<String, String>): Map<String, String> {
 
 /** Scrubs email addresses and age fields from a breadcrumb or exception message. */
 fun redactTelemetryText(text: String): String {
-    val scrubbed = labeledAge.replace(emailValue.replace(text, "[redacted]")) {
+    val scrubbed = labeledAge.replace(
+        phoneValue.replace(emailValue.replace(text, "[redacted]"), "[redacted]"),
+    ) {
         "${it.groupValues[1]}=[redacted]"
     }
     if (scrubbed.length > 100 || scrubbed.contains('\n') || scrubbed.contains('\r')) return "[redacted]"
