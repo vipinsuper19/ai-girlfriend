@@ -62,7 +62,8 @@ async function bootstrap(): Promise<void> {
     ],
     allowedHeaders: [
       'Content-Type',
-      'Authorization'
+      'Authorization',
+      'Idempotency-Key',
     ]
   });
 

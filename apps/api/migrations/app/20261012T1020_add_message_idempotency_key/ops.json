@@ -1,0 +1,209 @@
+[
+  {
+    "id": "column.public.message.idempotencyKey",
+    "label": "Add column \"idempotencyKey\" to \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "idempotencyKey",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"idempotencyKey\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "message",
+          "idempotencyKey"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"idempotencyKey\"",
+        "sql": "ALTER TABLE \"public\".\"message\" ADD COLUMN \"idempotencyKey\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"idempotencyKey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "message",
+          "idempotencyKey"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.message.userId",
+    "label": "Add column \"userId\" to \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "userId",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"userId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "message",
+          "userId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"userId\"",
+        "sql": "ALTER TABLE \"public\".\"message\" ADD COLUMN \"userId\" int4"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"userId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "message",
+          "userId"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.message.message_userId_idempotencyKey_key",
+    "label": "Add unique constraint on \"message\" (userId, idempotencyKey)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "message_userId_idempotencyKey_key",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"message_userId_idempotencyKey_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_userId_idempotencyKey_key",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"message_userId_idempotencyKey_key\"",
+        "sql": "ALTER TABLE \"public\".\"message\" ADD CONSTRAINT \"message_userId_idempotencyKey_key\" UNIQUE (\"userId\", \"idempotencyKey\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"message_userId_idempotencyKey_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_userId_idempotencyKey_key",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.message.message_userId_idx_a489d58a",
+    "label": "Create index \"message_userId_idx_a489d58a\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "message_userId_idx_a489d58a",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"message_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"message_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"message_userId_idx_a489d58a\" ON \"public\".\"message\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"message_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"message_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.message.message_userId_fkey",
+    "label": "Add foreign key \"message_userId_fkey\" on \"message\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "message_userId_fkey",
+        "table": "message"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"message_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_userId_fkey",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"message_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"message\"\nADD CONSTRAINT \"message_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"message_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "message_userId_fkey",
+          "public",
+          "\"public\".\"message\""
+        ]
+      }
+    ]
+  }
+]
