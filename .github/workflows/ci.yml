@@ -102,8 +102,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$API_BASE_URL_RELEASE" ]; then
-            echo "::notice::Repo variable API_BASE_URL_RELEASE is unset; building with -PallowPlaceholderApi=true."
-            ./gradlew bundleRelease -PallowPlaceholderApi=true
+            echo "::notice::Repo variable API_BASE_URL_RELEASE is unset; building with -PallowPlaceholderApi=true -PdisableMappingUpload=true."
+            ./gradlew bundleRelease -PallowPlaceholderApi=true -PdisableMappingUpload=true
           else
             ./gradlew bundleRelease
           fi
