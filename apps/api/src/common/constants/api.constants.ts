@@ -7,6 +7,7 @@ export const API_BASE_PATH = `${API_PREFIX}/v${API_VERSION}`;
 export const UNPREFIXED_ROUTES = [
     'health',
     'privacy',
+    'terms',
     'account-deletion',
     'account-deletion/confirm',
 ] as const;

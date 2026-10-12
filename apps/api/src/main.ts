@@ -68,7 +68,7 @@ async function bootstrap(): Promise<void> {
   });
 
   // /health stays unprefixed for the Render health check. Play Store
-  // pages (/privacy, /account-deletion) stay unprefixed too.
+  // pages (/privacy, /terms, /account-deletion) stay unprefixed too.
   app.setGlobalPrefix(API_BASE_PATH, { exclude: [...UNPREFIXED_ROUTES] });
 
   app.useGlobalPipes(

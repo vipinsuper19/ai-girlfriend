@@ -84,6 +84,43 @@ ${contactBlock(identity)}
 
 <h2>Deletion</h2>
 <p>See <a href="/account-deletion">account deletion</a>. Signed-in users can delete immediately in the app, which calls <code>DELETE /api/v1/users/me</code>.</p>
+<p>See also the <a href="/terms">terms of use</a>.</p>
+`);
+}
+
+export function termsHtml(identity: LegalIdentity): string {
+    return page(`${APP_NAME} terms of use`, `
+<h1>${APP_NAME} terms of use</h1>
+<p>These terms cover the ${APP_NAME} Android app (package ${ANDROID_PACKAGE}) and the API that serves it. The <a href="/privacy">privacy policy</a> describes the data the app stores.</p>
+${contactBlock(identity)}
+
+<h2>18 or older</h2>
+<p>You must be 18 or older to use ${APP_NAME}. Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server checks the date of birth and then discards it. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
+
+<h2>Content</h2>
+<p>Flirting, affection, and romance between adults are allowed. Explicit sexual content is not: graphic acts, sexual body descriptions, and explicit roleplay are refused, and the reply you see is a short refusal instead of that content. Sexual or romantic content involving anyone under 18 is refused. A companion described as under 18, or with sexual content involving a minor, is not saved. Hate, instructions for illegal harm, and attempts to bypass these rules are refused.</p>
+<p>A message you send that breaks these rules stays in the thread you can read, with a safety notice, and is left out of later replies. A reply that breaks them is saved as the refusal text, or as the crisis note below, plus that safety notice. Refusing a message does not by itself suspend or delete the account.</p>
+
+<h2>AI replies</h2>
+<p>Chat replies are written by Google Gemini. They are generated text. They can be wrong. The companion is not a real person. A reply is not professional, medical, legal, or financial advice, and the companion is not a clinician or an emergency service.</p>
+
+<h2>If you are in danger</h2>
+<p>If you are in danger or thinking about self-harm, contact local emergency services or a crisis helpline. In India, Tele-MANAS is 14416 (24/7 mental health support). Elsewhere, the International Association for Suicide Prevention lists local lines at <a href="https://www.iasp.info/suicidalthoughts/">iasp.info/suicidalthoughts</a>. When a message you send is treated as a crisis, the app answers with that kind of note and does not send that message to the model.</p>
+
+<h2>Reporting a message</h2>
+<p>In the chat you can report an AI reply. The report stores a snapshot of that message's text, a reason (harmful or unsafe, sexual content, hate or harassment, inaccurate, or something else), and an optional note. The report belongs to your account. A message you sent, or a reply that is not on the server, cannot be reported. Filing a report stores it for review. It does not by itself suspend or delete the account.</p>
+
+<h2>Subscriptions</h2>
+<p>Paid plans are purchased through Google Play. Google processes the payment. This app does not collect your card number. When a purchase is verified, the server stores the plan, the status, the expiry, and Google's subscription id. The current public build can hide billing. A Play subscription is cancelled in Google Play. Deleting the app account does not cancel it.</p>
+
+<h2>Deleting your account</h2>
+<p>In the app, open Settings and tap Delete account. Type DELETE to confirm. That calls <code>DELETE /api/v1/users/me</code> and deletes the account then, including the on-device age check. If you cannot open the app, use <a href="/account-deletion">account deletion</a>. That page stores a request. It does not delete the account by itself. A suspended or deleted account cannot sign in.</p>
+
+<h2>Liability</h2>
+<p>${APP_NAME} is provided as it is. Replies can be inaccurate, and you are responsible for what you do with them. Google handles Play payments under Google's terms. Some places do not allow a limit on liability. Where they do not, this limit applies only as far as the law allows.</p>
+
+<h2>Changes</h2>
+<p>We change these terms by updating this page. The page you load is the current terms. The privacy policy is a separate page.</p>
 `);
 }
 
@@ -122,7 +159,7 @@ ${contactBlock(identity)}
 <li>Google Gemini, and OpenAI when a message was sent to OpenAI moderation, may retain that content under their own policies. We do not keep a separate copy at the provider after the account is deleted.</li>
 <li>This app does not keep a backup of the account after deletion. Hosting logs may still list the IP address and the page URL for the host's log window.</li>
 </ul>
-<p>Also see the <a href="/privacy">privacy policy</a>.</p>
+<p>Also see the <a href="/privacy">privacy policy</a> and the <a href="/terms">terms of use</a>.</p>
 `);
 }
 
