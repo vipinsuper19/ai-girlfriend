@@ -11,7 +11,7 @@ composeBom = "2026.09.00"
 googleGmsGoogleServices = "4.5.0"
 firebaseCrashlyticsGradle = "3.0.8"
 firebaseAi = "17.2.0"
-firebaseBOM = "34.2.0"
+firebaseBOM = "35.0.0"
 materialIconsExtended = "1.7.8"
 uiTextGoogleFonts = "1.12.1"
 navigation = "2.10.1"
@@ -27,7 +27,6 @@ firebaseAuth = "24.2.0"
 credentials = "1.6.0"
 credentialsPlayServicesAuth = "1.6.0"
 googleid = "1.2.0"
-firebaseDatabase = "22.0.2"
 firebaseMessaging = "25.1.3"
 datastore = "1.2.1"
 media3 = "1.9.0"
@@ -64,11 +63,13 @@ room = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-kotlin = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBOM" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth", version.ref = "firebaseAuth" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentialsPlayServicesAuth" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
-firebase-database = { group = "com.google.firebase", name = "firebase-database", version.ref = "firebaseDatabase" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging", version.ref = "firebaseMessaging" }
 androidx-datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }

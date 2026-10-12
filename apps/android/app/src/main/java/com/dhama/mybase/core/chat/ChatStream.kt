@@ -1,5 +1,8 @@
 package com.dhama.mybase.core.chat
 
+import com.dhama.mybase.core.network.containsUserPayload
+import com.dhama.mybase.core.network.echoesUserPayload
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -26,6 +29,13 @@ private data class SseMessageBody(
 private data class ErrorEnvelope(
     val message: String? = null,
     val code: String? = null,
+    val content: String? = null,
+    val prompt: String? = null,
+    val text: String? = null,
+    val body: String? = null,
+    val systemPrompt: String? = null,
+    @SerialName("system_prompt")
+    val systemPromptSnake: String? = null,
 )
 
 /**
@@ -47,6 +57,23 @@ fun consumeSse(buffer: String): Pair<List<ChatStreamEvent>, String> {
 }
 
 private val json = Json { ignoreUnknownKeys = true }
+
+/** Keeps a short server error. Drops chat content, prompts, and response bodies. */
+private fun streamErrorMessage(envelope: ErrorEnvelope?): String {
+    val text = envelope?.message?.trim().orEmpty()
+    val echoed = listOfNotNull(
+        envelope?.content,
+        envelope?.prompt,
+        envelope?.text,
+        envelope?.body,
+        envelope?.systemPrompt,
+        envelope?.systemPromptSnake,
+    )
+    if (text.isEmpty() || containsUserPayload(text) || echoesUserPayload(text, echoed)) {
+        return "Streaming failed"
+    }
+    return text
+}
 
 private fun parseBlock(block: String): ChatStreamEvent? {
     if (block.isBlank() || block.startsWith(":")) return null
@@ -73,7 +100,7 @@ private fun parseBlock(block: String): ChatStreamEvent? {
         "error" -> {
             val envelope = runCatching { json.decodeFromString<ErrorEnvelope>(raw) }.getOrNull()
             ChatStreamEvent.Error(
-                envelope?.message ?: text.ifBlank { "Streaming failed" },
+                streamErrorMessage(envelope),
                 envelope?.code,
             )
         }

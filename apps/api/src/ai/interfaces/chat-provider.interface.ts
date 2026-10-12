@@ -10,6 +10,7 @@ export interface AiChatMessage {
 
 export interface GenerateChatOptions {
     messages: AiChatMessage[];
+    signal?: AbortSignal;
 }
 
 export interface ChatProvider {

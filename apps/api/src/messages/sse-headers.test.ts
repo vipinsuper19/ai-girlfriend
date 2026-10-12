@@ -5,6 +5,7 @@ import test from 'node:test';
 import { Test } from '@nestjs/testing';
 
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
+import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
 
@@ -14,6 +15,9 @@ test('SSE stream sends Cache-Control: no-cache', async () => {
         providers: [{
             provide: MessagesService,
             useValue: {
+                async assertCanReply() {
+                    return undefined;
+                },
                 async *createAndStream() {
                     yield { type: 'delta', content: 'hi' };
                 },
@@ -21,6 +25,8 @@ test('SSE stream sends Cache-Control: no-cache', async () => {
         }],
     })
         .overrideGuard(JwtAuthGuard)
+        .useValue({ canActivate: () => true })
+        .overrideGuard(RateLimitGuard)
         .useValue({
             canActivate(context: { switchToHttp(): { getRequest(): { user?: unknown } } }) {
                 context.switchToHttp().getRequest().user = { sub: 1 };

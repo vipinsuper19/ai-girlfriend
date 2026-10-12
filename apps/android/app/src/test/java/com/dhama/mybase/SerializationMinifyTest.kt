@@ -112,6 +112,8 @@ private val programPrefixes = listOf(
     "ReleaseShrinkCanary",
     "ApiCodecKt",
     "ApiStatusException",
+    "ExceptionPrivacyKt",
+    "TransportFailure",
     "SessionTokens",
     "CreateAvatarRequest",
     "AppearanceRequest",

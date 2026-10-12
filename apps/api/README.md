@@ -70,6 +70,28 @@ clients hide the matching controls, so nothing is faked.
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
 | `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
 | `CORS_ORIGIN`, `PORT` | HTTP server |
+| `STORAGE_DRIVER` | `local` (default) or `s3` |
+| `STORAGE_SIGNED_URL_TTL_SECONDS` | Lifetime of a download URL. Default 3600, range 60–86400 |
+| `STORAGE_LOCAL_DIR`, `STORAGE_SIGNING_SECRET` | Local driver. The signing secret falls back to `JWT_ACCESS_SECRET` |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | S3-compatible driver. Required together when `STORAGE_DRIVER=s3` |
+| `TRUST_PROXY_HOPS` | Trusted proxy hops for client IP. Default `1` (Render). `0` uses the socket address |
+| `FREE_TIER_LLM_PERIOD` | `day` (default) or `month`. Free-tier chat cap window, UTC |
+| `FREE_TIER_LLM_MESSAGE_LIMIT` | Successful free-tier replies per window. Default `40`. `unlimited` removes it. `0` blocks new replies |
+| `FREE_TIER_LLM_TOKEN_LIMIT` | Estimated tokens (user text + reply) per window. Default `50000` |
+| `RATE_LIMIT_LOGIN_IP_MAX`, `RATE_LIMIT_LOGIN_IP_WINDOW_SEC` | Login attempts per IP. Default 20 / 15 minutes |
+| `RATE_LIMIT_LOGIN_USER_MAX`, `RATE_LIMIT_LOGIN_USER_WINDOW_SEC` | Login attempts per email. Default 10 / 15 minutes |
+| `RATE_LIMIT_REGISTER_IP_MAX`, `RATE_LIMIT_REGISTER_IP_WINDOW_SEC` | Registrations per IP. Default 10 / hour |
+| `RATE_LIMIT_REGISTER_USER_MAX`, `RATE_LIMIT_REGISTER_USER_WINDOW_SEC` | Registrations per email. Default 5 / hour |
+| `RATE_LIMIT_PASSWORD_RESET_IP_MAX`, `RATE_LIMIT_PASSWORD_RESET_IP_WINDOW_SEC` | Forgot/reset/check per IP. Default 10 / hour |
+| `RATE_LIMIT_PASSWORD_RESET_USER_MAX`, `RATE_LIMIT_PASSWORD_RESET_USER_WINDOW_SEC` | Same routes per email or reset token. Default 5 / hour |
+| `RATE_LIMIT_MESSAGES_IP_MAX`, `RATE_LIMIT_MESSAGES_IP_WINDOW_SEC` | Message send, stream, and regenerate per IP. Default 60 / minute |
+| `RATE_LIMIT_MESSAGES_USER_MAX`, `RATE_LIMIT_MESSAGES_USER_WINDOW_SEC` | Those routes per account. Default 30 / minute |
+
+Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
+
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
+
+A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
 ### Google Play subscriptions
 
@@ -94,11 +116,12 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `PATCH /users/me` | Also takes `memoryPaused` and `notificationsEnabled` |
 | `POST /memories` | Add a memory by hand |
 | `POST /messages/:id/regenerate` | Replace her newest reply |
+| `POST /reports` | Flag an assistant reply. `201` with `{ id }` the first time, `200` with the same id if this person already reported that message. Ten reports per minute per user |
 | `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
 
-Neither auth route is rate limited yet; put a limit in front of `password/forgot` before going public.
+Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it. The cap is checked before the model call and recorded only after a successful reply, so concurrent requests can finish slightly over the limit. That overshoot is accepted for the MVP; the following request is refused.
 
 ### Content safety
 

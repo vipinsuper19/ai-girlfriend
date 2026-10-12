@@ -73,6 +73,8 @@
 -keep class * implements dagger.hilt.internal.GeneratedComponentManagerHolder
 
 # --- Firebase ---
+# Analytics and Crashlytics ship their own consumer rules. These cover startup
+# and the app types #15 added: consent, redacted non-fatals, and scrubbing.
 -keep class com.google.firebase.components.ComponentDiscovery { *; }
 -keep class com.google.firebase.provider.FirebaseInitProvider
 -keep class * implements com.google.firebase.components.ComponentRegistrar
@@ -80,6 +82,15 @@
 -keep class com.dhama.mybase.core.push.PushService { *; }
 -keep class com.dhama.mybase.BaseApplication
 -keep class com.dhama.mybase.MainActivity
+
+# ProductTelemetry.setCollectionConsent has no in-app caller yet. The EU prompt uses it.
+# RedactedNonFatal is private, so the public Exception keep above does not match it.
+-keep class com.dhama.mybase.core.telemetry.ProductTelemetry { *; }
+-keep class com.dhama.mybase.core.telemetry.ProductTelemetryKt { *; }
+-keep class com.dhama.mybase.core.telemetry.RedactedNonFatal { *; }
+-keep class com.dhama.mybase.core.telemetry.TelemetryPrivacyKt { *; }
+-keep class com.dhama.mybase.core.network.ExceptionPrivacyKt { *; }
+-keep class com.dhama.mybase.core.network.TransportFailure { *; }
 
 # --- Room ---
 -keep class com.dhama.mybase.core.db.** { *; }

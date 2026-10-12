@@ -8,12 +8,22 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
+import { publicErrorFields } from '../http-error-fields.js';
+
 interface ErrorResponse {
     success: false;
     statusCode: number;
     message: string | string[];
     error?: string;
     code?: string;
+    feature?: string;
+    limit?: number;
+    used?: number;
+    requested?: number;
+    remaining?: number;
+    period?: string;
+    resetsAt?: string;
+    retryAfterSeconds?: number;
     timestamp: string;
     path: string;
 }
@@ -28,53 +38,75 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const response = context.getResponse<Response>();
         const request = context.getRequest<Request>();
 
-        let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-        let message: string | string[] = 'Internal server error';
-        let error: string | undefined;
-        let code: string | undefined;
-
-        if (exception instanceof HttpException) {
-            statusCode = exception.getStatus();
-
-            const exceptionResponse = exception.getResponse();
-
-            if (typeof exceptionResponse === 'string') {
-                message = exceptionResponse;
+        const errorResponse = buildErrorResponse(exception, request);
+        if (errorResponse.statusCode >= 500 && !(exception instanceof HttpException)) {
+            if (exception instanceof Error) {
+                this.logger.error(
+                    `${request.method} ${request.originalUrl ?? request.url}`,
+                    exception.stack,
+                );
             } else {
-                const responseBody = exceptionResponse as {
-                    message?: string | string[];
-                    error?: string;
-                    code?: string;
-                };
-
-                message = responseBody.message ?? message;
-                error = responseBody.error;
-                if (typeof responseBody.code === 'string') {
-                    code = responseBody.code;
-                }
+                this.logger.error(
+                    `Unknown exception on ${request.method} ${request.originalUrl ?? request.url}`,
+                );
             }
-        } else if (exception instanceof Error) {
-            this.logger.error(
-                `${request.method} ${request.originalUrl ?? request.url}`,
-                exception.stack,
-            );
-        } else {
-            this.logger.error(
-                `Unknown exception on ${request.method} ${request.originalUrl ?? request.url}`,
-            );
         }
 
-        const errorResponse: ErrorResponse = {
-            success: false,
-            statusCode,
-            message,
-            ...(error ? { error } : {}),
-            ...(code ? { code } : {}),
-            timestamp: new Date().toISOString(),
-            path: request.originalUrl ?? request.url,
-        };
-
-        response.status(statusCode).json(errorResponse);
-
+        sendErrorResponse(response, errorResponse);
     }
+}
+
+export function sendException(
+    response: Response,
+    request: Pick<Request, 'originalUrl' | 'url'>,
+    exception: unknown,
+): void {
+    sendErrorResponse(response, buildErrorResponse(exception, request));
+}
+
+function sendErrorResponse(
+    response: Response,
+    errorResponse: ErrorResponse,
+): void {
+    if (typeof errorResponse.retryAfterSeconds === 'number') {
+        response.setHeader('Retry-After', String(errorResponse.retryAfterSeconds));
+    }
+    response.status(errorResponse.statusCode).json(errorResponse);
+}
+
+function buildErrorResponse(
+    exception: unknown,
+    request: Pick<Request, 'originalUrl' | 'url'>,
+): ErrorResponse {
+    let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+    let message: string | string[] = 'Internal server error';
+    let error: string | undefined;
+    let extra: Record<string, string | number> = {};
+
+    if (exception instanceof HttpException) {
+        statusCode = exception.getStatus();
+        const exceptionResponse = exception.getResponse();
+
+        if (typeof exceptionResponse === 'string') {
+            message = exceptionResponse;
+        } else {
+            const responseBody = exceptionResponse as {
+                message?: string | string[];
+                error?: string;
+            };
+            message = responseBody.message ?? message;
+            error = responseBody.error;
+            extra = publicErrorFields(responseBody);
+        }
+    }
+
+    return {
+        success: false,
+        statusCode,
+        message,
+        ...(error ? { error } : {}),
+        ...extra,
+        timestamp: new Date().toISOString(),
+        path: request.originalUrl ?? request.url,
+    };
 }

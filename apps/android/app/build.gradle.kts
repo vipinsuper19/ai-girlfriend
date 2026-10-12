@@ -13,8 +13,8 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.google.gms.google.services)
-    alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.google.gms.google.services) apply false
+    alias(libs.plugins.firebase.crashlytics) apply false
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.kotlin.serialization)
@@ -224,13 +224,9 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
             // R8 is the shrinker AGP runs when minification is enabled.
-            // Plugin 3 registers this as the firebaseCrashlytics build-type extension.
-            // mapping.txt is uploaded unless disableMappingUpload() is true.
+            // Mapping upload is set after the Crashlytics plugin is applied below.
             isMinifyEnabled = true
             isShrinkResources = true
-            configure<CrashlyticsExtension> {
-                mappingFileUploadEnabled = !disableMappingUpload()
-            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -356,11 +352,13 @@ dependencies {
     implementation(libs.androidx.ui.text.google.fonts)
     implementation(libs.compose.navigation)
 
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.auth)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
-    implementation(libs.firebase.database)
     implementation(libs.firebase.messaging)
     implementation(libs.androidx.datastore)
     implementation(libs.media3.exoplayer)
@@ -390,4 +388,24 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Google Services and Crashlytics need google-services.json. Skip both when it is
+// absent so a checkout without that file still configures and builds. No secrets are
+// generated here.
+val googleServicesFile = file("google-services.json")
+if (googleServicesFile.isFile) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+    // Plugin 3 adds CrashlyticsExtension only once the plugin is applied.
+    // Release uploads mapping.txt unless disableMappingUpload() is true.
+    android {
+        buildTypes {
+            getByName("release") {
+                configure<CrashlyticsExtension> {
+                    mappingFileUploadEnabled = !disableMappingUpload()
+                }
+            }
+        }
+    }
 }
