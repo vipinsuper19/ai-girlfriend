@@ -1,0 +1,49 @@
+# Play internal track upload.
+# DO NOT ENABLE until Vipin approves v1. The job is skipped unless the repo
+# variable PLAY_UPLOAD_ENABLED is 'true', and it only runs when started by hand.
+# Required secrets: PLAY_SERVICE_ACCOUNT_JSON, KEYSTORE_BASE64,
+# KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
+# Release signing is read from KEYSTORE_PATH in apps/android/app/build.gradle.kts.
+# That wiring lands with the API/Android CI change; without it this bundle is unsigned.
+name: Play internal upload
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    if: vars.PLAY_UPLOAD_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required secrets
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$PLAY_JSON" ] || { echo "::error::PLAY_SERVICE_ACCOUNT_JSON missing"; exit 1; }
+          [ -n "$KEYSTORE_BASE64" ] || { echo "::error::KEYSTORE_BASE64 missing"; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+      - name: bundleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: chmod +x gradlew && ./gradlew bundleRelease
+      - uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.dhama.mybase
+          releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
+          track: internal
+          status: draft
