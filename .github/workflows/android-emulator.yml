@@ -65,7 +65,7 @@ jobs:
       - name: Start a virtual display
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y xvfb libpulse0
           nohup Xvfb :99 -screen 0 1080x2400x24 >/tmp/xvfb.log 2>&1 &
           sleep 1
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
