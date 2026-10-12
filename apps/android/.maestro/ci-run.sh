@@ -14,6 +14,23 @@ mkdir -p "${artifacts}"
 # make the script exit non-zero. Any other failure does.
 log="${DIR}/out/run-all.log"
 
+# Debug builds type yyyy-MM-dd, so the flows do not use the locale-sensitive picker.
+adb wait-for-device
+echo "Waiting for sys.boot_completed"
+boot_deadline=$((SECONDS + 120))
+while (( SECONDS < boot_deadline )); do
+  boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+  if [[ "${boot}" == "1" ]]; then
+    break
+  fi
+  sleep 2
+done
+echo "boot_completed=${boot:-}"
+adb shell input keyevent 82
+adb shell settings put global window_animation_scale 0
+adb shell settings put global transition_animation_scale 0
+adb shell settings put global animator_duration_scale 0
+
 # A cold API 34 emulator ANRs Pixel Launcher and leaves that dialog over the
 # app, so Maestro never sees welcome_get_started. Stop the launcher, and if
 # the dialog is already up, tap Close app (pixel_6, 1080x2400).
@@ -138,11 +155,45 @@ PY
 classify=$?
 set -e
 
+shots="${DIR}/out/screenshots"
+set +e
+python3 - "${shots}" "${summary}" <<'PY'
+import pathlib, sys
+folder = pathlib.Path(sys.argv[1])
+summary = pathlib.Path(sys.argv[2])
+pngs = sorted(folder.glob("*.png")) if folder.is_dir() else []
+lines = ["", "## Screenshots", ""]
+if not pngs:
+    lines.append("No PNGs in out/screenshots.")
+    bad = True
+else:
+    sizes = [(path.stat().st_size, path.name) for path in pngs]
+    unique = {size for size, _name in sizes}
+    lines.append(f"{len(pngs)} files, {len(unique)} distinct sizes.")
+    for size, name in sizes:
+        lines.append(f"- {size} bytes: {name}")
+    black = len(unique) == 1 and next(iter(unique)) <= 10000
+    if black:
+        lines.append("Screenshots look like the same black frame.")
+        bad = True
+    else:
+        lines.append("Screenshots differ in size, so they are not one black frame.")
+        bad = False
+text = "\n".join(lines) + "\n"
+print(text)
+summary.parent.mkdir(parents=True, exist_ok=True)
+with summary.open("a") as handle:
+    handle.write(text)
+sys.exit(1 if bad else 0)
+PY
+shots_status=$?
+set -e
+
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   cat "${summary}" >> "${GITHUB_STEP_SUMMARY}"
 fi
 
-if [[ "${classify}" -ne 0 ]]; then
+if [[ "${classify}" -ne 0 || "${shots_status}" -ne 0 ]]; then
   exit 1
 fi
 if [[ "${run_status}" -ne 0 ]]; then
