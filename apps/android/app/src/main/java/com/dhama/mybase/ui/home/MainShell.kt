@@ -99,6 +99,7 @@ private enum class MainTab(val label: String, val icon: ImageVector) {
 @Composable
 fun MainShell(
     onLoggedOut: () -> Unit,
+    onSignIn: () -> Unit,
     onArchived: () -> Unit,
     viewModel: CompanionHomeViewModel = hiltViewModel(),
 ) {
@@ -128,6 +129,7 @@ fun MainShell(
         scope.launch { viewModel.loggedOut.collect { onLoggedOut() } }
         scope.launch { settings.archived.collect { onArchived() } }
         scope.launch { settings.accountDeleted.collect { onLoggedOut() } }
+        scope.launch { settings.signInRequired.collect { onSignIn() } }
         scope.launch {
             settings.archiveFailed.collect { message ->
                 snackbarHostState.showSnackbar(message)

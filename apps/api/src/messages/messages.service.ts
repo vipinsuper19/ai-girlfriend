@@ -11,8 +11,10 @@ import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
 import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
+import { safetyNoticeOf } from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
+import { estimateTokens } from '../usage/estimate-tokens.js';
 import { UsageService } from '../usage/usage.service.js';
 
 @Injectable()
@@ -42,12 +44,7 @@ export class MessagesService {
             conversationId,
         );
 
-        await this.usageService.consume(
-            numericUserId,
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: numericConversationId },
-        );
+        await this.assertWithinLlmCap(numericUserId);
 
         const now = new Date().toISOString();
 
@@ -79,17 +76,35 @@ export class MessagesService {
                 conversationId,
             );
 
-        void this.memoryExtractorService.extractFromConversation(
-            numericUserId,
-            conversation.companionId,
-            numericConversationId,
-            message.content,
-            assistantMessage.content,
-        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.chargeSuccessfulReply(
+                numericUserId,
+                numericConversationId,
+                dto.content,
+                messageContent(assistantMessage),
+            );
+            void this.memoryExtractorService.extractFromConversation(
+                numericUserId,
+                conversation.companionId,
+                numericConversationId,
+                message.content,
+                assistantMessage.content,
+            );
+        }
+
+        let userMessage = message;
+        if (safety && message?.id != null) {
+            const fresh = await this.db.orm.public.Message
+                .where({ id: message.id })
+                .first();
+            if (fresh && fresh.id === message.id) userMessage = fresh;
+        }
 
         return {
-            userMessage: message,
+            userMessage,
             assistantMessage,
+            ...(safety ? { safety } : {}),
         };
     }
 
@@ -238,35 +253,43 @@ export class MessagesService {
             throw new BadRequestException(problem);
         }
 
-        await this.usageService.consume(
-            numericUserId,
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: conversation.id, source: 'regenerate' },
-        );
+        await this.assertWithinLlmCap(numericUserId);
 
         const now = new Date().toISOString();
         await this.db.orm.public.Message
             .where({ id: numericMessageId })
             .update({ deletedAt: now, updatedAt: now });
 
+        let assistantMessage: { content?: string; metadata?: unknown };
         try {
-            const assistantMessage =
+            assistantMessage =
                 await this.aiService.generateResponse(
                     numericUserId,
                     conversation.id,
                 );
-
-            return {
-                replacedId: numericMessageId,
-                assistantMessage,
-            };
         } catch (error) {
             await this.db.orm.public.Message
                 .where({ id: numericMessageId })
                 .update({ deletedAt: null, updatedAt: new Date().toISOString() });
             throw error;
         }
+
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.chargeSuccessfulReply(
+                numericUserId,
+                conversation.id,
+                '',
+                messageContent(assistantMessage),
+                { source: 'regenerate' },
+            );
+        }
+
+        return {
+            replacedId: numericMessageId,
+            assistantMessage,
+            ...(safety ? { safety } : {}),
+        };
     }
 
     private async getOwnedConversation(
@@ -308,11 +331,26 @@ export class MessagesService {
         return conversation;
     }
 
+    /**
+     * Ownership and the free-tier cap, before any bytes are flushed.
+     * The stream route uses `@Res()`, so this has to throw while the
+     * status code can still be a normal JSON error.
+     */
+    async assertCanReply(
+        userId: string,
+        conversationId: string,
+    ) {
+        await this.getOwnedConversation(userId, conversationId);
+        await this.assertWithinLlmCap(Number(userId));
+    }
+
     async *createAndStream(
         userId: string,
         conversationId: string,
         dto: CreateMessageDto,
+        signal?: AbortSignal,
     ) {
+        const numericUserId = Number(userId);
         const numericConversationId =
             Number(conversationId);
 
@@ -321,12 +359,7 @@ export class MessagesService {
             conversationId,
         );
 
-        await this.usageService.consume(
-            Number(userId),
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: numericConversationId },
-        );
+        await this.assertWithinLlmCap(numericUserId);
 
         const now = new Date().toISOString();
 
@@ -360,9 +393,82 @@ export class MessagesService {
             const event of this.aiService.streamResponse(
                 userId,
                 conversationId,
+                { signal },
             )
         ) {
+            if (event.type === 'done') {
+                const notice =
+                    event.safety ??
+                    safetyNoticeOf(
+                        event.message as { metadata?: unknown },
+                    );
+                if (!notice) {
+                    await this.chargeSuccessfulReply(
+                        numericUserId,
+                        numericConversationId,
+                        dto.content,
+                        messageContent(event.message),
+                    );
+                }
+            }
+            if (signal?.aborted) return;
             yield event;
         }
     }
+
+    /**
+     * Check only. `chargeSuccessfulReply` writes the row after the reply exists.
+     * Two requests can both pass this check and both finish, so a free account
+     * can land slightly over the cap. That overshoot is an accepted MVP
+     * limitation: there is no reservation row and no row lock.
+     */
+    private async assertWithinLlmCap(userId: number) {
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.MESSAGES,
+            1,
+        );
+        await this.usageService.check(
+            userId,
+            UsageFeatureDto.TEXT_TOKENS,
+            1,
+        );
+    }
+
+    private async chargeSuccessfulReply(
+        userId: number,
+        conversationId: number,
+        userContent: string,
+        assistantContent: string,
+        metadata: Record<string, unknown> = {},
+    ) {
+        const details = { conversationId, ...metadata };
+        await this.usageService.charge(
+            userId,
+            UsageFeatureDto.MESSAGES,
+            1,
+            details,
+        );
+        const tokens = estimateTokens(userContent) + estimateTokens(assistantContent);
+        if (tokens > 0) {
+            await this.usageService.charge(
+                userId,
+                UsageFeatureDto.TEXT_TOKENS,
+                tokens,
+                details,
+            );
+        }
+    }
+}
+
+function messageContent(message: unknown): string {
+    if (
+        typeof message === 'object'
+        && message !== null
+        && 'content' in message
+        && typeof message.content === 'string'
+    ) {
+        return message.content;
+    }
+    return '';
 }

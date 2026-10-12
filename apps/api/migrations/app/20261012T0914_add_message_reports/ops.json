@@ -1,0 +1,365 @@
+[
+  {
+    "id": "table.messageReport",
+    "label": "Create table \"messageReport\"",
+    "summary": "Creates table \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"messageReport\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"messageReport\"",
+        "sql": "CREATE TABLE \"public\".\"messageReport\" (\n  \"content\" text,\n  \"conversationId\" int4 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"messageId\" int4 NOT NULL,\n  \"note\" text,\n  \"reason\" text NOT NULL,\n  \"status\" text DEFAULT 'PENDING' NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"messageReport_reason_check_03d00617\" CHECK (\"reason\" IN ('HARMFUL', 'SEXUAL', 'HATE', 'INACCURATE', 'OTHER')),\n  CONSTRAINT \"messageReport_status_check_70734042\" CHECK (\"status\" IN ('PENDING', 'REVIEWED', 'DISMISSED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"messageReport\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.messageReport.messageReport_userId_messageId_key",
+    "label": "Add unique constraint on \"messageReport\" (userId, messageId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "messageReport_userId_messageId_key",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"messageReport_userId_messageId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_userId_messageId_key",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"messageReport_userId_messageId_key\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\" ADD CONSTRAINT \"messageReport_userId_messageId_key\" UNIQUE (\"userId\", \"messageId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"messageReport_userId_messageId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_userId_messageId_key",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.messageReport.messageReport_conversationId_idx_669215a6",
+    "label": "Create index \"messageReport_conversationId_idx_669215a6\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "messageReport_conversationId_idx_669215a6",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"messageReport_conversationId_idx_669215a6\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_conversationId_idx_669215a6\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"messageReport_conversationId_idx_669215a6\"",
+        "sql": "CREATE INDEX \"messageReport_conversationId_idx_669215a6\" ON \"public\".\"messageReport\" (\"conversationId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"messageReport_conversationId_idx_669215a6\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_conversationId_idx_669215a6\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.messageReport.messageReport_messageId_idx_3cdded8d",
+    "label": "Create index \"messageReport_messageId_idx_3cdded8d\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "messageReport_messageId_idx_3cdded8d",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"messageReport_messageId_idx_3cdded8d\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_messageId_idx_3cdded8d\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"messageReport_messageId_idx_3cdded8d\"",
+        "sql": "CREATE INDEX \"messageReport_messageId_idx_3cdded8d\" ON \"public\".\"messageReport\" (\"messageId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"messageReport_messageId_idx_3cdded8d\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_messageId_idx_3cdded8d\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.messageReport.messageReport_status_createdAt_idx_58610442",
+    "label": "Create index \"messageReport_status_createdAt_idx_58610442\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "messageReport_status_createdAt_idx_58610442",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"messageReport_status_createdAt_idx_58610442\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_status_createdAt_idx_58610442\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"messageReport_status_createdAt_idx_58610442\"",
+        "sql": "CREATE INDEX \"messageReport_status_createdAt_idx_58610442\" ON \"public\".\"messageReport\" (\"status\", \"createdAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"messageReport_status_createdAt_idx_58610442\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_status_createdAt_idx_58610442\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.messageReport.messageReport_userId_idx_a489d58a",
+    "label": "Create index \"messageReport_userId_idx_a489d58a\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "messageReport_userId_idx_a489d58a",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"messageReport_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"messageReport_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"messageReport_userId_idx_a489d58a\" ON \"public\".\"messageReport\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"messageReport_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"messageReport_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.messageReport.messageReport_userId_fkey",
+    "label": "Add foreign key \"messageReport_userId_fkey\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "messageReport_userId_fkey",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"messageReport_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_userId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"messageReport_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\"\nADD CONSTRAINT \"messageReport_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"messageReport_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_userId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.messageReport.messageReport_messageId_fkey",
+    "label": "Add foreign key \"messageReport_messageId_fkey\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "messageReport_messageId_fkey",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"messageReport_messageId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_messageId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"messageReport_messageId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\"\nADD CONSTRAINT \"messageReport_messageId_fkey\"\nFOREIGN KEY (\"messageId\")\nREFERENCES \"public\".\"message\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"messageReport_messageId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_messageId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.messageReport.messageReport_conversationId_fkey",
+    "label": "Add foreign key \"messageReport_conversationId_fkey\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "messageReport_conversationId_fkey",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"messageReport_conversationId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_conversationId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"messageReport_conversationId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\"\nADD CONSTRAINT \"messageReport_conversationId_fkey\"\nFOREIGN KEY (\"conversationId\")\nREFERENCES \"public\".\"conversation\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"messageReport_conversationId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_conversationId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  }
+]

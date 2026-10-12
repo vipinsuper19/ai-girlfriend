@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 
+import { isAbortError } from '../abort-error.js';
 import type {
     AiChatMessage,
     ChatProvider,
@@ -48,11 +49,10 @@ export class GeminiChatProvider implements ChatProvider {
                 await this.client.models.generateContent({
                     model: this.model,
                     contents,
-                    config: systemInstruction
-                        ? {
-                            systemInstruction,
-                        }
-                        : undefined,
+                    config: {
+                        ...(systemInstruction ? { systemInstruction } : {}),
+                        abortSignal: options.signal,
+                    },
                 });
 
             const content = response.text?.trim();
@@ -65,6 +65,10 @@ export class GeminiChatProvider implements ChatProvider {
 
             return content;
         } catch (error) {
+            if (options.signal?.aborted || isAbortError(error)) {
+                throw error;
+            }
+
             console.error(
                 'Gemini chat generation failed',
                 error,
@@ -91,14 +95,14 @@ export class GeminiChatProvider implements ChatProvider {
                 await this.client.models.generateContentStream({
                     model: this.model,
                     contents,
-                    config: systemInstruction
-                        ? {
-                            systemInstruction,
-                        }
-                        : undefined,
+                    config: {
+                        ...(systemInstruction ? { systemInstruction } : {}),
+                        abortSignal: options.signal,
+                    },
                 });
 
             for await (const chunk of stream) {
+                if (options.signal?.aborted) return;
                 const text = chunk.text;
 
                 if (text) {
@@ -106,6 +110,10 @@ export class GeminiChatProvider implements ChatProvider {
                 }
             }
         } catch (error) {
+            if (options.signal?.aborted || isAbortError(error)) {
+                throw error;
+            }
+
             console.error(
                 'Gemini streaming generation failed',
                 error,

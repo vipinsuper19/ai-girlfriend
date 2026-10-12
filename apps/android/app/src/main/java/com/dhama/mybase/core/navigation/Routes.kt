@@ -18,6 +18,9 @@ data object SignUp
 @Serializable
 data object Login
 
+@Serializable
+data object AgeConfirm
+
 // Top-level tabs
 @Serializable
 data object Home

@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ModerationService } from '../moderation/moderation.service.js';
+import type { PersonaDraft } from '../moderation/safety-policy.js';
 import type { CreateAvatarDto } from './dto/create-avatar.dto.js';
 import type { UpdateAvatarDto } from './dto/update-avatar.dto.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -27,6 +29,7 @@ export class AvatarsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly storageService: StorageService,
+        private readonly moderation: ModerationService,
     ) { }
 
     private get db(): any {
@@ -41,6 +44,17 @@ export class AvatarsService {
         const appearance = checked(appearanceFields(dto.appearance));
         const personality = checked(personalityFields(dto.personality));
         const voice = checked(voiceFields(dto.voice));
+
+        await this.moderation.assertSafePersona(
+            {
+                name: dto.name,
+                systemPrompt: dto.systemPrompt,
+                greeting: dto.greeting,
+                personality: dto.personality,
+                appearance: dto.appearance,
+            },
+            { userId: numericUserId },
+        );
 
         /*
          * Prisma Next generated contract API.
@@ -179,9 +193,14 @@ export class AvatarsService {
         const numericUserId = Number(userId);
         const numericCompanionId = Number(companionId);
 
-        await this.findOne(
+        const existing = await this.findOne(
             numericUserId,
             numericCompanionId,
+        );
+
+        await this.moderation.assertSafePersona(
+            mergedPersona(existing, dto),
+            { userId: numericUserId },
         );
 
         const appearance = dto.appearance
@@ -456,4 +475,32 @@ function checked(pick: FieldPick): Record<string, any> {
         throw new BadRequestException(pick.problem);
     }
     return pick.data;
+}
+
+function mergedPersona(
+    existing: {
+        name?: string | null;
+        systemPrompt?: string | null;
+        greeting?: string | null;
+        personality?: PersonaDraft['personality'];
+        appearance?: PersonaDraft['appearance'];
+    },
+    dto: UpdateAvatarDto,
+): PersonaDraft {
+    return {
+        name: dto.name ?? existing.name,
+        systemPrompt:
+            dto.systemPrompt !== undefined
+                ? dto.systemPrompt
+                : existing.systemPrompt,
+        greeting: dto.greeting !== undefined ? dto.greeting : existing.greeting,
+        personality: {
+            ...existing.personality,
+            ...dto.personality,
+        },
+        appearance: {
+            ...existing.appearance,
+            ...dto.appearance,
+        },
+    };
 }

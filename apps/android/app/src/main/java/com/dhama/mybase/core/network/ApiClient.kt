@@ -1,6 +1,13 @@
 package com.dhama.mybase.core.network
 
+import com.dhama.mybase.core.age.AGE_PATCH_PATH
+import com.dhama.mybase.core.age.SEND_AGE_TO_API
+import com.dhama.mybase.core.age.googleAuthRequestJson
+import com.dhama.mybase.core.age.registerRequestJson
+import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
@@ -43,10 +50,15 @@ class ApiClient(
 
     fun origin(): String = apiOrigin(baseUrl)
 
-    suspend fun establish(email: String, password: String) {
+    suspend fun establish(
+        email: String,
+        password: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ) {
         val normalized = email.trim().lowercase()
         val tokens = attempt { login(normalized, password) }
-            ?: attempt { register(normalized, password, sessionDisplayName(normalized)) }
+            ?: attempt { register(normalized, password, sessionDisplayName(normalized), dateOfBirth, ageConfirmedAt) }
         if (tokens != null) store.write(tokens) else store.clear()
     }
 
@@ -222,8 +234,16 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "memories$query", null, access)) }
     }
 
+    /**
+     * DELETE /users/me.
+     * A 404 from this call counts as success in [com.dhama.mybase.core.data.deleteServerAccount].
+     * A 401 after the refresh token is rejected keeps the session store intact and is reported
+     * as [ACCOUNT_DELETE_SIGN_IN_CODE] so the app can sign Firebase out before clearing it.
+     */
     suspend fun deleteAccount() {
-        withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
+        withAuth(keepSessionOnRefreshFailure = true) { access ->
+            execute(authed("DELETE", "users/me", null, access))
+        }
     }
 
     suspend fun usageSummary(): RemoteUsageSummary {
@@ -296,11 +316,27 @@ class ApiClient(
     }
 
     /** Trades a Firebase Google ID token for an API session. Returns false when the API refuses it. */
-    suspend fun establishWithGoogle(idToken: String): Boolean {
-        val payload = json.encodeToString(GoogleBody(idToken))
+    suspend fun establishWithGoogle(
+        idToken: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ): Boolean {
+        val payload = googleAuthRequestJson(idToken, dateOfBirth, ageConfirmedAt, SEND_AGE_TO_API, json)
         val tokens = attempt { unwrapData<SessionTokens>(execute(authed("POST", "auth/google", payload, null)), json) }
         if (tokens != null) store.write(tokens) else store.clear()
         return tokens != null
+    }
+
+    /**
+     * PATCH users/me/age. No request is made while [SEND_AGE_TO_API] is false,
+     * so the date of birth cannot be logged from a body that was never sent.
+     */
+    suspend fun patchAge(dateOfBirth: String, ageConfirmedAt: String) {
+        if (!SEND_AGE_TO_API) return
+        val payload = agePatchJson(dateOfBirth, ageConfirmedAt, json)
+        withAuth { access ->
+            execute(authed("PATCH", AGE_PATCH_PATH, payload, access))
+        }
     }
 
     suspend fun regenerate(messageId: Int): RegeneratedReply {
@@ -380,26 +416,44 @@ class ApiClient(
         return unwrapData(execute(jsonPost("auth/login", LoginBody(email, password))), json)
     }
 
-    private suspend fun register(email: String, password: String, displayName: String): SessionTokens {
-        return unwrapData(
-            execute(jsonPost("auth/register", RegisterBody(email, password, displayName))),
+    private suspend fun register(
+        email: String,
+        password: String,
+        displayName: String,
+        dateOfBirth: String?,
+        ageConfirmedAt: String?,
+    ): SessionTokens {
+        val payload = registerRequestJson(
+            email,
+            password,
+            displayName,
+            dateOfBirth,
+            ageConfirmedAt,
+            SEND_AGE_TO_API,
             json,
         )
+        return unwrapData(execute(authed("POST", "auth/register", payload, null)), json)
     }
 
-    private suspend fun <T> withAuth(block: suspend (String) -> T): T {
+    private suspend fun <T> withAuth(
+        keepSessionOnRefreshFailure: Boolean = false,
+        block: suspend (String) -> T,
+    ): T {
         val existing = store.read()?.accessToken
             ?: throw ApiStatusException(401, "Sign in with email to reach her on the server.", null)
         try {
             return block(existing)
         } catch (error: ApiStatusException) {
             if (error.status != 401) throw error
-            val next = refresh(existing) ?: throw error
-            return block(next)
+            val next = refresh(existing, clearOnFailure = !keepSessionOnRefreshFailure)
+            if (next == null && keepSessionOnRefreshFailure) {
+                throw ApiStatusException(401, ACCOUNT_DELETE_SIGN_IN, ACCOUNT_DELETE_SIGN_IN_CODE)
+            }
+            return block(next ?: throw error)
         }
     }
 
-    private suspend fun refresh(failedAccess: String): String? {
+    private suspend fun refresh(failedAccess: String, clearOnFailure: Boolean = true): String? {
         return refreshMutex.withLock {
             val current = store.read()
             if (current != null && current.accessToken != failedAccess) {
@@ -413,7 +467,8 @@ class ApiClient(
                 )
             }
             if (renewed == null) {
-                store.clear()
+                // Account deletion leaves the store until Firebase is signed out.
+                if (clearOnFailure) store.clear()
                 null
             } else {
                 store.write(renewed)
@@ -425,7 +480,6 @@ class ApiClient(
     private fun jsonPost(path: String, body: Any, access: String? = null): Request {
         val payload = when (body) {
             is LoginBody -> json.encodeToString(body)
-            is RegisterBody -> json.encodeToString(body)
             is RefreshBody -> json.encodeToString(body)
             is PasswordBody -> json.encodeToString(body)
             is CreateAvatarRequest -> json.encodeToString(body)
@@ -480,9 +534,6 @@ private suspend fun <T> attempt(block: suspend () -> T): T? {
 private data class LoginBody(val email: String, val password: String)
 
 @Serializable
-private data class RegisterBody(val email: String, val password: String, val displayName: String)
-
-@Serializable
 private data class RefreshBody(val refreshToken: String)
 
 @Serializable
@@ -505,9 +556,6 @@ private data class DisplayNameBody(val displayName: String)
 
 @Serializable
 private data class SynthesizeBody(val companionId: Int, val text: String)
-
-@Serializable
-private data class GoogleBody(val idToken: String)
 
 @Serializable
 private data class NewMemoryBody(val companionId: Int, val content: String, val type: String)
