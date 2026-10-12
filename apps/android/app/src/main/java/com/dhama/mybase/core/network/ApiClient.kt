@@ -1,6 +1,7 @@
 package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.ReportMessageBody
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
@@ -301,6 +302,15 @@ class ApiClient(
         val tokens = attempt { unwrapData<SessionTokens>(execute(authed("POST", "auth/google", payload, null)), json) }
         if (tokens != null) store.write(tokens) else store.clear()
         return tokens != null
+    }
+
+    /**
+     * `POST /reports`. apps/api has no reports route yet; [ReportMessageBody] is the inferred contract.
+     */
+    suspend fun reportMessage(body: ReportMessageBody) {
+        withAuth { access ->
+            execute(authed("POST", "reports", json.encodeToString(body), access))
+        }
     }
 
     suspend fun regenerate(messageId: Int): RegeneratedReply {
