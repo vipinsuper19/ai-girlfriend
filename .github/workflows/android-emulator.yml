@@ -111,16 +111,7 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           working-directory: apps/android
-          script: |
-            chmod +x gradlew
-            status=0
-            ./gradlew connectedDebugAndroidTest --stacktrace \
-              -PAPI_BASE_URL="$API_BASE_URL" \
-              -Pandroid.testInstrumentationRunnerArguments.apiBaseUrl="$API_BASE_URL" || status=$?
-            mkdir -p "$GITHUB_WORKSPACE/emulator-artifacts"
-            adb logcat -d > "$GITHUB_WORKSPACE/emulator-artifacts/logcat.txt" || true
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/emulator-artifacts/screen.png" || true
-            exit "$status"
+          script: bash scripts/connected-android-test.sh
 
       - name: Upload screenshots and logcat
         if: always()
