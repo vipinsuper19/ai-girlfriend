@@ -1,5 +1,6 @@
 package com.dhama.mybase.di
 
+import com.dhama.mybase.core.data.AgeLocalStore
 import com.dhama.mybase.core.data.AuthRepoImpl
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.network.ApiClient
@@ -16,8 +17,8 @@ object AuthModule {
 
     @Provides
     @Singleton
-    fun provideAuthRepository(api: ApiClient): AuthRepository {
-        return AuthRepoImpl(api)
+    fun provideAuthRepository(api: ApiClient, ageLocal: AgeLocalStore): AuthRepository {
+        return AuthRepoImpl(api, ageLocal)
     }
 
 }

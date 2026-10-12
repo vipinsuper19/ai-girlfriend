@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.util.CoilUtils.result
 import com.dhama.mybase.R
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.age.redactAge
 import com.dhama.mybase.core.data.AgeAttestationStore
 import com.dhama.mybase.core.data.DataStoreRepo
@@ -132,6 +133,7 @@ class OnBoardingViewModel @Inject constructor(
     }
 
     fun sendOtp(phoneNumber: String, activity: Activity) {
+        if (!FeatureFlags.build.phoneSignIn) return
         viewModelScope.launch {
             _uiState.value = AuthState.Loading
             authRepository.sendOtp(phoneNumber, activity, callbacks)
@@ -139,6 +141,7 @@ class OnBoardingViewModel @Inject constructor(
     }
 
     fun signInWithOtp(verificationId: String, otp: String) {
+        if (!FeatureFlags.build.phoneSignIn) return
         viewModelScope.launch {
             authRepository.signInWithOtp(verificationId, otp)
                 .collect { state -> _uiState.value = state }

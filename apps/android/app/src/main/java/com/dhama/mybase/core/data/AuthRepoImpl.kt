@@ -7,6 +7,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.age.redactAge
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.model.AuthState
@@ -37,6 +38,7 @@ import kotlin.coroutines.suspendCoroutine
 
 class AuthRepoImpl(
     private val api: ApiClient,
+    private val ageLocal: AgeLocalStore,
 ) : AuthRepository {
 
     private val tag = "AuthRepository"
@@ -220,6 +222,7 @@ class AuthRepoImpl(
 
     override suspend fun sendOtp(phoneNumber: String, activity: Activity,
                                  callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks) {
+        if (!FeatureFlags.build.phoneSignIn) return
 
         val options = PhoneAuthOptions.newBuilder(auth)
             .setPhoneNumber(phoneNumber)
@@ -232,6 +235,10 @@ class AuthRepoImpl(
     }
 
     override suspend fun signInWithOtp(verificationId: String, otp: String): Flow<AuthState> = flow {
+        if (!FeatureFlags.build.phoneSignIn) {
+            emit(AuthState.Initial)
+            return@flow
+        }
         emit(AuthState.Loading)
         try {
             val credential = PhoneAuthProvider.getCredential(verificationId, otp)
@@ -247,19 +254,26 @@ class AuthRepoImpl(
 //        credentialManager.clearCredentialState(
 //            ClearCredentialStateRequest()
 //        )
-        api.clear()
+        try {
+            api.clear()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Signing out still removes the local session.
+        }
+        ageLocal.clear()
         auth.signOut()
     }
 
     override suspend fun deleteRemoteAccount() {
-        if (!api.hasSession()) return
         try {
-            api.deleteAccount()
+            if (api.hasSession()) api.deleteAccount()
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             // Sign-out still clears this phone when the server account cannot be removed.
         }
+        ageLocal.clear()
     }
 
 }

@@ -51,9 +51,6 @@ fun AppNavHost(
         composable<Welcome> {
             WelcomeScreen(
                 onGetStarted = { navController.navigate(SignUp) },
-                onSkip = {
-                    navController.navigate(Onboarding)
-                },
                 onLogin = { navController.navigate(Login) }
             )
         }

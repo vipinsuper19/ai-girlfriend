@@ -10,9 +10,7 @@ import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.utils.PreferencesKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -26,8 +24,14 @@ class AgeConfirmViewModel @Inject constructor(
     private val ageAttestation: AgeAttestationStore,
 ) : ViewModel() {
 
-    val storedDateOfBirth = dataStoreRepo.getString(PreferencesKeys.DATE_OF_BIRTH, false)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    private val _storedDateOfBirth = MutableStateFlow("")
+    val storedDateOfBirth = _storedDateOfBirth.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _storedDateOfBirth.value = ageAttestation.read().dateOfBirth
+        }
+    }
 
     private val _saving = MutableStateFlow(false)
     val saving = _saving.asStateFlow()
@@ -43,9 +47,10 @@ class AgeConfirmViewModel @Inject constructor(
             _saving.value = true
             try {
                 val confirmedAt = Instant.now().toString()
-                ageAttestation.save(dateOfBirth, confirmedAt)
-                ageAttestation.pushIfEnabled(dateOfBirth, confirmedAt)
-                _confirmed.value = true
+                if (ageAttestation.save(dateOfBirth, confirmedAt)) {
+                    ageAttestation.pushIfEnabled(dateOfBirth, confirmedAt)
+                    _confirmed.value = true
+                }
             } catch (error: CancellationException) {
                 throw error
             } finally {

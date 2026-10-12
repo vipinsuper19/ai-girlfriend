@@ -86,10 +86,10 @@ import com.dhama.mybase.core.age.dateOfBirthFromUtcMillis
 import com.dhama.mybase.core.age.evaluateAgeGate
 import com.dhama.mybase.core.age.formatDateOfBirth
 import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
-import com.dhama.mybase.core.auth.PHONE_SIGN_IN_ENABLED
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
+import com.dhama.mybase.core.FeatureFlags
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -104,7 +104,7 @@ fun SignUpScreen(
     onLogin: () -> Unit,
     viewModel: OnBoardingViewModel
 ) {
-    var mobileSignUp by rememberSaveable { mutableStateOf(PHONE_SIGN_IN_ENABLED) }
+    var mobileSignUp by rememberSaveable { mutableStateOf(FeatureFlags.build.phoneSignIn) }
     val authState by viewModel.authState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -197,7 +197,7 @@ fun SignUpContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val showPhoneForm = PHONE_SIGN_IN_ENABLED && mobileSignUp
+    val showPhoneForm = FeatureFlags.build.phoneSignIn && mobileSignUp
     val dateOfBirth = dateOfBirthIso.takeIf { it.isNotEmpty() }?.let(LocalDate::parse)
     val ageDecision = evaluateAgeGate(confirmedAdult, dateOfBirth, LocalDate.now())
     val dobMessage = ageDecision.dateOfBirthMessage?.takeIf { dateOfBirth != null || attempted }
@@ -582,11 +582,11 @@ fun SignUpContent(
                     val gate = evaluateAgeGate(confirmedAdult, birth, LocalDate.now())
                     if (gate.allowed && birth != null) googleSignIn(birth.toString())
                 }
-                if (PHONE_SIGN_IN_ENABLED && mobileSignUp) {
+                if (showPhoneForm) {
                     SocialLoginButton(iconRes = R.drawable.outline_mail_24, "Sign up with email") {
                         updateMobileSignUp(false)
                     }
-                } else if (PHONE_SIGN_IN_ENABLED) {
+                } else if (FeatureFlags.build.phoneSignIn) {
                     SocialLoginButton(
                         iconRes = R.drawable.baseline_phone_24,
                         "Sign up with mobile"

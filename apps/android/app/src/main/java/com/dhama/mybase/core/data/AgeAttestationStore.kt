@@ -3,26 +3,19 @@ package com.dhama.mybase.core.data
 import com.dhama.mybase.core.age.SEND_AGE_TO_API
 import com.dhama.mybase.core.age.ageSubject
 import com.dhama.mybase.core.domain.AuthRepository
-import com.dhama.mybase.core.utils.PreferencesKeys
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
 class AgeAttestationStore @Inject constructor(
-    private val dataStore: DataStoreRepo,
+    private val local: AgeLocalStore,
     private val authRepository: AuthRepository,
 ) {
-    suspend fun save(dateOfBirth: String, ageConfirmedAt: String) {
-        val subject = ageSubject(
-            authRepository.getCurrentUser()?.uid,
-            authRepository.getCurrentUser()?.email,
-        )
-        dataStore.saveString(PreferencesKeys.DATE_OF_BIRTH, dateOfBirth)
-        dataStore.saveBoolean(PreferencesKeys.AGE_CONFIRMED, true)
-        dataStore.saveString(PreferencesKeys.AGE_CONFIRMED_AT, ageConfirmedAt)
-        if (subject.isNotBlank()) {
-            dataStore.saveString(PreferencesKeys.AGE_SUBJECT, subject)
-        }
+    suspend fun save(dateOfBirth: String, ageConfirmedAt: String): Boolean {
+        val user = authRepository.getCurrentUser()
+        return local.save(ageSubject(user?.uid, user?.email), dateOfBirth, ageConfirmedAt)
     }
+
+    suspend fun read(): StoredAge = local.read()
 
     /** PATCH /users/me/age once the backend accepts it. No-op while the switch is off. */
     suspend fun pushIfEnabled(dateOfBirth: String, ageConfirmedAt: String) {
