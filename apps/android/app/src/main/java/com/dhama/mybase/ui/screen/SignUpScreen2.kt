@@ -60,7 +60,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.dhama.mybase.R
+import com.dhama.mybase.core.auth.googleWebClientId
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
@@ -96,7 +96,7 @@ fun SignUpScreen(
 
     val context = LocalContext.current
     val credentialManager = CredentialManager.create(context)
-    val webClientId = stringResource(R.string.default_web_client_id)
+    val webClientId = googleWebClientId(context)
     LaunchedEffect(authState) {
         when (authState) {
             is UiState.Success -> {
@@ -122,7 +122,13 @@ fun SignUpScreen(
             viewModel.sendOtp(mobile, context as androidx.activity.ComponentActivity)
         },
         onLogin = onLogin,
-        googleSignIn = {
+        googleSignIn = googleSignIn@{
+            if (webClientId.isBlank()) {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Google sign-in isn't available on this build.")
+                }
+                return@googleSignIn
+            }
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(
                     GetGoogleIdOption.Builder()
