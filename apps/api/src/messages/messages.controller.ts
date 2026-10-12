@@ -4,6 +4,7 @@ import {
     Delete,
     Get,
     Header,
+    Headers,
     Inject,
     Param,
     Post,
@@ -56,11 +57,13 @@ export class MessagesController {
         @CurrentUser() user: JwtPayload,
         @Param('id') conversationId: string,
         @Body() dto: CreateMessageDto,
+        @Headers('idempotency-key') idempotencyKey?: string | string[],
     ) {
         return this.messagesService.create(
             String(user.sub),
             conversationId,
             dto,
+            idempotencyKey,
         );
     }
 
@@ -89,22 +92,10 @@ export class MessagesController {
     }
 
     @Post('conversations/:id/messages/stream')
-    @Header(
-        'Content-Type',
-        'text/event-stream',
-    )
-    @Header(
-        'Cache-Control',
-        'no-cache, no-transform',
-    )
-    @Header(
-        'Connection',
-        'keep-alive',
-    )
-    @Header(
-        'X-Accel-Buffering',
-        'no',
-    )
+    @Header('Content-Type', 'text/event-stream')
+    @Header('Cache-Control', 'no-cache, no-transform')
+    @Header('Connection', 'keep-alive')
+    @Header('X-Accel-Buffering', 'no')
     @RateLimit('messages')
     @UseGuards(RateLimitGuard)
     async createAndStream(
@@ -113,6 +104,73 @@ export class MessagesController {
         @Body() dto: CreateMessageDto,
         @Req() request: Request,
         @Res() response: Response,
+        @Headers('idempotency-key') idempotencyKey?: string | string[],
+    ) {
+        const key = headerValue(idempotencyKey);
+        await this.pipeStream(
+            request,
+            response,
+            () => key
+                ? this.messagesService.prepareSend(
+                    String(user.sub),
+                    conversationId,
+                    key,
+                )
+                : this.messagesService.assertCanReply(
+                    String(user.sub),
+                    conversationId,
+                ),
+            (signal) => this.messagesService.createAndStream(
+                user.sub,
+                conversationId,
+                dto,
+                signal,
+                key,
+            ),
+        );
+    }
+
+    /**
+     * Assistant reply for a user line that was already saved. Empty body.
+     * If a reply already follows that line, the stream is a single `done`
+     * event and nothing is charged.
+     */
+    @Post('conversations/:conversationId/messages/:userMessageId/reply/stream')
+    @Header('Content-Type', 'text/event-stream')
+    @Header('Cache-Control', 'no-cache, no-transform')
+    @Header('Connection', 'keep-alive')
+    @Header('X-Accel-Buffering', 'no')
+    @RateLimit('messages')
+    @UseGuards(RateLimitGuard)
+    async replyStream(
+        @CurrentUser() user: JwtPayload,
+        @Param('conversationId') conversationId: string,
+        @Param('userMessageId') userMessageId: string,
+        @Req() request: Request,
+        @Res() response: Response,
+    ) {
+        await this.pipeStream(
+            request,
+            response,
+            () => this.messagesService.prepareReplyStream(
+                String(user.sub),
+                conversationId,
+                userMessageId,
+            ),
+            (signal) => this.messagesService.streamReply(
+                String(user.sub),
+                conversationId,
+                userMessageId,
+                signal,
+            ),
+        );
+    }
+
+    private async pipeStream(
+        request: Request,
+        response: Response,
+        prepare: () => Promise<unknown>,
+        events: (signal: AbortSignal) => AsyncIterable<{ type: string }>,
     ) {
         const abort = new AbortController();
         // `request` closes as soon as the POST body is read, which is before
@@ -124,10 +182,7 @@ export class MessagesController {
         response.on('close', onClose);
 
         try {
-            await this.messagesService.assertCanReply(
-                String(user.sub),
-                conversationId,
-            );
+            await prepare();
         } catch (error) {
             response.off('close', onClose);
             sendException(response, request, error);
@@ -138,12 +193,7 @@ export class MessagesController {
 
         try {
             await writeServerSentEvents(
-                this.messagesService.createAndStream(
-                    user.sub,
-                    conversationId,
-                    dto,
-                    abort.signal,
-                ),
+                events(abort.signal),
                 (chunk) => {
                     if (abort.signal.aborted || response.destroyed || !response.writable) {
                         abort.abort();
@@ -171,4 +221,10 @@ export class MessagesController {
             if (!response.writableEnded) response.end();
         }
     }
+}
+
+function headerValue(raw: string | string[] | undefined): string | undefined {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
 }

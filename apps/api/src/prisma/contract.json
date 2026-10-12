@@ -2595,6 +2595,13 @@
                   "kind": "scalar"
                 }
               },
+              "idempotencyKey": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "imageUrl": {
                 "nullable": true,
                 "type": {
@@ -2639,6 +2646,13 @@
                 "nullable": false,
                 "type": {
                   "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
                   "kind": "scalar"
                 }
               }
@@ -2688,6 +2702,21 @@
                   "model": "MessageReport",
                   "namespace": "public"
                 }
+              },
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
@@ -2710,6 +2739,9 @@
                 "id": {
                   "column": "id"
                 },
+                "idempotencyKey": {
+                  "column": "idempotencyKey"
+                },
                 "imageUrl": {
                   "column": "imageUrl"
                 },
@@ -2724,6 +2756,9 @@
                 },
                 "updatedAt": {
                   "column": "updatedAt"
+                },
+                "userId": {
+                  "column": "userId"
                 }
               },
               "namespaceId": "public",
@@ -3507,6 +3542,21 @@
                 },
                 "to": {
                   "model": "MessageReport",
+                  "namespace": "public"
+                }
+              },
+              "messages": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "Message",
                   "namespace": "public"
                 }
               },
@@ -5475,6 +5525,11 @@
                   "nativeType": "int4",
                   "nullable": false
                 },
+                "idempotencyKey": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "imageUrl": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -5515,6 +5570,11 @@
                   "codecId": "pg/timestamptz-string@1",
                   "nativeType": "timestamptz",
                   "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": true
                 }
               },
               "foreignKeys": [
@@ -5533,6 +5593,23 @@
                     ],
                     "namespaceId": "public",
                     "tableName": "conversation"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "message"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
                   }
                 }
               ],
@@ -5561,6 +5638,14 @@
                   "name": "message_createdAt_idx_9575dbd7",
                   "prefix": "message_createdAt_idx",
                   "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "message_userId_idx_a489d58a",
+                  "prefix": "message_userId_idx",
+                  "unique": false
                 }
               ],
               "primaryKey": {
@@ -5568,7 +5653,14 @@
                   "id"
                 ]
               },
-              "uniques": []
+              "uniques": [
+                {
+                  "columns": [
+                    "userId",
+                    "idempotencyKey"
+                  ]
+                }
+              ]
             },
             "messageReport": {
               "checks": [
@@ -6479,7 +6571,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "bb4838916e62956fee3aab5dc34ea13c30808d8dc9788d0ff5fe51fe57aad907",
+    "storageHash": "630c27ec57f75f16797bd5aa17654561a9e1e6bf23a00f7d3926d4cfe5f1ea1d",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",
