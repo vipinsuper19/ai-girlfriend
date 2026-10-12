@@ -17,11 +17,10 @@
  *   key cannot abort the user delete and leave the rest of the account behind.
  *   The delete is a no-op when the table is absent.
  *
- * Stored files are not in this transaction. Callers remove them first, with
- * `StorageService.removeUserFiles`, and only then call this function. PR #19
- * owns that order: `removeUserFiles` stays the `removeFiles` callback of
- * `deleteAccountStorageFirst`, and this function is the `deleteUser` callback.
- * Do not delete files after this transaction commits.
+ * Stored files are not in this transaction. `deleteMe` passes this function
+ * as the `deleteUser` callback of `deleteAccountStorageFirst`, after
+ * `removeUserFiles` and after any `storageCleanup` write. Do not delete
+ * files after this transaction commits.
  */
 export async function deleteAccountRecords(
     db: AccountDb,

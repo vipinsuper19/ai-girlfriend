@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { LocalObjectStorage } from '../storage/local-storage.js';
+import { objectKeyFromReference } from '../storage/object-key.js';
+import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
 import { UsersService } from './users.service.js';
+
+const PNG = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+]);
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -20,10 +29,18 @@ const databaseUrl = process.env.DATABASE_URL;
  */
 test('deleteMe removes the account and leaves the other one', { skip: !databaseUrl }, async () => {
     const { db } = await import('../prisma/db.js');
-    const storage = new StorageService();
-    const service = new UsersService(new PrismaService(db), storage);
+    const root = await mkdtemp(join(tmpdir(), 'account-deletion-'));
+    const objects = new LocalObjectStorage({
+        root,
+        signingSecret: 'integration-signing-secret',
+        ttlSeconds: 3600,
+    });
+    const storage = new StorageService(objects);
+    const cleanup = new StorageCleanup(objects);
+    const service = new UsersService(new PrismaService(db), storage, cleanup);
     const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     await requireReportTable(db);
+    await requireCleanupTable(db);
     let subjectId: number | undefined;
     let otherId: number | undefined;
 
@@ -56,9 +73,9 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
             .first();
         assert.equal(embedding?.status, 'READY');
         assert.equal(embedding?.embedding?.length, 1536);
-        assert.equal(existsSync(subject.voicePath), true);
-        assert.equal(existsSync(subject.imagePath), true);
-        assert.equal(existsSync(subject.portraitPath), true);
+        assert.equal(existsSync(objects.absolutePath(subject.voiceKey)), true);
+        assert.equal(existsSync(objects.absolutePath(subject.imageKey)), true);
+        assert.equal(existsSync(objects.absolutePath(subject.portraitKey)), true);
 
         const result = await service.deleteMe(String(subject.userId));
         assert.equal(result.message, 'Account deleted successfully');
@@ -85,14 +102,14 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
         assert.equal(await countReports(db, subject.userId, subject.messageId), 0);
         assert.equal(await countReports(db, other.userId, other.messageId), 1);
 
-        assert.equal(existsSync(subject.voicePath), false);
-        assert.equal(existsSync(subject.imagePath), false);
-        assert.equal(existsSync(subject.portraitPath), false);
+        assert.equal(existsSync(objects.absolutePath(subject.voiceKey)), false);
+        assert.equal(existsSync(objects.absolutePath(subject.imageKey)), false);
+        assert.equal(existsSync(objects.absolutePath(subject.portraitKey)), false);
 
         assert.ok(await db.orm.public.User.where({ id: other.userId }).first());
         assert.ok(await db.orm.public.Session.where({ refreshToken: other.refreshTokens[0] }).first());
         assert.equal((await db.orm.public.UsageRecord.where({ userId: other.userId }).all()).length, 2);
-        assert.equal(existsSync(other.voicePath), true);
+        assert.equal(existsSync(objects.absolutePath(other.voiceKey)), true);
 
         await assert.rejects(
             () => service.deleteMe(String(subject.userId)),
@@ -101,6 +118,8 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
     } finally {
         if (otherId !== undefined) await service.deleteMe(String(otherId)).catch(() => undefined);
         if (subjectId !== undefined) await service.deleteMe(String(subjectId)).catch(() => undefined);
+        await cleanup.onModuleDestroy();
+        await rm(root, { recursive: true, force: true });
         await db.close();
     }
 });
@@ -116,9 +135,9 @@ type Seed = {
     callId: number;
     deviceToken: string;
     refreshTokens: [string, string];
-    voicePath: string;
-    imagePath: string;
-    portraitPath: string;
+    voiceKey: string;
+    imageKey: string;
+    portraitKey: string;
 };
 
 async function seedAccount(
@@ -252,10 +271,10 @@ async function seedAccount(
     });
 
     const voiceUrl = await storage.saveVoiceAudio(user.id, Buffer.from('voice'));
-    const imageUrl = await storage.saveGeneratedImage(user.id, Buffer.from('image'), 'image/png');
+    const imageUrl = await storage.saveGeneratedImage(user.id, PNG, 'image/png');
     const portraitUrl = await storage.saveCompanionAvatar(companion.id, {
         mimetype: 'image/png',
-        buffer: Buffer.from('portrait'),
+        buffer: PNG,
     } as Express.Multer.File);
 
     return {
@@ -269,14 +288,26 @@ async function seedAccount(
         callId: call.id,
         deviceToken,
         refreshTokens,
-        voicePath: diskPath(voiceUrl),
-        imagePath: diskPath(imageUrl),
-        portraitPath: diskPath(portraitUrl),
+        voiceKey: storedKey(voiceUrl),
+        imageKey: storedKey(imageUrl),
+        portraitKey: storedKey(portraitUrl),
     };
 }
 
-function diskPath(url: string): string {
-    return join(process.cwd(), url);
+function storedKey(url: string): string {
+    const key = objectKeyFromReference(url);
+    if (!key) throw new Error(`stored file URL has no object key: ${url}`);
+    return key;
+}
+
+async function requireCleanupTable(db: any): Promise<void> {
+    const probe = db.raw.sql`
+        SELECT to_regclass('public."storageCleanup"')::text AS name
+    `.returnsRow({ name: 'pg/text@1' }).build();
+    const found = await db.runtime().query(probe);
+    if (!found[0]?.name) {
+        throw new Error('storageCleanup is missing. Apply Prisma migrations before this test.');
+    }
 }
 
 async function requireReportTable(db: any): Promise<void> {

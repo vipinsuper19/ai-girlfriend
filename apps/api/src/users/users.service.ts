@@ -5,7 +5,9 @@ import {
 
 import { parseAgeAttestation } from '../auth/age.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
+import { deleteAccountStorageFirst } from './account-deletion.js';
 import { deleteAccountRecords } from './delete-account.js';
 import type { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -16,6 +18,7 @@ export class UsersService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly storage: StorageService,
+        private readonly cleanup: StorageCleanup,
     ) { }
 
     async findMe(userId: string) {
@@ -81,8 +84,8 @@ export class UsersService {
     }
 
     /**
-     * Everything stored for this account, as one JSON document. Message rows
-     * keep their media paths; the files stay at those URLs.
+     * Everything stored for this account, as one JSON document. Media fields
+     * are signed on the way out, the same as every other response.
      */
     async exportMe(userId: string) {
         const db = this.prisma.client as any;
@@ -170,13 +173,15 @@ export class UsersService {
         const companions = await db.orm.public.Companion.where({ userId: id }).all();
         const companionIds = companions.map((companion: { id: number }) => companion.id);
 
-        // Files go first. Android treats a later 404 from DELETE /users/me as
-        // success, so a file delete after this commit would never be retried.
-        // PR #19 owns that order: keep `removeUserFiles` as the `removeFiles`
-        // callback of `deleteAccountStorageFirst`, and pass `deleteAccountRecords`
-        // as `deleteUser`. That PR records failures on `storageCleanup`.
-        await this.storage.removeUserFiles(id, companionIds);
-        await deleteAccountRecords(db, id);
+        // Earlier failed deletes are retried while this account still exists.
+        // A cleanup-table error stops here so the user row is not removed first.
+        await this.cleanup.retryPending();
+
+        await deleteAccountStorageFirst({
+            removeFiles: () => this.storage.removeUserFiles(id, companionIds),
+            recordFailures: (failures) => this.cleanup.record(failures),
+            deleteUser: () => deleteAccountRecords(db, id),
+        });
 
         return {
             message: 'Account deleted successfully',

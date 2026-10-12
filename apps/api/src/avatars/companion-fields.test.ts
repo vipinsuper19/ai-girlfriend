@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
     appearanceFields,
+    canonicalizeAppearance,
     ownAvatarUrl,
     personalityFields,
     voiceFields,
@@ -42,4 +43,23 @@ test('only her own stored portrait is kept', () => {
     assert.equal(ownAvatarUrl('https://evil.example/x.png', 4), null);
     assert.equal(ownAvatarUrl('/uploads/companions/4-../../x.html', 4), null);
     assert.equal(ownAvatarUrl(null, 4), null);
+    assert.equal(ownAvatarUrl(`${own}?exp=1&sig=${'a'.repeat(2400)}`, 4), own);
+    assert.equal(
+        ownAvatarUrl(
+            `https://abc.storage.supabase.co/storage/v1/s3/media/companions/4-0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.png?X-Amz-Signature=abc`,
+            4,
+        ),
+        own,
+    );
+});
+
+test('a signed portrait url is stored as the stable path', () => {
+    const own = '/uploads/companions/4-0f8e2a6c-1d2b-4c3d-9e8f-123456789abc.png';
+    const picked = appearanceFields(canonicalizeAppearance({
+        avatarUrl: `${own}?exp=1&sig=${'b'.repeat(2400)}`,
+        hairColor: 'Black',
+    }, 4));
+    assert.equal(picked.problem, null);
+    assert.equal(picked.data.avatarUrl, own);
+    assert.equal(picked.data.hairColor, 'Black');
 });
