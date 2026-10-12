@@ -41,6 +41,7 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
     const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     await requireReportTable(db);
     await requireCleanupTable(db);
+    await requireDeletionRequestTable(db);
     let subjectId: number | undefined;
     let otherId: number | undefined;
 
@@ -101,6 +102,8 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
         assert.equal((await db.orm.public.UsageRecord.where({ userId: subject.userId }).all()).length, 0);
         assert.equal(await countReports(db, subject.userId, subject.messageId), 0);
         assert.equal(await countReports(db, other.userId, other.messageId), 1);
+        assert.equal(await countDeletionRequests(db, subject.email), 0);
+        assert.equal(await countDeletionRequests(db, other.email), 2);
 
         assert.equal(existsSync(objects.absolutePath(subject.voiceKey)), false);
         assert.equal(existsSync(objects.absolutePath(subject.imageKey)), false);
@@ -133,6 +136,7 @@ type Seed = {
     memoryId: number;
     imageId: number;
     callId: number;
+    email: string;
     deviceToken: string;
     refreshTokens: [string, string];
     voiceKey: string;
@@ -147,8 +151,9 @@ async function seedAccount(
     label: string,
 ): Promise<Seed> {
     const now = new Date().toISOString();
+    const email = `${label}-${stamp}@example.com`;
     const user = await db.orm.public.User.create({
-        email: `${label}-${stamp}@example.com`,
+        email,
         displayName: label,
         passwordHash: 'hash',
     });
@@ -269,6 +274,20 @@ async function seedAccount(
         quantity: 40,
         metadata: null,
     });
+    await db.orm.public.DeletionRequest.create({
+        email,
+        note: `${label} web request`,
+        tokenHash: `${label}-open-${stamp}`,
+        confirmedAt: null,
+        createdAt: now,
+    });
+    await db.orm.public.DeletionRequest.create({
+        email,
+        note: `${label} confirmed request`,
+        tokenHash: `${label}-confirmed-${stamp}`,
+        confirmedAt: now,
+        createdAt: now,
+    });
 
     const voiceUrl = await storage.saveVoiceAudio(user.id, Buffer.from('voice'));
     const imageUrl = await storage.saveGeneratedImage(user.id, PNG, 'image/png');
@@ -286,6 +305,7 @@ async function seedAccount(
         memoryId: memory.id,
         imageId: image.id,
         callId: call.id,
+        email,
         deviceToken,
         refreshTokens,
         voiceKey: storedKey(voiceUrl),
@@ -298,6 +318,26 @@ function storedKey(url: string): string {
     const key = objectKeyFromReference(url);
     if (!key) throw new Error(`stored file URL has no object key: ${url}`);
     return key;
+}
+
+async function requireDeletionRequestTable(db: any): Promise<void> {
+    const probe = db.raw.sql`
+        SELECT to_regclass('public."deletionRequest"')::text AS name
+    `.returnsRow({ name: 'pg/text@1' }).build();
+    const found = await db.runtime().query(probe);
+    if (!found[0]?.name) {
+        throw new Error('deletionRequest is missing. Apply Prisma migrations before this test.');
+    }
+}
+
+async function countDeletionRequests(db: any, email: string): Promise<number> {
+    const plan = db.raw.sql`
+        SELECT count(*)::int AS n
+        FROM "deletionRequest"
+        WHERE email = ${email}
+    `.returnsRow({ n: 'pg/int4@1' }).build();
+    const rows = await db.runtime().query(plan);
+    return Number(rows[0]?.n ?? 0);
 }
 
 async function requireCleanupTable(db: any): Promise<void> {

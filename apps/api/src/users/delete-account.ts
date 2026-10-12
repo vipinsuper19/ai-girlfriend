@@ -1,3 +1,5 @@
+import { deleteDeletionRequestsForEmail } from '../legal/deletion-request.store.js';
+
 /**
  * Deletes every database row owned by this account in one transaction.
  *
@@ -16,6 +18,9 @@
  *   report rows are removed first, in this transaction, so a restrict-style
  *   key cannot abort the user delete and leave the rest of the account behind.
  *   The delete is a no-op when the table is absent.
+ * - Web `deletionRequest` rows are stored by email and have no foreign key
+ *   to the user. They are removed in this transaction, before the user row,
+ *   via `deleteDeletionRequestsForEmail`.
  *
  * Stored files are not in this transaction. `deleteMe` passes this function
  * as the `deleteUser` callback of `deleteAccountStorageFirst`, after
@@ -28,6 +33,8 @@ export async function deleteAccountRecords(
 ): Promise<void> {
     await db.transaction(async (tx) => {
         await deleteMessageReports(db, tx, userId);
+        const user = await tx.orm.public.User.where({ id: userId }).first();
+        await deleteDeletionRequestsForEmail(tx, user?.email);
         await tx.orm.public.User.where({ id: userId }).delete();
     });
 }
@@ -46,7 +53,10 @@ type AccountTx = {
     orm: {
         public: {
             User: {
-                where: (filter: { id: number }) => { delete: () => Promise<unknown> };
+                where: (filter: { id: number }) => {
+                    first: () => Promise<{ email?: unknown } | null>;
+                    delete: () => Promise<unknown>;
+                };
             };
         };
     };
