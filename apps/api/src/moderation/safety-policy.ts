@@ -370,7 +370,15 @@ const RULES: Rule[] = [
         surfaces: ALL,
     },
     {
+        category: 'explicit',
+        // Narrow on purpose. Romance ("kiss", "make love", "in my bed", "sexy") stays off this list.
+        pattern:
+            /\b(?:fuck me|let's fuck|lets fuck|talk dirty|have sex with (?:you|me)|naked body|nude body|roleplay(?:\s+\w+){0,3}\s+sex)\b/i,
+        surfaces: ALL,
+    },
+    {
         category: 'self_harm',
+        // "killing me", "dying of laughter", and "kill me now" are figures of speech.
         pattern: /\b(?:kill myself|killing myself|end my life|take my own life)\b/i,
         surfaces: INPUT_AND_PERSONA,
     },

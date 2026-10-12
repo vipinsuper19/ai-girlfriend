@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 
+import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import { delimitedModerationInput } from './gemini-moderator.js';
 import {
@@ -8,6 +9,12 @@ import {
 } from './provider-categories.js';
 
 export const OPENAI_MODERATION_MAX_CHARS = 32_000;
+
+/** One attempt. The SDK's default is two retries, including on 429 and 5xx. */
+export const OPENAI_MODERATION_REQUEST = {
+    timeout: CLASSIFIER_TIMEOUT_MS,
+    maxRetries: 0,
+} as const;
 
 /**
  * Same structured classifier as Gemini. The moderations endpoint does not
@@ -30,12 +37,18 @@ export class OpenAiContentModerator implements ContentModerator {
         if (!this.apiKey) {
             throw new Error('OPENAI_API_KEY is not configured');
         }
-        this.client ??= new OpenAI({ apiKey: this.apiKey });
-        const response = await this.client.responses.create({
-            model: this.model,
-            instructions: GEMINI_CLASSIFIER_INSTRUCTION,
-            input: delimitedModerationInput(text),
+        this.client ??= new OpenAI({
+            apiKey: this.apiKey,
+            ...OPENAI_MODERATION_REQUEST,
         });
+        const response = await this.client.responses.create(
+            {
+                model: this.model,
+                instructions: GEMINI_CLASSIFIER_INSTRUCTION,
+                input: delimitedModerationInput(text),
+            },
+            OPENAI_MODERATION_REQUEST,
+        );
         const raw = response.output_text?.trim();
         if (!raw) {
             throw new Error('Moderation classifier returned an empty response');

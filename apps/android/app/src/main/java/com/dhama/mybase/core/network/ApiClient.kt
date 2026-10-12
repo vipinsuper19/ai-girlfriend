@@ -6,6 +6,7 @@ import com.dhama.mybase.core.age.googleAuthRequestJson
 import com.dhama.mybase.core.age.registerRequestJson
 import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.chat.ReportMessageBody
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.chat.consumeSse
@@ -28,7 +29,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
@@ -128,9 +128,13 @@ class ApiClient(
                             events.forEach { onEvent(it) }
                         }
                     }
-                } catch (error: IOException) {
-                    if (!coroutineContext.isActive) throw CancellationException("Stopped", error)
+                } catch (error: CancellationException) {
+                    throw scrubCancellation(error)
+                } catch (error: ApiStatusException) {
                     throw error
+                } catch (error: Exception) {
+                    if (!coroutineContext.isActive) throw CancellationException("Stopped")
+                    throw scrubTransportFailure(error)
                 } finally {
                     call.cancel()
                 }
@@ -339,6 +343,18 @@ class ApiClient(
         }
     }
 
+    /**
+     * `POST /reports`. Returns the status and body, including 404 and 429.
+     * 201 `{id}` is a new report. 200 `{id}` is a duplicate. A 401 still refreshes the session.
+     */
+    suspend fun reportMessage(body: ReportMessageBody): ReportHttp {
+        return withAuth { access ->
+            val result = executeRaw(authed("POST", "reports", json.encodeToString(body), access))
+            if (result.status == 401) throw apiStatus(result.status, result.body, json)
+            result
+        }
+    }
+
     suspend fun regenerate(messageId: Int): RegeneratedReply {
         return withAuth { access ->
             unwrapData(execute(authed("POST", "messages/$messageId/regenerate", "{}", access)), json)
@@ -501,13 +517,27 @@ class ApiClient(
         return builder.method(method, body).build()
     }
 
+    private suspend fun executeRaw(request: Request): ReportHttp = withContext(Dispatchers.IO) {
+        http.newCall(request).execute().use { response ->
+            ReportHttp(response.code, response.body?.string().orEmpty())
+        }
+    }
+
     private suspend fun execute(request: Request): String = execute(http, request)
 
     private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
-            raw
+        try {
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
+                raw
+            }
+        } catch (error: CancellationException) {
+            throw scrubCancellation(error)
+        } catch (error: ApiStatusException) {
+            throw error
+        } catch (error: Exception) {
+            throw scrubTransportFailure(error)
         }
     }
 

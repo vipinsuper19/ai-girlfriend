@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { degradedReason, type DegradedReason } from './classifier-attempt.js';
 import type { ContentModerator } from './content-moderator.js';
 import type { SafetyConfig } from './safety.config.js';
 import {
@@ -7,7 +8,6 @@ import {
     decideSafety,
     personaMinorAge,
     personaText,
-    unavailableNotice,
     type ModerationSurface,
     type PersonaDraft,
     type SafetyCategory,
@@ -39,6 +39,12 @@ const CACHE_MAX = 200;
 export class ModerationService {
     private readonly logger: SafetyLogger;
     private readonly cache = new Map<string, SafetyCategory[]>();
+    private degradedCount = 0;
+
+    /** Classifier outages that used the local pre-filter instead of a hard refusal. */
+    get degradedFallbacks(): number {
+        return this.degradedCount;
+    }
 
     constructor(
         private readonly config: SafetyConfig,
@@ -84,23 +90,8 @@ export class ModerationService {
                     categories = merge(categories, remote.categories);
                     if (categories.length > 0) break;
                 } catch (error) {
-                    const name = error instanceof Error ? error.name : 'Error';
-                    this.logger.warn(
-                        [
-                            'safety',
-                            `provider=${this.provider.id}`,
-                            'failed',
-                            `name=${name}`,
-                            `surface=${surface}`,
-                            `chars=${trimmed.length}`,
-                            `userId=${ctx.userId ?? '-'}`,
-                            `conversationId=${ctx.conversationId ?? '-'}`,
-                        ].join(' '),
-                    );
-                    if (!this.config.failClosed) return null;
-                    const notice = unavailableNotice();
-                    this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
-                    return notice;
+                    this.noteDegraded(error, surface, ctx, trimmed.length);
+                    break;
                 }
             }
         }
@@ -166,14 +157,8 @@ export class ModerationService {
                 }
             }
             if (pending.length > 0) {
-                const scored = await this.scoreBlocks(pending, ctx);
-                if (scored === 'unavailable') {
-                    if (!holdsMinor(userCategories)) {
-                        const notice = unavailableNotice();
-                        this.logNotice(notice, 'input', ctx, text.length, ['provider_error']);
-                        return { notice, holdMinor: false, allowedMemoryIds: [] };
-                    }
-                } else {
+                const scored = await this.scoreBlocks(pending, ctx, text.length);
+                if (scored) {
                     for (const block of pending) {
                         const remote = scored.get(block.id) ?? [];
                         this.remember(block.text, remote);
@@ -216,10 +201,15 @@ export class ModerationService {
         return decideSafety(categories, 'input', this.config.helplines) === null;
     }
 
+    /**
+     * One classifier attempt. `null` means the call failed and the caller must
+     * keep the local verdict without caching the miss.
+     */
     private async scoreBlocks(
         blocks: readonly { id: string; text: string }[],
         ctx: SafetyLogContext,
-    ): Promise<Map<string, SafetyCategory[]> | 'unavailable'> {
+        chars: number,
+    ): Promise<Map<string, SafetyCategory[]> | null> {
         const body = blocks.length === 1 && blocks[0]?.id === 'user'
             ? blocks[0].text
             : blocks.map((block) => `[id=${block.id}]\n${block.text}`).join('\n\n');
@@ -236,22 +226,31 @@ export class ModerationService {
             }
             return scored;
         } catch (error) {
-            const name = error instanceof Error ? error.name : 'Error';
-            this.logger.warn(
-                [
-                    'safety',
-                    `provider=${this.provider.id}`,
-                    'failed',
-                    `name=${name}`,
-                    'surface=input',
-                    `chars=${body.length}`,
-                    `userId=${ctx.userId ?? '-'}`,
-                    `conversationId=${ctx.conversationId ?? '-'}`,
-                ].join(' '),
-            );
-            if (!this.config.failClosed) return new Map();
-            return 'unavailable';
+            this.noteDegraded(error, 'input', ctx, chars);
+            return null;
         }
+    }
+
+    private noteDegraded(
+        error: unknown,
+        surface: ModerationSurface,
+        ctx: SafetyLogContext,
+        chars: number,
+    ): void {
+        const reason: DegradedReason = degradedReason(error);
+        this.degradedCount += 1;
+        this.logger.warn(
+            [
+                'safety',
+                'degraded',
+                `provider=${this.provider.id}`,
+                `reason=${reason}`,
+                `surface=${surface}`,
+                `chars=${chars}`,
+                `userId=${ctx.userId ?? '-'}`,
+                `conversationId=${ctx.conversationId ?? '-'}`,
+            ].join(' '),
+        );
     }
 
     private recall(text: string): SafetyCategory[] | undefined {

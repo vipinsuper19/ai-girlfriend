@@ -111,8 +111,8 @@ function localService(): LocalRun {
     };
 }
 
-it('redteam fixture has 185 cases and every recorded gap is one of them', () => {
-    assert.equal(cases.length, 185);
+it('redteam fixture has 188 cases and every recorded gap is one of them', () => {
+    assert.equal(cases.length, 188);
     assert.equal(localService().providerId, 'local');
     assert.equal(
         safetyConfigFromEnv({ MODERATION_PROVIDER: 'local' }).provider,

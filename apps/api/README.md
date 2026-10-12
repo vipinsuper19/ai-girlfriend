@@ -54,7 +54,9 @@ clients hide the matching controls, so nothing is faked.
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Session tokens |
 | `JWT_RESET_SECRET` | Password reset tokens. Falls back to a value derived from `JWT_ACCESS_SECRET` |
 | `APP_URL` | Web origin used in reset links, e.g. `https://app.example.com` |
-| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL` mail is written to the log, which is for development only |
+| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL`, development writes the message to the log and production does not send it. A deletion request emails a confirmation link to the account address. After that link is opened, a copy goes to `CONTACT_EMAIL` when that address is set |
+| `CONTACT_EMAIL` | Address on `/privacy` and `/account-deletion`. Until it is set, the pages show `TODO`, and that placeholder is not emailed |
+| `DEVELOPER_NAME` | Developer name on those pages. Until it is set, the pages show `TODO` |
 | `GOOGLE_CLIENT_IDS` | Comma-separated OAuth client ids accepted by `POST /auth/google` (web) |
 | `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
@@ -62,14 +64,18 @@ clients hide the matching controls, so nothing is faked.
 | `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's JSON classifier when `OPENAI_API_KEY` is set, otherwise Gemini. `local` is the narrow pre-filter only |
 | `MODERATION_MODEL` | Optional model override. OpenAI defaults to `OPENAI_CHAT_MODEL` or `gpt-5-mini`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
-| `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
-| `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint when that provider is selected |
+| `MODERATION_FAIL_CLOSED` | Kept for compatibility. A classifier timeout, 429, 503, or other outage falls back to the local pre-filter (minors, CSAM, an existing minor hold, crisis, and a narrow explicit list). The reply is not replaced with an unavailable message |
+| `OPENAI_API_KEY` | Key for the OpenAI JSON classifier when that provider is selected. Each call is one attempt with a 4 second timeout |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
 | `CRISIS_HELPLINE_INTL_NAME`, `CRISIS_HELPLINE_INTL_CONTACT`, `CRISIS_HELPLINE_INTL_DETAIL` | International pointer. Defaults to the IASP suicidal-thoughts page |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Android Publisher API access for verifying purchases. Raw JSON or base64 |
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
 | `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
 | `CORS_ORIGIN`, `PORT` | HTTP server |
+| `STORAGE_DRIVER` | `local` (default) or `s3` |
+| `STORAGE_SIGNED_URL_TTL_SECONDS` | Lifetime of a download URL. Default 3600, range 60–86400 |
+| `STORAGE_LOCAL_DIR`, `STORAGE_SIGNING_SECRET` | Local driver. The signing secret falls back to `JWT_ACCESS_SECRET` |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | S3-compatible driver. Required together when `STORAGE_DRIVER=s3` |
 | `TRUST_PROXY_HOPS` | Trusted proxy hops for client IP. Default `1` (Render). `0` uses the socket address |
 | `FREE_TIER_LLM_PERIOD` | `day` (default) or `month`. Free-tier chat cap window, UTC |
 | `FREE_TIER_LLM_MESSAGE_LIMIT` | Successful free-tier replies per window. Default `40`. `unlimited` removes it. `0` blocks new replies |
@@ -82,6 +88,10 @@ clients hide the matching controls, so nothing is faked.
 | `RATE_LIMIT_PASSWORD_RESET_USER_MAX`, `RATE_LIMIT_PASSWORD_RESET_USER_WINDOW_SEC` | Same routes per email or reset token. Default 5 / hour |
 | `RATE_LIMIT_MESSAGES_IP_MAX`, `RATE_LIMIT_MESSAGES_IP_WINDOW_SEC` | Message send, stream, and regenerate per IP. Default 60 / minute |
 | `RATE_LIMIT_MESSAGES_USER_MAX`, `RATE_LIMIT_MESSAGES_USER_WINDOW_SEC` | Those routes per account. Default 30 / minute |
+
+Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
+
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
@@ -112,6 +122,10 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
+
+Play Store pages are outside `/api/v1`: `GET /privacy` and `GET /account-deletion`. The deletion form `POST`s to `/account-deletion` (5 requests per hour per client IP, kept in a capped in-memory map). The request is stored in Postgres (`deletionRequest`) and pruned after 30 days. A confirmation link is emailed to the account address; opening `GET /account-deletion/confirm` marks it confirmed. If that mail cannot be sent, the page says the developer verifies the request from the account's email address. Signed-in deletion in the app is `DELETE /api/v1/users/me`, which also deletes web deletion requests stored for that account email. Message reports belong to the user and are removed with that row (`ON DELETE CASCADE`).
+
+`TRUST_PROXY_HOPS` is how many reverse-proxy hops to trust when reading that client IP. The default is 1. Set it to 0 to use the socket address.
 
 Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it. The cap is checked before the model call and recorded only after a successful reply, so concurrent requests can finish slightly over the limit. That overshoot is accepted for the MVP; the following request is refused.
 

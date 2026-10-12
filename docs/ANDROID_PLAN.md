@@ -68,7 +68,7 @@ There is no `meta` object, so the PRD's pagination envelope does not exist yet.
 | POST | `/usage/check`, `/usage` | **none** | |
 | GET | `/subscriptions/current`, `/subscriptions/latest` | **none** | reads `req.user?.sub` |
 | POST | `/api/v1/voice/{transcribe,synthesize,respond}` | **none** | double-prefixed, see §3 |
-| GET | `/uploads/**` | static | media files, no auth |
+| GET | `/uploads/**` | signed query | local driver only; S3 responses are absolute presigned URLs |
 
 The companion resource is called **`avatars`** in the backend but **`companions`** everywhere in the PRD. I have kept the backend name in the network layer and used the PRD name in the UI/domain layer, with the mapping isolated to the API service interface.
 
@@ -127,7 +127,7 @@ Small changes, high leverage. I would do these first — most are a few lines ea
 
 **Send SSE keepalive comments.** The stream writes nothing between the user-message event and the first AI delta. If the model takes a while, an intermediate proxy or a dozing radio can drop an idle connection. A `: ping\n\n` every 15s prevents that.
 
-Lower priority, but worth queueing: return absolute media URLs (or a configured public base) instead of relative `/uploads/...` paths, and emit TTS as compressed audio rather than WAV — see §5.3.
+Lower priority, but worth queueing: emit TTS as compressed audio rather than WAV — see §5.3. Media URLs are already signed. Local-driver URLs stay relative (`/uploads/...?exp=&sig=`); S3 URLs are absolute and `resolveVoiceUrl` leaves those alone.
 
 ---
 
@@ -238,7 +238,7 @@ Round-trip is `POST /voice/respond` with a multipart `audio` file plus a `conver
 
 - **Capture** with `MediaRecorder` using the MPEG-4 container and AAC encoder, uploaded as `audio/mp4`. The backend's Gemini STT provider accepts that MIME type, and MediaRecorder is far less work than hand-rolling PCM-to-WAV from `AudioRecord`. If transcription quality disappoints, switching to raw PCM/WAV is a contained change behind the recorder interface.
 - **Permissions** — `RECORD_AUDIO` requested at first use with a clear rationale, not at launch.
-- **Playback** via Media3 ExoPlayer against the returned URL, prefixed with the server origin because the backend returns relative `/uploads/...` paths.
+- **Playback** via Media3 ExoPlayer against the returned URL. `resolveVoiceUrl` prefixes a relative `/uploads/...?exp=&sig=` path with the server origin and leaves an absolute presigned URL as it is. The query string is the credential.
 - **Note for the backend:** TTS output is uncompressed WAV. A 30-second reply is roughly 1 MB, versus about 60 KB as Opus. On mobile data this is the difference between snappy and unusable, and it is a provider-config change, not an architectural one.
 
 ### 5.4 Offline and optimistic sending

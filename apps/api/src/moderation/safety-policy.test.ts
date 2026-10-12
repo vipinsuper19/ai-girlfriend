@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { helplinesFromEnv, resolveModerationProvider, safetyConfigFromEnv } from './safety.config.js';
+import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import {
     delimitedModerationInput,
     GEMINI_MODERATION_MODEL,
@@ -35,6 +36,9 @@ test('adult romance and ordinary chat stay allowed', () => {
         'I want you in my bed.',
         "I'm dying to see you",
         'This deadline is killing me',
+        'this traffic is killing me',
+        "I'm dying of laughter",
+        'kill me now this meeting',
         'I watched Suicide Squad last night',
         'My child starts school tomorrow',
         'How do I make a cake for her birthday?',
@@ -179,8 +183,8 @@ test('flirting stays allowed and explicit lines are a soft refusal', () => {
         'roleplay us having sex',
     ];
     for (const text of explicit) {
-        assert.deepEqual(assessLocal(text, 'input'), [], text);
-        assert.deepEqual(assessLocal(text, 'output'), [], text);
+        assert.deepEqual(assessLocal(text, 'input'), ['explicit'], text);
+        assert.deepEqual(assessLocal(text, 'output'), ['explicit'], text);
     }
 
     const notice = decideSafety(['explicit'], 'output', helplines);
@@ -343,6 +347,8 @@ test('gemini moderation wraps untrusted text and does not send sampling paramete
     assert.equal(wrapped.includes(payload), false);
     const request = geminiModerationRequest(GEMINI_MODERATION_MODEL, 'hello there');
     assert.equal(Object.hasOwn(request.config, 'temperature'), false);
+    assert.equal(request.config.httpOptions?.timeout, CLASSIFIER_TIMEOUT_MS);
+    assert.equal(request.config.httpOptions?.retryOptions?.attempts, 1);
     assert.match(request.contents, /<<<UNTRUSTED_TEXT>>>\nhello there\n<<<END_UNTRUSTED_TEXT>>>/);
 });
 

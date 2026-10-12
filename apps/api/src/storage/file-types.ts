@@ -1,3 +1,5 @@
+import { objectKeyFromReference } from './object-key.js';
+
 const AVATAR_EXTENSIONS: Record<string, string> = {
     'image/jpeg': '.jpg',
     'image/png': '.png',
@@ -5,8 +7,8 @@ const AVATAR_EXTENSIONS: Record<string, string> = {
 };
 
 /**
- * Uploads are served as static files, so the stored extension comes from the
- * checked MIME type and never from the client's file name.
+ * The stored extension comes from the checked MIME type and never from the
+ * client's file name.
  */
 export function avatarExtension(mimeType: string | null | undefined): string | null {
     return AVATAR_EXTENSIONS[mimeType ?? ''] ?? null;
@@ -28,9 +30,11 @@ export function companionFilesIn(
 /** The file name of a file this API stored for this user under `dir`, or null for any other path. */
 export function ownUserFile(url: unknown, dir: 'voice' | 'images', userId: number): string | null {
     if (typeof url !== 'string') return null;
-    const prefix = `/uploads/${dir}/${userId}/`;
-    if (!url.startsWith(prefix)) return null;
-    const name = url.slice(prefix.length);
+    const key = objectKeyFromReference(url);
+    if (!key) return null;
+    const prefix = `${dir}/${userId}/`;
+    if (!key.startsWith(prefix)) return null;
+    const name = key.slice(prefix.length);
     return /^[0-9a-f-]+\.[a-z0-9]+$/i.test(name) ? name : null;
 }
 

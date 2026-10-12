@@ -1,0 +1,41 @@
+[
+  {
+    "id": "table.storageCleanup",
+    "label": "Create table \"storageCleanup\"",
+    "summary": "Creates table \"storageCleanup\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "storageCleanup"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"storageCleanup\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"storageCleanup\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"storageCleanup\"",
+        "sql": "CREATE TABLE \"public\".\"storageCleanup\" (\n  \"attempts\" int4 DEFAULT 1 NOT NULL,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"lastError\" text NOT NULL,\n  \"objectKey\" text NOT NULL,\n  \"updatedAt\" timestamptz DEFAULT (now()) NOT NULL,\n  PRIMARY KEY (\"objectKey\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"storageCleanup\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"storageCleanup\""
+        ]
+      }
+    ]
+  }
+]
