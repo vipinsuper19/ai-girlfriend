@@ -10,8 +10,10 @@
 # Required secrets: PLAY_SERVICE_ACCOUNT_JSON, KEYSTORE_BASE64,
 # KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
 # Required variable: PLAY_PACKAGE_NAME (the Android application id).
-# Release signing is read from KEYSTORE_PATH in apps/android/app/build.gradle.kts.
-# That wiring lands with the API/Android CI change; without it this bundle is unsigned.
+# Release signing is already on main. bundleRelease reads KEYSTORE_PATH,
+# KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD
+# (apps/android/app/build.gradle.kts). This job sets KEYSTORE_PATH after
+# decoding KEYSTORE_BASE64.
 name: Play internal upload
 
 on:
