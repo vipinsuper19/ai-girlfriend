@@ -2,9 +2,12 @@
 # Build context: repository root.  docker build -f apps/api/Dockerfile .
 
 FROM node:24-slim AS base
-ENV PNPM_HOME=/pnpm
-ENV PATH=/pnpm:$PATH
-RUN corepack enable
+# corepack enable unlinks the pnpm shim next to the corepack binary. On the
+# image Render builds, that path is /usr/bin/pnpm and the filesystem is
+# read-only (EROFS). The packageManager field would also route `pnpm` through
+# that shim. Install the real CLI from package.json instead.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV PATH="/opt/pnpm/bin:${PATH}"
 WORKDIR /repo
 
 FROM base AS build
@@ -14,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages ./packages
+RUN PNPM_VERSION="$(node -p "require('./package.json').packageManager.split('@')[1]")" \
+    && npm install -g --prefix /opt/pnpm "pnpm@${PNPM_VERSION}" \
+    && pnpm --version
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
     && pnpm install --frozen-lockfile --filter @ai-girlfriend/api...
