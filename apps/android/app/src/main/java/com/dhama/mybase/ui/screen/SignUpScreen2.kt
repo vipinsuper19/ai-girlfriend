@@ -89,6 +89,8 @@ import com.dhama.mybase.core.auth.googleWebClientId
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
+import com.dhama.mybase.ui.test.DebugDobField
+import com.dhama.mybase.ui.test.debugDobValue
 import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.core.FeatureFlags
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -503,10 +505,16 @@ fun SignUpContent(
                         modifier = Modifier
                             .matchParentSize()
                             .testId("signup_dob")
+                            .debugDobValue(dateOfBirth?.let(::formatDateOfBirth).orEmpty())
                             .clickable { showDatePicker = true }
                             .semantics { contentDescription = "Date of birth" },
                     )
                 }
+
+                DebugDobField(
+                    id = "signup_dob_iso",
+                    onDateOfBirthIso = { dateOfBirthIso = it },
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 

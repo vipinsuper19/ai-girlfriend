@@ -12,7 +12,7 @@ tags:
     file: pick-dob.yaml
     env:
       DOB_FIELD_ID: age_dob
-      DOB_DIGITS: "01151990"
+      DOB_ISO: "1990-01-15"
       DOB_LABEL: "January 15, 1990"
 - tapOn:
     id: age_adult

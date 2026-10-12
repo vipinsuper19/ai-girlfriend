@@ -35,7 +35,7 @@ adb shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || tr
 adb shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
 
 locale="$(adb shell getprop persist.sys.locale 2>/dev/null | tr -d '\r')"
-echo "Device locale: ${locale:-unknown}. Date entry expects en-US."
+echo "Device locale: ${locale:-unknown}. Date of birth is typed as yyyy-MM-dd into the debug field."
 echo "API_BASE_URL=${API_BASE_URL}"
 echo "Maestro artifacts: ${MAESTRO_OUT}"
 
