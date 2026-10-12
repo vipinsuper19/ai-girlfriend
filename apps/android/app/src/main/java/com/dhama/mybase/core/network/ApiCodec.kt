@@ -21,6 +21,15 @@ data class SessionTokens(
     val refreshToken: String,
 )
 
+@Serializable
+data class AuthSession(
+    val accessToken: String,
+    val refreshToken: String,
+    val user: RemoteUser? = null,
+) {
+    fun tokens(): SessionTokens = SessionTokens(accessToken, refreshToken)
+}
+
 fun apiJson(): Json = Json {
     ignoreUnknownKeys = true
     encodeDefaults = false

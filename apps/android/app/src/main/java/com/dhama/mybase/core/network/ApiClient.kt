@@ -1,10 +1,12 @@
 package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.age.AGE_PATCH_PATH
-import com.dhama.mybase.core.age.SEND_AGE_TO_API
+import com.dhama.mybase.core.age.AGE_REQUIRED
+import com.dhama.mybase.core.age.AgeAck
+import com.dhama.mybase.core.age.ApiAgeGate
+import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.age.googleAuthRequestJson
 import com.dhama.mybase.core.age.registerRequestJson
-import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.chat.ReportMessageBody
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
@@ -38,6 +40,7 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
 
@@ -48,8 +51,17 @@ class ApiClient(
     private val json: Json = apiJson(),
     private val streamIdleMillis: Long = STREAM_IDLE_TIMEOUT_MS,
     private val firstReadMillis: Long = FIRST_READ_TIMEOUT_MS,
+    private val ageGate: ApiAgeGate = ApiAgeGate.None,
 ) : LastUserReplyApi {
     private val refreshMutex = Mutex()
+    private val ageDepth = AtomicInteger(0)
+
+    /**
+     * Register, login, and the Google exchange report the user after the
+     * session is stored. The first value is whether a user object was present.
+     * The second is `ageConfirmedAt`, or null when it is missing or blank.
+     */
+    var onAuthUser: ((userPresent: Boolean, ageConfirmedAt: String?) -> Unit)? = null
     private val streamHttp = streamOkHttp(http, firstReadMillis)
     private val imageHttp = http.newBuilder()
         .readTimeout(90, TimeUnit.SECONDS)
@@ -58,16 +70,16 @@ class ApiClient(
 
     fun origin(): String = apiOrigin(baseUrl)
 
-    suspend fun establish(
-        email: String,
-        password: String,
-        dateOfBirth: String? = null,
-        ageConfirmedAt: String? = null,
-    ) {
+    suspend fun establish(email: String, password: String) {
         val normalized = email.trim().lowercase()
-        val tokens = attempt { login(normalized, password) }
-            ?: attempt { register(normalized, password, sessionDisplayName(normalized), dateOfBirth, ageConfirmedAt) }
-        if (tokens != null) store.write(tokens) else store.clear()
+        val session = attempt { login(normalized, password) }
+            ?: attempt { register(normalized, password, sessionDisplayName(normalized)) }
+        if (session != null) {
+            store.write(session.tokens())
+            noteAuthUser(session.user)
+        } else {
+            store.clear()
+        }
     }
 
     suspend fun clear() {
@@ -113,16 +125,18 @@ class ApiClient(
         onEvent: suspend (ChatStreamEvent) -> Unit,
     ) {
         withContext(Dispatchers.IO) {
-            withAuth { access ->
-                val call = streamHttp.newCall(
-                    jsonPost(
-                        "conversations/$conversationId/messages/stream",
-                        MessageBody(content),
-                        access,
-                        clientMessageId,
-                    ),
-                )
-                openStream(call, onEvent)
+            recovering {
+                withAuth { access ->
+                    val call = streamHttp.newCall(
+                        jsonPost(
+                            "conversations/$conversationId/messages/stream",
+                            MessageBody(content),
+                            access,
+                            clientMessageId,
+                        ),
+                    )
+                    openStream(call, onEvent)
+                }
             }
         }
     }
@@ -133,11 +147,13 @@ class ApiClient(
         onEvent: suspend (ChatStreamEvent) -> Unit,
     ) {
         withContext(Dispatchers.IO) {
-            withAuth { access ->
-                val call = streamHttp.newCall(
-                    authed("POST", lastUserReplyPath(conversationId, userMessageId), "{}", access),
-                )
-                openStream(call, onEvent)
+            recovering {
+                withAuth { access ->
+                    val call = streamHttp.newCall(
+                        authed("POST", lastUserReplyPath(conversationId, userMessageId), "{}", access),
+                    )
+                    openStream(call, onEvent)
+                }
             }
         }
     }
@@ -398,26 +414,28 @@ class ApiClient(
     }
 
     /** Trades a Firebase Google ID token for an API session. Returns false when the API refuses it. */
-    suspend fun establishWithGoogle(
-        idToken: String,
-        dateOfBirth: String? = null,
-        ageConfirmedAt: String? = null,
-    ): Boolean {
-        val payload = googleAuthRequestJson(idToken, dateOfBirth, ageConfirmedAt, SEND_AGE_TO_API, json)
-        val tokens = attempt { unwrapData<SessionTokens>(execute(authed("POST", "auth/google", payload, null)), json) }
-        if (tokens != null) store.write(tokens) else store.clear()
-        return tokens != null
+    suspend fun establishWithGoogle(idToken: String): Boolean {
+        val payload = googleAuthRequestJson(idToken, json)
+        val session = attempt {
+            unwrapData<AuthSession>(execute(authed("POST", "auth/google", payload, null)), json)
+        }
+        if (session != null) {
+            store.write(session.tokens())
+            noteAuthUser(session.user)
+        } else {
+            store.clear()
+        }
+        return session != null
     }
 
     /**
-     * PATCH users/me/age. No request is made while [SEND_AGE_TO_API] is false,
-     * so the date of birth cannot be logged from a body that was never sent.
+     * PATCH users/me/age with `{"ageConfirmed": true}`.
+     * The date of birth stays on the device. Returns the server timestamp.
      */
-    suspend fun patchAge(dateOfBirth: String, ageConfirmedAt: String) {
-        if (!SEND_AGE_TO_API) return
-        val payload = agePatchJson(dateOfBirth, ageConfirmedAt, json)
-        withAuth { access ->
-            execute(authed("PATCH", AGE_PATCH_PATH, payload, access))
+    suspend fun patchAge(): String {
+        val payload = agePatchJson(json)
+        return withAuth { access ->
+            unwrapData<AgeAck>(execute(authed("PATCH", AGE_PATCH_PATH, payload, access)), json).ageConfirmedAt
         }
     }
 
@@ -426,10 +444,15 @@ class ApiClient(
      * 201 `{id}` is a new report. 200 `{id}` is a duplicate. A 401 still refreshes the session.
      */
     suspend fun reportMessage(body: ReportMessageBody): ReportHttp {
-        return withAuth { access ->
-            val result = executeRaw(authed("POST", "reports", json.encodeToString(body), access))
-            if (result.status == 401) throw apiStatus(result.status, result.body, json)
-            result
+        return recovering {
+            withAuth { access ->
+                val result = executeRaw(authed("POST", "reports", json.encodeToString(body), access))
+                if (result.status == 401) throw apiStatus(result.status, result.body, json)
+                if (result.status == 403 && apiStatus(result.status, result.body, json).code == AGE_REQUIRED) {
+                    throw apiStatus(result.status, result.body, json)
+                }
+                result
+            }
         }
     }
 
@@ -506,7 +529,7 @@ class ApiClient(
         }
     }
 
-    private suspend fun login(email: String, password: String): SessionTokens {
+    private suspend fun login(email: String, password: String): AuthSession {
         return unwrapData(execute(jsonPost("auth/login", LoginBody(email, password))), json)
     }
 
@@ -514,19 +537,37 @@ class ApiClient(
         email: String,
         password: String,
         displayName: String,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): SessionTokens {
-        val payload = registerRequestJson(
-            email,
-            password,
-            displayName,
-            dateOfBirth,
-            ageConfirmedAt,
-            SEND_AGE_TO_API,
-            json,
-        )
+    ): AuthSession {
+        val payload = registerRequestJson(email, password, displayName, json)
         return unwrapData(execute(authed("POST", "auth/register", payload, null)), json)
+    }
+
+    private fun noteAuthUser(user: RemoteUser?) {
+        onAuthUser?.invoke(user != null, user?.ageConfirmedAt?.takeIf { it.isNotBlank() })
+    }
+
+    /**
+     * A 403 AGE_REQUIRED re-attests once when this device already passed the
+     * gate, then repeats the call. Otherwise the age gate is shown and the
+     * error stands. Nested calls, including the attestation itself, do not loop.
+     */
+    private suspend fun <T> recovering(block: suspend () -> T): T {
+        try {
+            return block()
+        } catch (error: ApiStatusException) {
+            if (error.status != 403 || error.code != AGE_REQUIRED || ageDepth.get() > 0) throw error
+            if (!ageGate.localGatePassed()) {
+                ageGate.showAgeGate()
+                throw error
+            }
+            ageDepth.incrementAndGet()
+            try {
+                patchAge()
+                return block()
+            } finally {
+                ageDepth.decrementAndGet()
+            }
+        }
     }
 
     private suspend fun <T> withAuth(
@@ -610,7 +651,11 @@ class ApiClient(
 
     private suspend fun execute(request: Request): String = execute(http, request)
 
-    private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
+    private suspend fun execute(client: OkHttpClient, request: Request): String {
+        return recovering { executeOnce(client, request) }
+    }
+
+    private suspend fun executeOnce(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
         try {
             client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()

@@ -1,15 +1,21 @@
 package com.dhama.mybase
 
-import com.dhama.mybase.core.age.SEND_AGE_TO_API
+import com.dhama.mybase.core.age.AgeFollowUp
+import com.dhama.mybase.core.age.ageAttestDelayMs
+import com.dhama.mybase.core.age.ageAttestShouldRetry
+import com.dhama.mybase.core.age.ageFollowUp
 import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.age.googleAuthRequestJson
+import com.dhama.mybase.core.age.localAgeGatePassed
 import com.dhama.mybase.core.age.redactAge
 import com.dhama.mybase.core.age.registerRequestJson
 import com.dhama.mybase.core.age.withoutAgeAttributes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class AgeWireTest {
 
@@ -17,50 +23,53 @@ class AgeWireTest {
     private val confirmedAt = "2026-10-12T15:04:05Z"
 
     @Test
-    fun ageFieldsStayOffTheWireUntilTheBackendAcceptsThem() {
-        assertFalse(SEND_AGE_TO_API)
-        val register = registerRequestJson(
-            email = "a@b.co",
-            password = "secret",
-            displayName = "Ann",
-            dateOfBirth = dob,
-            ageConfirmedAt = confirmedAt,
-            sendAgeFields = SEND_AGE_TO_API,
-        )
-        val google = googleAuthRequestJson(
-            idToken = "token",
-            dateOfBirth = dob,
-            ageConfirmedAt = confirmedAt,
-            sendAgeFields = SEND_AGE_TO_API,
-        )
+    fun authBodiesNeverCarryADateOfBirth() {
+        val register = registerRequestJson("a@b.co", "secret", "Ann")
+        val google = googleAuthRequestJson("token")
+        val patch = agePatchJson()
         assertFalse(register.contains("dateOfBirth"))
-        assertFalse(register.contains("ageConfirmedAt"))
+        assertFalse(register.contains("ageConfirmed"))
         assertFalse(register.contains(dob))
-        assertFalse(register.contains(confirmedAt))
         assertFalse(google.contains("dateOfBirth"))
         assertFalse(google.contains(dob))
+        assertEquals("""{"ageConfirmed":true}""", patch)
+        assertFalse(patch.contains("dateOfBirth"))
+        assertFalse(patch.contains("ageConfirmedAt"))
         assertTrue(register.contains("\"email\":\"a@b.co\""))
         assertTrue(google.contains("\"idToken\":\"token\""))
     }
 
     @Test
-    fun preparedPayloadsIncludeAgeOnceTheSwitchIsOn() {
-        val register = registerRequestJson(
-            email = "a@b.co",
-            password = "secret",
-            displayName = "Ann",
-            dateOfBirth = dob,
-            ageConfirmedAt = confirmedAt,
-            sendAgeFields = true,
-        )
-        val google = googleAuthRequestJson("token", dob, confirmedAt, sendAgeFields = true)
-        val patch = agePatchJson(dob, confirmedAt)
-        assertTrue(register.contains("\"dateOfBirth\":\"$dob\""))
-        assertTrue(register.contains("\"ageConfirmedAt\":\"$confirmedAt\""))
-        assertTrue(google.contains("\"dateOfBirth\":\"$dob\""))
-        assertTrue(google.contains("\"ageConfirmedAt\":\"$confirmedAt\""))
-        assertTrue(patch.contains("\"dateOfBirth\":\"$dob\""))
-        assertTrue(patch.contains("\"ageConfirmedAt\":\"$confirmedAt\""))
+    fun followUpUsesTheAuthUserAndSkipsAProfileRead() {
+        assertEquals(AgeFollowUp.None, ageFollowUp(localGatePassed = false, userPresent = true, ageConfirmedAt = null))
+        assertEquals(AgeFollowUp.None, ageFollowUp(localGatePassed = true, userPresent = true, ageConfirmedAt = confirmedAt))
+        assertEquals(AgeFollowUp.Patch, ageFollowUp(localGatePassed = true, userPresent = true, ageConfirmedAt = null))
+        assertEquals(AgeFollowUp.Patch, ageFollowUp(localGatePassed = true, userPresent = true, ageConfirmedAt = "  "))
+        assertEquals(AgeFollowUp.FetchProfile, ageFollowUp(localGatePassed = true, userPresent = false, ageConfirmedAt = null))
+    }
+
+    @Test
+    fun localGateMatchesTheSignedInSubject() {
+        val today = LocalDate.of(2026, 10, 12)
+        val adult = LocalDate.of(1991, 3, 17)
+        assertTrue(localAgeGatePassed(true, adult, "uid", "uid", today))
+        assertFalse(localAgeGatePassed(true, adult, "uid", "other", today))
+        assertFalse(localAgeGatePassed(true, adult, "uid", "", today))
+        assertFalse(localAgeGatePassed(false, adult, "uid", "uid", today))
+        assertFalse(localAgeGatePassed(true, today.minusYears(17), "uid", "uid", today))
+    }
+
+    @Test
+    fun backoffGrowsThenStopsAndABadBodyDoesNotRetry() {
+        assertEquals(0L, ageAttestDelayMs(0))
+        assertEquals(1_000L, ageAttestDelayMs(1))
+        assertEquals(16_000L, ageAttestDelayMs(5))
+        assertNull(ageAttestDelayMs(6))
+        assertFalse(ageAttestShouldRetry(400))
+        assertFalse(ageAttestShouldRetry(401))
+        assertFalse(ageAttestShouldRetry(403))
+        assertTrue(ageAttestShouldRetry(429))
+        assertTrue(ageAttestShouldRetry(500))
     }
 
     @Test

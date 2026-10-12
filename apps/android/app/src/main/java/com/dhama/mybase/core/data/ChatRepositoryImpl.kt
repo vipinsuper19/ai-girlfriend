@@ -311,6 +311,10 @@ class ChatRepositoryImpl(
                 dao.delete(userLocalId)
                 throw error
             }
+            RemoteSendFailure.AgeRequired -> {
+                dao.delete(assistantId)
+                throw error
+            }
             RemoteSendFailure.RateLimited -> {
                 markReplyFailed(
                     assistantId,
@@ -574,7 +578,9 @@ class ChatRepositoryImpl(
         } catch (error: ApiStatusException) {
             dao.delete(assistantId)
             when (remoteSendFailure(error.status, error.code)) {
-                RemoteSendFailure.UsageLimit -> throw error
+                RemoteSendFailure.UsageLimit,
+                RemoteSendFailure.AgeRequired,
+                -> throw error
                 RemoteSendFailure.RateLimited -> {
                     markReplyFailed(
                         assistantId,
