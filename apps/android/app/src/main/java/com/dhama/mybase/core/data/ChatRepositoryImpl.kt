@@ -6,6 +6,7 @@ import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.droppedStreamLine
 import com.dhama.mybase.core.chat.DROPPED_DELIVERY
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
+import com.dhama.mybase.core.chat.endsWithUserMessage
 import com.dhama.mybase.core.chat.idleStallDelivery
 import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.localReply
@@ -16,9 +17,11 @@ import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
+import com.dhama.mybase.core.network.LastUserReplyApi
 import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.STALLED_STREAM
 import com.dhama.mybase.core.network.StreamIdleException
+import com.dhama.mybase.core.network.clientMessageId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.voice.resolveVoiceUrl
@@ -35,6 +38,7 @@ class ChatRepositoryImpl(
     private val dao: ChatMessageDao,
     private val voiceDir: File,
     private val api: ApiClient,
+    private val lastUserReply: LastUserReplyApi = api,
 ) : ChatRepository {
 
     override fun observe(): Flow<List<ChatMessageEntity>> = dao.observe()
@@ -58,17 +62,19 @@ class ChatRepositoryImpl(
         relationship: String,
         traits: List<String>,
         conversationId: Int?,
+        clientMessageId: String?,
     ) {
         val body = text.trim()
         if (body.isEmpty()) return
+        val messageId = clientMessageId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         if (conversationId != null) {
-            sendRemote(body, conversationId)
+            sendRemote(body, conversationId, messageId)
             return
         }
         val now = System.currentTimeMillis()
         dao.upsert(
             ChatMessageEntity(
-                id = UUID.randomUUID().toString(),
+                id = messageId,
                 role = ROLE_USER,
                 text = body,
                 createdAtEpochMs = now,
@@ -147,9 +153,9 @@ class ChatRepositoryImpl(
         )
     }
 
-    private suspend fun sendRemote(text: String, conversationId: Int) {
+    private suspend fun sendRemote(text: String, conversationId: Int, clientMessageId: String) {
         val now = System.currentTimeMillis()
-        val userLocalId = UUID.randomUUID().toString()
+        val userLocalId = clientMessageId
         dao.upsert(
             ChatMessageEntity(
                 id = userLocalId,
@@ -173,7 +179,7 @@ class ChatRepositoryImpl(
                     delivery = DELIVERY_STREAMING,
                 ),
             )
-            api.streamMessage(conversationId, text) { event ->
+            api.streamMessage(conversationId, text, clientMessageId) { event ->
                 when (event) {
                     is ChatStreamEvent.Delta -> {
                         userAccepted = true
@@ -209,7 +215,14 @@ class ChatRepositoryImpl(
             }
             when (streamRecovery(userAccepted, built.isNotEmpty(), finished)) {
                 StreamRecovery.Finished -> Unit
-                StreamRecovery.Fallback -> deliverBlocking(conversationId, text, userLocalId, assistantId, now)
+                StreamRecovery.Fallback -> deliverBlocking(
+                    conversationId,
+                    text,
+                    userLocalId,
+                    assistantId,
+                    now,
+                    clientMessageId,
+                )
                 StreamRecovery.Failed -> markReplyFailed(
                     assistantId,
                     built.toString(),
@@ -237,7 +250,7 @@ class ChatRepositoryImpl(
             }
             if (streamRecovery(userAccepted, built.isNotEmpty(), finished) == StreamRecovery.Fallback) {
                 try {
-                    deliverBlocking(conversationId, text, userLocalId, assistantId, now)
+                    deliverBlocking(conversationId, text, userLocalId, assistantId, now, clientMessageId)
                 } catch (cancelled: CancellationException) {
                     dao.delete(assistantId)
                     throw cancelled
@@ -277,8 +290,9 @@ class ChatRepositoryImpl(
         userLocalId: String,
         assistantId: String,
         now: Long,
+        clientMessageId: String,
     ) {
-        val posted = api.postMessage(conversationId, text)
+        val posted = api.postMessage(conversationId, text, clientMessageId)
         val user = posted.userMessage?.toRestored(api.origin())
         val assistant = posted.assistantMessage?.toRestored(api.origin())
         if (user == null || assistant == null || assistant.text.isBlank()) {
@@ -349,6 +363,82 @@ class ChatRepositoryImpl(
             }
             .forEach { dao.delete(it.id) }
         remote.forEach { dao.upsert(it.toStored(api.origin())) }
+    }
+
+    override suspend fun retryUnfinishedReply(conversationId: Int) {
+        reload(conversationId)
+        val ordered = orderedThread()
+        if (!endsWithUserMessage(ordered.map { it.role }, ordered.map { it.kind })) return
+        val userAt = ordered.last { it.kind != ChatMessageEntity.KIND_SYSTEM }.createdAtEpochMs
+        finishLastUserReply(conversationId, userAt)
+    }
+
+    override suspend fun retryUnsent(
+        text: String,
+        name: String,
+        relationship: String,
+        traits: List<String>,
+        conversationId: Int?,
+        clientMessageId: String,
+        failedLocalId: String,
+    ) {
+        if (conversationId != null) {
+            val remote = try {
+                api.listMessages(conversationId, limit = MESSAGE_PAGE)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            if (remote != null && remote.any { it.clientMessageId() == clientMessageId }) {
+                if (failedLocalId != clientMessageId) discard(failedLocalId)
+                reload(conversationId)
+                val tail = remote.lastOrNull()
+                val landed = tail?.role == ROLE_USER && tail.clientMessageId() == clientMessageId
+                if (landed) {
+                    val userAt = orderedThread()
+                        .lastOrNull { it.role == ROLE_USER }
+                        ?.createdAtEpochMs
+                        ?: System.currentTimeMillis()
+                    finishLastUserReply(conversationId, userAt)
+                }
+                return
+            }
+        }
+        if (failedLocalId != clientMessageId) discard(failedLocalId)
+        send(text, name, relationship, traits, conversationId, clientMessageId)
+    }
+
+    private suspend fun finishLastUserReply(conversationId: Int, userAt: Long) {
+        try {
+            val reply = lastUserReply.replyToLastUserMessage(conversationId)
+            val stored = reply.toStored(api.origin())
+            dao.upsert(
+                stored.copy(
+                    createdAtEpochMs = stored.createdAtEpochMs.takeIf { it > userAt } ?: userAt + 1,
+                ),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            dao.upsert(
+                ChatMessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    role = ROLE_ASSISTANT,
+                    text = error.message?.takeIf { it.isNotBlank() } ?: STALLED_STREAM,
+                    createdAtEpochMs = userAt + 1,
+                    delivery = DELIVERY_DROPPED,
+                ),
+            )
+            if (isUsageLimit(error)) throw error
+        }
+    }
+
+    private suspend fun orderedThread(): List<ChatMessageEntity> {
+        return dao.snapshot().sortedWith(
+            compareBy<ChatMessageEntity> { it.createdAtEpochMs }
+                .thenBy { serverRecordId(it.id) ?: Int.MAX_VALUE },
+        )
     }
 
     override suspend fun loadOlder(conversationId: Int, beforeId: Int): Int {

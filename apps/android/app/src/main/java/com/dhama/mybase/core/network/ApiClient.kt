@@ -47,7 +47,7 @@ class ApiClient(
     private val json: Json = apiJson(),
     private val streamIdleMillis: Long = STREAM_IDLE_TIMEOUT_MS,
     private val firstReadMillis: Long = FIRST_READ_TIMEOUT_MS,
-) {
+) : LastUserReplyApi {
     private val refreshMutex = Mutex()
     private val streamHttp = streamOkHttp(http, firstReadMillis)
     private val imageHttp = http.newBuilder()
@@ -108,6 +108,7 @@ class ApiClient(
     suspend fun streamMessage(
         conversationId: Int,
         content: String,
+        clientMessageId: String? = null,
         onEvent: suspend (ChatStreamEvent) -> Unit,
     ) {
         withContext(Dispatchers.IO) {
@@ -115,8 +116,9 @@ class ApiClient(
                 val call = streamHttp.newCall(
                     jsonPost(
                         "conversations/$conversationId/messages/stream",
-                        MessageBody(content),
+                        messageBody(content, clientMessageId),
                         access,
+                        clientMessageId,
                     ),
                 )
                 try {
@@ -311,13 +313,34 @@ class ApiClient(
         }
     }
 
-    suspend fun postMessage(conversationId: Int, content: String): PostedMessages {
+    suspend fun postMessage(
+        conversationId: Int,
+        content: String,
+        clientMessageId: String? = null,
+    ): PostedMessages {
         return withAuth { access ->
-            val payload = json.encodeToString(MessageBody(content))
             unwrapData(
-                execute(authed("POST", "conversations/$conversationId/messages", payload, access)),
+                execute(
+                    jsonPost(
+                        "conversations/$conversationId/messages",
+                        messageBody(content, clientMessageId),
+                        access,
+                        clientMessageId,
+                    ),
+                ),
                 json,
             )
+        }
+    }
+
+    override suspend fun replyToLastUserMessage(conversationId: Int): RemoteMessage {
+        return withAuth { access ->
+            val posted = unwrapData<LastUserReplyBody>(
+                execute(authed("POST", lastUserReplyPath(conversationId), "{}", access)),
+                json,
+            )
+            posted.assistantMessage
+                ?: throw ApiStatusException(0, "Couldn't finish that reply.", null)
         }
     }
 
@@ -513,7 +536,12 @@ class ApiClient(
         }
     }
 
-    private fun jsonPost(path: String, body: Any, access: String? = null): Request {
+    private fun jsonPost(
+        path: String,
+        body: Any,
+        access: String? = null,
+        idempotencyKey: String? = null,
+    ): Request {
         val payload = when (body) {
             is LoginBody -> json.encodeToString(body)
             is RefreshBody -> json.encodeToString(body)
@@ -523,7 +551,17 @@ class ApiClient(
             is MessageBody -> json.encodeToString(body)
             else -> error("Unsupported body")
         }
-        return authed("POST", path, payload, access)
+        val request = authed("POST", path, payload, access)
+        val key = idempotencyKey?.takeIf { it.isNotBlank() } ?: return request
+        return request.newBuilder().header(IDEMPOTENCY_KEY_HEADER, key).build()
+    }
+
+    private fun messageBody(content: String, clientMessageId: String?): MessageBody {
+        val key = clientMessageId?.takeIf { it.isNotBlank() }
+        return MessageBody(
+            content = content,
+            metadata = key?.let { MessageMetadata(clientMessageId = it) },
+        )
     }
 
     private fun authed(method: String, path: String, payload: String?, access: String?): Request {
@@ -590,7 +628,16 @@ private data class PasswordBody(val currentPassword: String, val newPassword: St
 private data class ConversationBody(val companionId: Int, val title: String)
 
 @Serializable
-private data class MessageBody(val content: String)
+private data class MessageBody(
+    val content: String,
+    val metadata: MessageMetadata? = null,
+)
+
+@Serializable
+private data class MessageMetadata(val clientMessageId: String)
+
+@Serializable
+private data class LastUserReplyBody(val assistantMessage: RemoteMessage? = null)
 
 @Serializable
 private data class IdPayload(val id: Int)

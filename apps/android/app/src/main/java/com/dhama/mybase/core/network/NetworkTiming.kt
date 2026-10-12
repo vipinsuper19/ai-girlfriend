@@ -11,22 +11,39 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.EventListener
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
-/** Render Free sleeps after 15 minutes and needs about a minute to accept the first request. */
-const val CONNECT_TIMEOUT_MS = 90_000L
+/** Render Free sleeps after 15 minutes and needs about a minute to accept the next request. */
+const val RENDER_SLEEP_AFTER_MS = 15 * 60 * 1000L
 
-/** Time to wait for response headers, including that cold start. */
-const val FIRST_READ_TIMEOUT_MS = 90_000L
+/** Connect and first-byte budget for the first call after that sleep, or after process start. */
+const val COLD_READ_TIMEOUT_MS = 90_000L
+
+/** Connect and first-byte budget once this process has heard from the server recently. */
+const val WARM_READ_TIMEOUT_MS = 30_000L
+
+const val CONNECT_TIMEOUT_MS = COLD_READ_TIMEOUT_MS
+
+/** Cold-start wait for response headers. Warm calls use [WARM_READ_TIMEOUT_MS] instead. */
+const val FIRST_READ_TIMEOUT_MS = COLD_READ_TIMEOUT_MS
 
 /**
- * Time with no bytes on an open SSE body. Longer than the server's 15s keepalive,
- * short enough that a dead socket does not sit there forever.
+ * Server SSE comment interval. Matches `SSE_KEEPALIVE_MS` in apps/api (`20_000`).
+ * One missed ping must not fail the stream.
  */
-const val STREAM_IDLE_TIMEOUT_MS = 45_000L
+const val SERVER_KEEPALIVE_MS = 20_000L
+
+/** Quiet time allowed after two missed keepalives before the body is treated as dead. */
+const val STREAM_IDLE_MARGIN_MS = 5_000L
+
+/** 2 × [SERVER_KEEPALIVE_MS] + [STREAM_IDLE_MARGIN_MS]. */
+const val STREAM_IDLE_TIMEOUT_MS = SERVER_KEEPALIVE_MS * 2 + STREAM_IDLE_MARGIN_MS
 
 /** Show a waiting state once the first byte is this late, and keep waiting. */
 const val WAKE_HINT_AFTER_MS = 5_000L
@@ -47,18 +64,23 @@ fun coldStartOkHttp(
     connectTimeoutMs: Long = CONNECT_TIMEOUT_MS,
     readTimeoutMs: Long = FIRST_READ_TIMEOUT_MS,
     writeTimeoutMs: Long = 60_000L,
+    warmReadTimeoutMs: Long = WARM_READ_TIMEOUT_MS,
+    awakeWindowMs: Long = RENDER_SLEEP_AFTER_MS,
 ): OkHttpClient {
     return OkHttpClient.Builder()
         .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
         .readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
         .writeTimeout(writeTimeoutMs, TimeUnit.MILLISECONDS)
+        .addInterceptor(WarmCallTimeouts(signals, warmReadTimeoutMs, awakeWindowMs))
         .eventListenerFactory { WakeEventListener(signals) }
         .build()
 }
 
 /**
- * Streaming client. The first byte uses [firstReadTimeoutMs]. The body then tightens
- * to [STREAM_IDLE_TIMEOUT_MS] so a paused model does not inherit a limit of zero.
+ * Streaming client. Headers use the cold budget in [firstReadTimeoutMs], unless
+ * [WarmCallTimeouts] has already shortened this call to [WARM_READ_TIMEOUT_MS].
+ * The body then tightens to [STREAM_IDLE_TIMEOUT_MS] so a paused model does not
+ * inherit a limit of zero.
  */
 fun streamOkHttp(
     base: OkHttpClient,
@@ -78,9 +100,24 @@ class NetworkSignals(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val awaiting = ConcurrentHashMap.newKeySet<Call>()
+    private val lastTrafficAtMs = AtomicLong(0)
     private var hint: Job? = null
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
+
+    /** A successful response arrived, so the next call can use the shorter warm budget. */
+    fun noteTraffic(nowMs: Long = System.currentTimeMillis()) {
+        lastTrafficAtMs.set(nowMs)
+    }
+
+    /** True when a successful response landed inside [windowMs]. Process start counts as idle. */
+    fun recentlyAwake(
+        nowMs: Long = System.currentTimeMillis(),
+        windowMs: Long = RENDER_SLEEP_AFTER_MS,
+    ): Boolean {
+        val seen = lastTrafficAtMs.get()
+        return seen > 0L && nowMs - seen < windowMs
+    }
 
     fun onStart(call: Call) {
         synchronized(this) {
@@ -101,6 +138,31 @@ class NetworkSignals(
             hint = null
             _status.value = null
         }
+    }
+}
+
+/**
+ * The shared client's connect and read timeouts cover a cold start. After a recent
+ * success they drop to the warm budget, so a dead host does not sit for 90 seconds.
+ * SSE still replaces the body timeout with [STREAM_IDLE_TIMEOUT_MS] once headers arrive.
+ */
+private class WarmCallTimeouts(
+    private val signals: NetworkSignals,
+    private val warmTimeoutMs: Long,
+    private val awakeWindowMs: Long,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val next = if (signals.recentlyAwake(windowMs = awakeWindowMs)) {
+            val budget = warmTimeoutMs.toInt()
+            chain
+                .withConnectTimeout(budget, TimeUnit.MILLISECONDS)
+                .withReadTimeout(budget, TimeUnit.MILLISECONDS)
+        } else {
+            chain
+        }
+        val response = next.proceed(chain.request())
+        if (response.isSuccessful) signals.noteTraffic()
+        return response
     }
 }
 

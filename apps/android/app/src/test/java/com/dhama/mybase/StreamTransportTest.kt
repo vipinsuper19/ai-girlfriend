@@ -7,12 +7,16 @@ import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.CONNECT_TIMEOUT_MS
 import com.dhama.mybase.core.network.FIRST_READ_TIMEOUT_MS
 import com.dhama.mybase.core.network.NetworkSignals
+import com.dhama.mybase.core.network.RENDER_SLEEP_AFTER_MS
+import com.dhama.mybase.core.network.SERVER_KEEPALIVE_MS
 import com.dhama.mybase.core.network.STALLED_STREAM
+import com.dhama.mybase.core.network.STREAM_IDLE_MARGIN_MS
 import com.dhama.mybase.core.network.STREAM_IDLE_TIMEOUT_MS
 import com.dhama.mybase.core.network.SessionStore
 import com.dhama.mybase.core.network.SessionTokens
 import com.dhama.mybase.core.network.StreamIdleException
 import com.dhama.mybase.core.network.WAKE_HINT_AFTER_MS
+import com.dhama.mybase.core.network.WARM_READ_TIMEOUT_MS
 import com.dhama.mybase.core.network.WAKING_SERVER
 import com.dhama.mybase.core.network.coldStartOkHttp
 import com.dhama.mybase.core.network.streamOkHttp
@@ -29,6 +33,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -47,6 +52,11 @@ class StreamTransportTest {
         assertTrue(CONNECT_TIMEOUT_MS in 60_000L..90_000L)
         assertTrue(FIRST_READ_TIMEOUT_MS in 60_000L..90_000L)
         assertTrue(STREAM_IDLE_TIMEOUT_MS in 30_000L..60_000L)
+        assertEquals(20_000L, SERVER_KEEPALIVE_MS)
+        assertEquals(5_000L, STREAM_IDLE_MARGIN_MS)
+        assertEquals(SERVER_KEEPALIVE_MS * 2 + STREAM_IDLE_MARGIN_MS, STREAM_IDLE_TIMEOUT_MS)
+        assertEquals(30_000L, WARM_READ_TIMEOUT_MS)
+        assertEquals(15 * 60 * 1000L, RENDER_SLEEP_AFTER_MS)
         assertEquals(5_000L, WAKE_HINT_AFTER_MS)
         val http = coldStartOkHttp(NetworkSignals())
         assertEquals(CONNECT_TIMEOUT_MS, http.connectTimeoutMillis.toLong())
@@ -55,6 +65,52 @@ class StreamTransportTest {
         assertEquals(CONNECT_TIMEOUT_MS, stream.connectTimeoutMillis.toLong())
         assertEquals(FIRST_READ_TIMEOUT_MS, stream.readTimeoutMillis.toLong())
         assertNotEquals(0, stream.readTimeoutMillis)
+    }
+
+    @Test
+    fun coldWindowOpensAgainAfterTheSleepGap() {
+        val signals = NetworkSignals()
+        assertFalse(signals.recentlyAwake(nowMs = 1_000, windowMs = 100))
+        signals.noteTraffic(nowMs = 1_000)
+        assertTrue(signals.recentlyAwake(nowMs = 1_050, windowMs = 100))
+        assertFalse(signals.recentlyAwake(nowMs = 1_200, windowMs = 100))
+    }
+
+    @Test
+    fun warmCallsUseAShorterFirstRead() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeadersDelay(150, TimeUnit.MILLISECONDS)
+                .setBody("""{"data":[]}"""),
+        )
+        server.enqueue(
+            MockResponse()
+                .setHeadersDelay(2, TimeUnit.SECONDS)
+                .setBody("""{"data":[]}"""),
+        )
+        server.start()
+        try {
+            val signals = NetworkSignals(hintAfterMs = 60_000)
+            val http = coldStartOkHttp(
+                signals,
+                connectTimeoutMs = 5_000,
+                readTimeoutMs = 5_000,
+                warmReadTimeoutMs = 400,
+            )
+            val api = ApiClient(http, server.url("/api/v1/").toString(), MemorySession())
+            api.listAvatars()
+            val started = System.nanoTime()
+            try {
+                api.listAvatars()
+                fail("a warm call should give up before the cold budget")
+            } catch (error: Exception) {
+                val elapsedMs = (System.nanoTime() - started) / 1_000_000
+                assertTrue("warm read took ${elapsedMs}ms (${error.javaClass.simpleName})", elapsedMs < 1_500)
+            }
+        } finally {
+            runCatching { server.shutdown() }
+        }
     }
 
     @Test

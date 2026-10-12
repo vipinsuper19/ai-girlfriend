@@ -142,6 +142,15 @@ fun idleStallDelivery(userAccepted: Boolean, replyStarted: Boolean): String {
 
 fun retriesByReload(delivery: String): Boolean = delivery == DROPPED_DELIVERY
 
+/**
+ * Oldest-first thread, after reload. A system note is not her reply.
+ * [roles] and [kinds] are parallel.
+ */
+fun endsWithUserMessage(roles: List<String>, kinds: List<String>): Boolean {
+    val last = roles.indices.reversed().firstOrNull { kinds.getOrNull(it) != "SYSTEM" } ?: return false
+    return roles[last] == "USER"
+}
+
 fun retryCaption(delivery: String): String {
     return if (retriesByReload(delivery)) "Reply didn't finish · Retry" else "Not sent · Retry"
 }

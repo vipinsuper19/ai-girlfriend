@@ -288,9 +288,12 @@ class ChatViewModel @Inject constructor(
             val conversationId = saved.conversationId ?: return
             sendJob = viewModelScope.launch {
                 try {
-                    chatRepository.reload(conversationId)
+                    chatRepository.retryUnfinishedReply(conversationId)
+                    refreshUsage()
                 } catch (error: CancellationException) {
                     throw error
+                } catch (error: ApiStatusException) {
+                    noteUsageLimit(error)
                 } catch (_: Exception) {
                     // The dropped reply stays, so Retry can be tapped again.
                 }
@@ -306,14 +309,22 @@ class ChatViewModel @Inject constructor(
             thread.getOrNull(index - 1)?.takeIf { it.role == ChatRepositoryImpl.ROLE_USER }
         } ?: return
         sendJob = viewModelScope.launch {
-            chatRepository.discard(failed.id)
-            if (source.id != failed.id) chatRepository.discard(source.id)
             try {
                 if (source.kind == ChatMessageEntity.KIND_AUDIO && source.audioPath.isNotBlank()) {
                     if (!FeatureFlags.build.voice) return@launch
+                    chatRepository.discard(failed.id)
+                    if (source.id != failed.id) chatRepository.discard(source.id)
                     chatRepository.sendVoice(source.audioPath, source.durationMs, saved.conversationId)
                 } else if (source.text.isNotBlank()) {
-                    chatRepository.send(source.text, saved.name, saved.relationship, saved.traits, saved.conversationId)
+                    chatRepository.retryUnsent(
+                        source.text,
+                        saved.name,
+                        saved.relationship,
+                        saved.traits,
+                        saved.conversationId,
+                        clientMessageId = source.id,
+                        failedLocalId = failed.id,
+                    )
                     memoryRepository.notice(source.text)
                 }
                 refreshUsage()

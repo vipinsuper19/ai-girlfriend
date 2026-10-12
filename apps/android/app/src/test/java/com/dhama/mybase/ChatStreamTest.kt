@@ -6,6 +6,7 @@ import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.droppedStreamLine
+import com.dhama.mybase.core.chat.endsWithUserMessage
 import com.dhama.mybase.core.chat.idleStallDelivery
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.chat.keptOnReload
@@ -114,6 +115,10 @@ class ChatStreamTest {
         assertTrue(keptOnReload("SENT", "SYSTEM"))
         assertFalse(keptOnReload("DROPPED", "TEXT"))
         assertFalse(keptOnReload("SENT", "TEXT"))
+        assertTrue(endsWithUserMessage(listOf("USER"), listOf("TEXT")))
+        assertFalse(endsWithUserMessage(listOf("USER", "ASSISTANT"), listOf("TEXT", "TEXT")))
+        assertTrue(endsWithUserMessage(listOf("USER", "SYSTEM"), listOf("TEXT", "SYSTEM")))
+        assertFalse(endsWithUserMessage(emptyList(), emptyList()))
     }
 
     @Test
