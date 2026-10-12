@@ -1,4 +1,5 @@
 import com.android.build.api.variant.BuildConfigField
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
@@ -48,7 +49,17 @@ fun javaStringLiteral(value: String): String {
 
 fun configKey(raw: String): String = raw.uppercase().replace('-', '_').replace('.', '_')
 
-fun apiBaseUrl(buildType: String, flavors: List<String>): String {
+val debugApiBaseUrl = "http://10.0.2.2:3001/api/v1/"
+val placeholderApiBaseUrl = "https://api.example.invalid/api/v1/"
+
+fun allowPlaceholderApi(): Boolean =
+    (findProperty("allowPlaceholderApi") as? String).normalizeConfig()
+        ?.equals("true", ignoreCase = true) == true
+
+fun requireReleaseSigning(): Boolean =
+    configuredValue("REQUIRE_RELEASE_SIGNING")?.equals("true", ignoreCase = true) == true
+
+fun lookupApiBaseUrl(buildType: String, flavors: List<String>): String? {
     val type = configKey(buildType)
     val flavor = flavors.joinToString("_") { configKey(it) }.takeIf { it.isNotEmpty() }
     val keys = buildList {
@@ -57,12 +68,23 @@ fun apiBaseUrl(buildType: String, flavors: List<String>): String {
         if (flavor != null) add("API_BASE_URL_$flavor")
         add("API_BASE_URL")
     }
-    keys.firstNotNullOfOrNull { configuredValue(it) }?.let { return it }
-    return if (buildType.equals("debug", ignoreCase = true)) {
-        "http://10.0.2.2:3001/api/v1/"
-    } else {
-        "https://api.example.invalid/api/v1/"
+    return keys.firstNotNullOfOrNull { configuredValue(it) }
+}
+
+data class VariantApiUrl(
+    val url: String,
+    val unresolvedRelease: Boolean,
+)
+
+fun apiBaseUrl(buildType: String, flavors: List<String>): VariantApiUrl {
+    lookupApiBaseUrl(buildType, flavors)?.let { return VariantApiUrl(it, unresolvedRelease = false) }
+    if (buildType.equals("debug", ignoreCase = true)) {
+        return VariantApiUrl(debugApiBaseUrl, unresolvedRelease = false)
     }
+    if (allowPlaceholderApi()) {
+        return VariantApiUrl(placeholderApiBaseUrl, unresolvedRelease = false)
+    }
+    return VariantApiUrl(placeholderApiBaseUrl, unresolvedRelease = true)
 }
 
 fun resolveKeystore(path: String): File? {
@@ -84,19 +106,19 @@ data class ReleaseSigningSetup(
 )
 
 fun loadReleaseSigning(): ReleaseSigningSetup {
-    val path = signingSecret("RELEASE_STORE_FILE")
-    val storePassword = signingSecret("RELEASE_STORE_PASSWORD")
-    val keyAlias = signingSecret("RELEASE_KEY_ALIAS")
-    val keyPassword = signingSecret("RELEASE_KEY_PASSWORD")
+    val path = signingSecret("KEYSTORE_PATH")
+    val storePassword = signingSecret("KEYSTORE_PASSWORD")
+    val keyAlias = signingSecret("KEY_ALIAS")
+    val keyPassword = signingSecret("KEY_PASSWORD")
     val storeFile = path?.let(::resolveKeystore)
     if (storeFile != null && storePassword != null && keyAlias != null && keyPassword != null) {
         return ReleaseSigningSetup(ReleaseSigning(storeFile, storePassword, keyAlias, keyPassword), null)
     }
     val missing = buildList {
-        if (path == null) add("RELEASE_STORE_FILE")
-        if (storePassword == null) add("RELEASE_STORE_PASSWORD")
-        if (keyAlias == null) add("RELEASE_KEY_ALIAS")
-        if (keyPassword == null) add("RELEASE_KEY_PASSWORD")
+        if (path == null) add("KEYSTORE_PATH")
+        if (storePassword == null) add("KEYSTORE_PASSWORD")
+        if (keyAlias == null) add("KEY_ALIAS")
+        if (keyPassword == null) add("KEY_PASSWORD")
     }
     val details = buildList {
         if (missing.isNotEmpty()) add("missing ${missing.joinToString(", ")}")
@@ -110,21 +132,35 @@ fun loadReleaseSigning(): ReleaseSigningSetup {
 
 val releaseSigningSetup = loadReleaseSigning()
 val releaseSigning = releaseSigningSetup.signing
+val unresolvedReleaseVariants = mutableListOf<String>()
 
-releaseSigningSetup.problem?.let { problem ->
-    gradle.taskGraph.whenReady {
-        val releaseRequested = allTasks.any { task ->
-            task.project.path == project.path && "Release" in task.name
-        }
-        if (releaseRequested) {
-            logger.warn(
-                "Release signing is not configured ($problem). " +
-                    "bundleRelease will produce an unsigned AAB. " +
-                    "Set RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD " +
-                    "in the environment or local.properties to sign.",
-            )
-        }
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any { task ->
+        task.project.path == project.path && "Release" in task.name
     }
+    if (!releaseRequested) return@whenReady
+    if (unresolvedReleaseVariants.isNotEmpty()) {
+        throw GradleException(
+            "No API base URL is configured for ${unresolvedReleaseVariants.joinToString(", ")}. " +
+                "Set API_BASE_URL_RELEASE (environment, Gradle property, or local.properties). " +
+                "Pass -PallowPlaceholderApi=true to use $placeholderApiBaseUrl for a smoke build.",
+        )
+    }
+    val problem = releaseSigningSetup.problem ?: return@whenReady
+    if (requireReleaseSigning()) {
+        throw GradleException(
+            "Release signing is required but not configured ($problem). " +
+                "Set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD " +
+                "in the environment or local.properties.",
+        )
+    }
+    logger.warn(
+        "Release signing is not configured ($problem). " +
+            "bundleRelease will produce an unsigned AAB. " +
+            "Set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD " +
+            "in the environment or local.properties to sign, " +
+            "or REQUIRE_RELEASE_SIGNING=true to fail instead.",
+    )
 }
 
 android {
@@ -174,13 +210,14 @@ android {
     }
 }
 
-// One API_BASE_URL per variant (flavor + build type). There are no product flavors
-// today, so debug/release resolve API_BASE_URL_DEBUG / API_BASE_URL_RELEASE, then
-// API_BASE_URL, then the built-in default.
+// One API_BASE_URL per variant. Debug falls back to the emulator host. Release fails
+// unless a URL is configured, or -PallowPlaceholderApi=true opts into the placeholder.
 androidComponents {
     onVariants { variant ->
         val flavors = variant.productFlavors.map { it.second }
         val buildType = variant.buildType.orEmpty()
+        val resolved = apiBaseUrl(buildType, flavors)
+        if (resolved.unresolvedRelease) unresolvedReleaseVariants += variant.name
         val fields = checkNotNull(variant.buildConfigFields) {
             "buildConfigFields is unavailable; buildFeatures.buildConfig must stay enabled"
         }
@@ -188,7 +225,7 @@ androidComponents {
             "API_BASE_URL",
             BuildConfigField(
                 type = "String",
-                value = javaStringLiteral(apiBaseUrl(buildType, flavors)),
+                value = javaStringLiteral(resolved.url),
                 comment = "REST API base URL",
             ),
         )
