@@ -11,6 +11,8 @@ export interface ProviderModeration {
  */
 export interface ContentModerator {
     readonly id: string;
+    /** When set, the service chunks to this size. A non-positive value flags the text. */
+    readonly maxChars?: number;
     moderate(text: string): Promise<ProviderModeration>;
 }
 

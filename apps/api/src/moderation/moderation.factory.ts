@@ -1,6 +1,6 @@
 import type { SafetyConfig } from './safety.config.js';
 import type { ContentModerator } from './content-moderator.js';
-import { GeminiContentModerator } from './gemini-moderator.js';
+import { GeminiContentModerator, GEMINI_MODERATION_MODEL } from './gemini-moderator.js';
 import { OpenAiContentModerator } from './openai-moderator.js';
 
 const LOCAL_MODERATOR: ContentModerator = {
@@ -25,7 +25,7 @@ export function createContentModerator(
             env.GEMINI_API_KEY?.trim(),
             config.moderationModel ||
                 env.GEMINI_CHAT_MODEL?.trim() ||
-                'gemini-3.6-flash',
+                GEMINI_MODERATION_MODEL,
         );
     }
     return LOCAL_MODERATOR;

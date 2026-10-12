@@ -53,9 +53,9 @@ clients hide the matching controls, so nothing is faked.
 | `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
 | `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL`, `GEMINI_STT_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_IMAGE_MODEL` | Chat, voice, and images |
-| `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off |
+| `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
-| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL` |
+| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
 | `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
 | `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint when that provider is selected |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
@@ -96,9 +96,13 @@ Neither auth route is rate limited yet; put a limit in front of `password/forgot
 
 ### Content safety
 
-Chat input is scored before the model call, and the model reply is scored before it is saved or streamed. A flagged reply is replaced; the unsafe text is not written to the message row and is not sent as a stream delta.
+Chat input is scored before the model call, and the model reply is scored before it is saved. Streamed replies are scored in sentence-sized windows, so a safe sentence can arrive before a later window is replaced. The unsafe span is not written to the message row and is not sent as a stream delta.
 
-Allowed turns are unchanged. A refusal or crisis turn adds `safety` on the message `metadata` and on the response body (`POST /conversations/:id/messages`, `POST /messages/:id/regenerate`, voice respond, and the stream `done` event):
+Flirting, affection, and romance are allowed. Explicit sexual content (graphic acts, sexual body descriptions, and explicit roleplay) is blocked on input and output. That refusal is soft and in character (`code: "explicit_content"`). Sexual content involving minors stays a firm refusal. Both sides of that line live in `CONTENT_POLICY` in `src/moderation/safety-policy.ts`.
+
+A flagged user message stays in the thread the person can read. It is marked with `metadata.safety` and left out of later model prompts. Message usage is recorded only after a normal reply. A refusal, crisis reply, or moderation-unavailable turn is not charged.
+
+Allowed turns are otherwise unchanged. A refusal or crisis turn adds `safety` on the message `metadata` and on the response body (`POST /conversations/:id/messages`, `POST /messages/:id/regenerate`, voice respond, and the stream `done` event):
 
 ```json
 {
@@ -111,7 +115,7 @@ Allowed turns are unchanged. A refusal or crisis turn adds `safety` on the messa
 }
 ```
 
-`action` is `refuse` or `crisis`. `code` is `content_policy`, `self_harm`, or `moderation_unavailable`. The assistant `content` is the same `message`, so a client that only renders the bubble still shows it. Logs record the surface, action, code, categories, and ids — not the text.
+`action` is `refuse` or `crisis`. `code` is `content_policy`, `explicit_content`, `self_harm`, or `moderation_unavailable`. The assistant `content` is the same `message`, so a client that only renders the bubble still shows it. Logs record the surface, action, code, categories, and ids — not the text. Text longer than a provider's limit is scored in overlapping chunks. A limit that cannot be applied is treated as a block. Providers do not silently truncate.
 
 Creating or updating a companion rejects an unsafe persona with HTTP 400 and `code: "UNSAFE_PERSONA"`. That includes an appearance age under 18. The companion system prompt also ends with safety rules that the persona cannot override.
 

@@ -404,6 +404,23 @@ export class VoiceService {
 
         const safety = safetyNoticeOf(aiResponse);
 
+        if (safety && userMessage?.id != null) {
+            const fresh =
+                await this.db.orm.public.Message
+                    .where({
+                        id: userMessage.id,
+                    })
+                    .first();
+            if (
+                fresh &&
+                fresh.id === userMessage.id &&
+                fresh.metadata
+            ) {
+                userMessage.metadata =
+                    fresh.metadata;
+            }
+        }
+
         const assistantText =
             aiResponse?.content?.trim();
 

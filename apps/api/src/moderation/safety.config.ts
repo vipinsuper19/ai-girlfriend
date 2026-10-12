@@ -59,9 +59,15 @@ export function helplinesFromEnv(env: NodeJS.ProcessEnv): Helpline[] {
 export function safetyConfigFromEnv(
     env: NodeJS.ProcessEnv = process.env,
 ): SafetyConfig {
+    const enabled = flag(env.MODERATION_ENABLED, true);
+    if ((env.NODE_ENV ?? '').toLowerCase() === 'production' && !enabled) {
+        throw new Error(
+            'MODERATION_ENABLED=false is not allowed when NODE_ENV=production',
+        );
+    }
     const model = env.MODERATION_MODEL?.trim();
     return {
-        enabled: flag(env.MODERATION_ENABLED, true),
+        enabled,
         failClosed: flag(env.MODERATION_FAIL_CLOSED, true),
         provider: resolveModerationProvider(env.MODERATION_PROVIDER, env),
         ...(model ? { moderationModel: model } : {}),

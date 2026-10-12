@@ -14,6 +14,7 @@ import {
     type SafetyLogContext,
     type SafetyNotice,
 } from './safety-policy.js';
+import { textChunks } from './text-windows.js';
 import { UnsafePersonaException } from './unsafe-persona.exception.js';
 
 export interface SafetyLogger {
@@ -50,27 +51,39 @@ export class ModerationService {
             categories = merge(categories, assessLocal(trimmed, surface));
         }
         if (categories.length === 0 && trimmed && this.provider.id !== 'local') {
-            try {
-                const remote = await this.provider.moderate(trimmed);
-                categories = merge(categories, remote.categories);
-            } catch (error) {
-                const name = error instanceof Error ? error.name : 'Error';
-                this.logger.warn(
-                    [
-                        'safety',
-                        `provider=${this.provider.id}`,
-                        'failed',
-                        `name=${name}`,
-                        `surface=${surface}`,
-                        `chars=${trimmed.length}`,
-                        `userId=${ctx.userId ?? '-'}`,
-                        `conversationId=${ctx.conversationId ?? '-'}`,
-                    ].join(' '),
-                );
-                if (!this.config.failClosed) return null;
-                const notice = unavailableNotice();
-                this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
+            const maxChars = this.provider.maxChars;
+            const chunks = maxChars == null ? [trimmed] : textChunks(trimmed, maxChars);
+            if (chunks.length === 0) {
+                const notice = decideSafety(['illegal_harm'], surface, this.config.helplines);
+                if (notice) {
+                    this.logNotice(notice, surface, ctx, trimmed.length, ['over_limit']);
+                }
                 return notice;
+            }
+            for (const chunk of chunks) {
+                try {
+                    const remote = await this.provider.moderate(chunk);
+                    categories = merge(categories, remote.categories);
+                    if (categories.length > 0) break;
+                } catch (error) {
+                    const name = error instanceof Error ? error.name : 'Error';
+                    this.logger.warn(
+                        [
+                            'safety',
+                            `provider=${this.provider.id}`,
+                            'failed',
+                            `name=${name}`,
+                            `surface=${surface}`,
+                            `chars=${trimmed.length}`,
+                            `userId=${ctx.userId ?? '-'}`,
+                            `conversationId=${ctx.conversationId ?? '-'}`,
+                        ].join(' '),
+                    );
+                    if (!this.config.failClosed) return null;
+                    const notice = unavailableNotice();
+                    this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
+                    return notice;
+                }
             }
         }
 

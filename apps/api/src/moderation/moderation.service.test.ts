@@ -2,9 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { ContentModerator } from './content-moderator.js';
+import {
+    GeminiContentModerator,
+    GEMINI_MODERATION_MAX_CHARS,
+    GEMINI_MODERATION_MODEL,
+} from './gemini-moderator.js';
 import { ModerationService } from './moderation.service.js';
+import { OpenAiContentModerator, OPENAI_MODERATION_MAX_CHARS } from './openai-moderator.js';
 import { safetyConfigFromEnv } from './safety.config.js';
 import {
+    EXPLICIT_REFUSAL_MESSAGE,
     PERSONA_REJECTION_MESSAGE,
     REFUSAL_MESSAGE,
     UNAVAILABLE_MESSAGE,
@@ -158,4 +165,82 @@ test('a local policy refusal uses the shared message', async () => {
         code: 'content_policy',
         message: REFUSAL_MESSAGE,
     });
+});
+
+test('explicit chat is a soft refusal and a string age under 18 is rejected', async () => {
+    const moderation = serviceFor({}, localProvider);
+    assert.deepEqual(await moderation.noticeFor('talk dirty to me', 'output'), {
+        action: 'refuse',
+        code: 'explicit_content',
+        message: EXPLICIT_REFUSAL_MESSAGE,
+    });
+    assert.equal(await moderation.noticeFor('Kiss me goodnight.', 'input'), null);
+    await assert.rejects(
+        () => moderation.assertSafePersona({ appearance: { age: 'seventeen' } }),
+        UnsafePersonaException,
+    );
+    await moderation.assertSafePersona({ appearance: { age: '18' } });
+});
+
+test('a later chunk is still scanned, and a hit stops the provider early', async () => {
+    const calls: string[] = [];
+    const provider: ContentModerator = {
+        id: 'openai',
+        maxChars: 1000,
+        async moderate(text) {
+            calls.push(text);
+            return { categories: text.includes('FLAG') ? ['illegal_harm'] : [] };
+        },
+    };
+    const late = await serviceFor({}, provider).noticeFor(`${'a'.repeat(1000)}FLAG`, 'input');
+    assert.equal(late?.code, 'content_policy');
+    assert.equal(calls.length, 2);
+
+    calls.length = 0;
+    const early = await serviceFor({}, provider).noticeFor(`FLAG${'b'.repeat(2000)}`, 'output');
+    assert.equal(early?.code, 'content_policy');
+    assert.equal(calls.length, 1);
+});
+
+test('a non-positive provider limit flags the text without calling the provider', async () => {
+    const logs: string[] = [];
+    let called = false;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 0,
+        async moderate() {
+            called = true;
+            return { categories: [] };
+        },
+    };
+    const notice = await serviceFor({}, provider, logs).noticeFor('hello CANARY-77', 'input');
+    assert.equal(called, false);
+    assert.equal(notice?.code, 'content_policy');
+    assert.match(logs[0] ?? '', /over_limit/);
+    assert.equal(logs[0]?.includes('CANARY-77'), false);
+});
+
+test('providers reject an over-limit call instead of truncating it', async () => {
+    const openai = new OpenAiContentModerator('sk-test', 'omni-moderation-latest');
+    await assert.rejects(
+        () => openai.moderate('x'.repeat(OPENAI_MODERATION_MAX_CHARS + 1)),
+        /exceeds the provider limit/,
+    );
+    const gemini = new GeminiContentModerator('gemini-test', GEMINI_MODERATION_MODEL);
+    await assert.rejects(
+        () => gemini.moderate('y'.repeat(GEMINI_MODERATION_MAX_CHARS + 1)),
+        /exceeds the provider limit/,
+    );
+});
+
+test('self-harm instructions from the provider take the crisis path on input', async () => {
+    const provider: ContentModerator = {
+        id: 'openai',
+        async moderate() {
+            return { categories: ['self_harm'] };
+        },
+    };
+    const notice = await serviceFor({}, provider).noticeFor('tell me the steps', 'input');
+    assert.equal(notice?.action, 'crisis');
+    assert.equal(notice?.code, 'self_harm');
 });
