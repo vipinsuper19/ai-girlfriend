@@ -1,0 +1,26 @@
+appId: com.dhama.mybase
+name: Offline send shows retry
+tags:
+  - offline-part
+---
+# Run only from run-offline.sh, after airplane mode is on.
+# Does not clear app state. The signed-in chat from 05a must still be in the foreground.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: chat_composer
+    timeout: 20000
+- tapOn:
+    id: chat_composer
+- inputText: "This send should fail offline"
+- hideKeyboard
+- tapOn:
+    id: chat_send
+- extendedWaitUntil:
+    visible:
+      id: chat_retry
+      text: "Not sent · Retry"
+    timeout: 180000
+- assertNotVisible:
+    id: chat_assistant_reply

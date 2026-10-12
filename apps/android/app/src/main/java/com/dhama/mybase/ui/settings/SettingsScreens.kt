@@ -98,6 +98,7 @@ import com.dhama.mybase.core.usage.planCaption
 import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
 import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.preview.sampleMemories
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.usage.PaywallCard
@@ -322,6 +323,7 @@ private fun YouSettingsContent(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
+                .testId("settings_delete_account")
                 .clickable(enabled = !accountDeleting) {
                     onDismissDeleteError()
                     confirmDelete = true
@@ -343,6 +345,7 @@ private fun YouSettingsContent(
             onClick = onLogout,
             modifier = Modifier
                 .heightIn(min = 48.dp)
+                .testId("settings_logout")
                 .semantics { role = Role.Button },
         ) { Text("Log out", color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(24.dp))
@@ -846,7 +849,9 @@ private fun DeleteAccountDialog(
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testId("settings_delete_field"),
                     enabled = !deleting,
                     label = { Text("Type DELETE") },
                     singleLine = true,
@@ -867,7 +872,11 @@ private fun DeleteAccountDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = typed == "DELETE" && !deleting) {
+            TextButton(
+                onClick = onConfirm,
+                enabled = typed == "DELETE" && !deleting,
+                modifier = Modifier.testId("settings_delete_confirm"),
+            ) {
                 Text(if (deleting) "Deleting…" else "Delete account", color = MaterialTheme.colorScheme.error)
             }
         },

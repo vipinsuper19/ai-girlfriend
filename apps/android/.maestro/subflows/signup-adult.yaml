@@ -1,0 +1,38 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# From the welcome screen to the companion wizard. Age is 18+ (15 Jan 1990).
+- tapOn:
+    id: welcome_get_started
+- extendedWaitUntil:
+    visible: "Create your account"
+    timeout: 15000
+- runFlow:
+    file: fill-signup-fields.yaml
+- runFlow:
+    file: pick-dob.yaml
+    env:
+      DOB_FIELD_ID: signup_dob
+      DOB_DIGITS: "01151990"
+      DOB_LABEL: "January 15, 1990"
+- scrollUntilVisible:
+    element:
+      id: signup_adult
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_adult
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: signup_submit
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_submit
+- extendedWaitUntil:
+    visible:
+      id: wizard_intro
+    timeout: 120000
+- assertNotVisible: "You must be 18 or older to create an account."

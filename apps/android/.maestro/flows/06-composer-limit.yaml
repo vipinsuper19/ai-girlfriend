@@ -1,0 +1,27 @@
+appId: com.dhama.mybase
+name: Composer 7000 character cap
+tags:
+  - chat
+---
+# Pastes 7100 characters. Passes when the field keeps 7000, or when it keeps more and the counter/error is shown.
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- runFlow:
+    file: ../subflows/open-chat.yaml
+- runScript:
+    file: ../scripts/long-draft.js
+- tapOn:
+    id: chat_composer
+- setClipboard: ${output.draft}
+- pasteText
+- hideKeyboard
+- copyTextFrom:
+    id: chat_composer
+- evalScript: ${output.kept = maestro.copiedText.length}
+- runFlow:
+    when:
+      true: ${output.kept != 7000}
+    commands:
+      - assertVisible:
+          id: chat_draft_limit
+          text: "[0-9]+ / 7000.*"

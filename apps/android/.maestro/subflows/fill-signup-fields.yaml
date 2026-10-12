@@ -1,0 +1,31 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+- scrollUntilVisible:
+    element:
+      id: signup_email
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_email
+- inputText: ${output.email}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: signup_password
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_password
+- inputText: ${output.password}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: signup_confirm
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_confirm
+- inputText: ${output.password}
+- hideKeyboard

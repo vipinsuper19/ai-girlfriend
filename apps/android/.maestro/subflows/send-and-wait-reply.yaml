@@ -1,0 +1,19 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Asserts a non-empty assistant bubble via chat_assistant_reply.
+# That id is absent for the greeting and for a failed send, and it does not check the reply text.
+- tapOn:
+    id: chat_composer
+- inputText: "Hello from the emulator"
+- hideKeyboard
+- tapOn:
+    id: chat_send
+- assertVisible:
+    id: chat_user_message
+    text: "Hello from the emulator"
+- extendedWaitUntil:
+    visible:
+      id: chat_assistant_reply
+    timeout: 180000
