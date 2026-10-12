@@ -162,6 +162,7 @@ class ChatViewModel @Inject constructor(
         if (text.isEmpty() || sendJob?.isActive == true || rateLimitOpen()) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
+            _replyNote.value = null
             try {
                 chatRepository.send(text, saved.name, saved.relationship, saved.traits, saved.conversationId)
                 memoryRepository.notice(text)
@@ -178,6 +179,7 @@ class ChatViewModel @Inject constructor(
         if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true || rateLimitOpen()) return
         val conversationId = companion.value?.conversationId
         sendJob = viewModelScope.launch {
+            _replyNote.value = null
             val ticker = if (conversationId != null) {
                 launch {
                     val started = System.currentTimeMillis()
@@ -300,6 +302,7 @@ class ChatViewModel @Inject constructor(
     fun retry(failed: ChatMessageEntity) {
         val saved = companion.value ?: return
         if (sendJob?.isActive == true || rateLimitOpen()) return
+        _replyNote.value = null
         if (retriesByReload(failed.delivery)) {
             val conversationId = saved.conversationId ?: return
             sendJob = viewModelScope.launch {
@@ -363,6 +366,14 @@ class ChatViewModel @Inject constructor(
                     ?: "That message isn't available."
             }
             RemoteSendFailure.NotLatest -> _replyNote.value = null
+            RemoteSendFailure.InvalidKey -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Couldn't send that. Try again."
+            }
+            RemoteSendFailure.KeyReused -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "That send belongs to another conversation. Try again."
+            }
             RemoteSendFailure.Other -> noteUsageLimit(error)
         }
     }

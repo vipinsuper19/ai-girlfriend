@@ -24,8 +24,9 @@ interface ChatRepository {
     /** Reload, then ask for the missing reply when the thread still ends on the user. */
     suspend fun retryUnfinishedReply(conversationId: Int)
     /**
-     * "Not sent · Retry". Sends again with the same [clientMessageId], which is the
-     * `Idempotency-Key` the API uses to return the existing user message.
+     * "Not sent · Retry". Reuses [clientMessageId] as the `Idempotency-Key` when
+     * it is a UUID already sent to this same conversation. A different conversation,
+     * or a value that is not a UUID, gets a new key.
      */
     suspend fun retryUnsent(
         text: String,

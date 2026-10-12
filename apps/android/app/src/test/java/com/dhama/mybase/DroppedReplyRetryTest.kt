@@ -6,6 +6,7 @@ import com.dhama.mybase.core.db.entity.ChatMessageEntity
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.IDEMPOTENCY_KEY_HEADER
+import com.dhama.mybase.core.network.isIdempotencyUuid
 import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.SessionStore
 import com.dhama.mybase.core.network.SessionTokens
@@ -202,6 +203,194 @@ class DroppedReplyRetryTest {
             runCatching { server.shutdown() }
         }
     }
+
+    @Test
+    fun replayWithinADayReturnsTheOriginalWithoutAnotherCharge() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.ReplayOriginal)
+        server.start()
+        try {
+            val harness = harness(server)
+            harness.repo.send("hello", "Aria", "friend", emptyList(), conversationId = 7)
+            val user = harness.dao.snapshot().first { it.role == "USER" }
+            harness.repo.send(
+                "hello",
+                "Aria",
+                "friend",
+                emptyList(),
+                conversationId = 7,
+                clientMessageId = user.id,
+            )
+            val stored = visible(harness)
+            assertEquals(1, stored.count { it.role == "USER" })
+            assertEquals(1, stored.count { it.role == "ASSISTANT" && it.delivery == "SENT" })
+            assertEquals("hi back", stored.first { it.role == "ASSISTANT" }.text)
+            assertEquals(1, ledger.userMessages.get())
+            assertEquals(1, ledger.charges.get())
+            assertEquals(listOf(user.id, user.id), ledger.streamKeys)
+            assertTrue(ledger.streamBodies.none { it.contains("clientMessageId") })
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
+
+    @Test
+    fun replayThatIsNoLongerTheLatestLineReloadsWithoutAnotherPost() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.StaleReplay)
+        server.start()
+        try {
+            val harness = harness(server)
+            harness.repo.send("hello", "Aria", "friend", emptyList(), conversationId = 7)
+            val user = harness.dao.snapshot().first { it.role == "USER" }
+            harness.repo.send(
+                "hello",
+                "Aria",
+                "friend",
+                emptyList(),
+                conversationId = 7,
+                clientMessageId = user.id,
+            )
+            assertEquals(1, ledger.charges.get())
+            assertEquals(0, ledger.blockingPosts.get())
+            assertTrue(ledger.lists.get() >= 1)
+            assertFalse(harness.dao.snapshot().any { it.delivery == "FAILED" || it.delivery == "DROPPED" })
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
+
+    @Test
+    fun invalidIdempotencyKeyIsShownAndTheNextTryUsesANewKey() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.InvalidKey)
+        server.start()
+        try {
+            val harness = harness(server)
+            try {
+                harness.repo.send("hello", "Aria", "friend", emptyList(), conversationId = 7)
+                fail("expected an invalid key")
+            } catch (error: ApiStatusException) {
+                assertEquals(400, error.status)
+                assertEquals("INVALID_IDEMPOTENCY_KEY", error.code)
+                assertEquals("Idempotency-Key must be a UUID", error.message)
+            }
+            val sent = ledger.streamKeys.single()
+            val user = harness.dao.snapshot().first { it.role == "USER" }
+            val failed = harness.dao.snapshot().first { it.delivery == "FAILED" }
+            assertTrue(sent != user.id)
+            assertEquals(0, ledger.blockingPosts.get())
+            assertEquals(0, ledger.lists.get())
+            try {
+                harness.repo.retryUnsent(
+                    text = "hello",
+                    name = "Aria",
+                    relationship = "friend",
+                    traits = emptyList(),
+                    conversationId = 7,
+                    clientMessageId = user.id,
+                    failedLocalId = failed.id,
+                )
+                fail("expected the replacement key to be rejected too")
+            } catch (error: ApiStatusException) {
+                assertEquals("INVALID_IDEMPOTENCY_KEY", error.code)
+            }
+            assertEquals(2, ledger.streamKeys.size)
+            assertTrue(ledger.streamKeys[1] != sent)
+            assertEquals(0, ledger.blockingPosts.get())
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
+
+    @Test
+    fun reusedKeyOnAnotherConversationIsNotTreatedAsNotLatest() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.KeyReused)
+        server.start()
+        try {
+            val harness = harness(server)
+            try {
+                harness.repo.send("hello", "Aria", "friend", emptyList(), conversationId = 7)
+                fail("expected a reused key")
+            } catch (error: ApiStatusException) {
+                assertEquals(409, error.status)
+                assertEquals("IDEMPOTENCY_KEY_REUSED", error.code)
+                assertEquals(
+                    "Idempotency-Key was already used for a different conversation",
+                    error.message,
+                )
+            }
+            val user = harness.dao.snapshot().first { it.role == "USER" }
+            assertTrue(ledger.streamKeys.single() != user.id)
+            assertTrue(harness.dao.snapshot().any { it.delivery == "FAILED" })
+            assertEquals(0, ledger.charges.get())
+            assertEquals(0, ledger.lists.get())
+            assertEquals(0, ledger.blockingPosts.get())
+            assertEquals(0, ledger.replyCalls.get())
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
+
+    @Test
+    fun aKeyIsNotReusedAcrossConversations() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.OtherConversation)
+        server.start()
+        try {
+            val harness = harness(server)
+            harness.repo.send("hello", "Aria", "friend", emptyList(), conversationId = 7)
+            val before = harness.dao.snapshot()
+            val user = before.first { it.role == "USER" }
+            val failed = before.first { it.delivery == "FAILED" }
+            harness.repo.retryUnsent(
+                text = "hello",
+                name = "Aria",
+                relationship = "friend",
+                traits = emptyList(),
+                conversationId = 9,
+                clientMessageId = user.id,
+                failedLocalId = failed.id,
+            )
+            assertEquals(2, ledger.streamKeys.size)
+            assertTrue(ledger.streamKeys[0] != ledger.streamKeys[1])
+            assertTrue(isIdempotencyUuid(ledger.streamKeys[1]))
+            assertTrue(ledger.streamPaths.last().contains("/conversations/9/messages/stream"))
+            assertEquals(1, visible(harness).count { it.role == "USER" })
+            assertEquals(1, ledger.charges.get())
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
+
+    @Test
+    fun aNonUuidIsNeverSentAsTheIdempotencyKey() = runBlocking {
+        val ledger = Ledger()
+        val server = scriptedServer(ledger, Script.Accept)
+        server.start()
+        try {
+            val harness = harness(server)
+            harness.repo.send(
+                "hello",
+                "Aria",
+                "friend",
+                emptyList(),
+                conversationId = 7,
+                clientMessageId = "server-1",
+            )
+            assertEquals(1, ledger.streamKeys.size)
+            assertTrue(isIdempotencyUuid(ledger.streamKeys.single()))
+            assertFalse(harness.dao.snapshot().any { it.id == "server-1" })
+            harness.api.streamMessage(7, "hello", "greeting") { }
+            assertEquals(1, ledger.streamKeys.size)
+            val upper = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+            harness.api.streamMessage(7, "hello", upper) { }
+            assertEquals(upper.lowercase(), ledger.streamKeys.last())
+        } finally {
+            runCatching { server.shutdown() }
+        }
+    }
 }
 
 private enum class Script {
@@ -212,6 +401,12 @@ private enum class Script {
     RateLimited,
     UsageLimit,
     Missing,
+    ReplayOriginal,
+    StaleReplay,
+    InvalidKey,
+    KeyReused,
+    OtherConversation,
+    Accept,
 }
 
 private class Ledger {
@@ -227,6 +422,8 @@ private class Ledger {
     val streamBodies = CopyOnWriteArrayList<String>()
     val replyPaths = CopyOnWriteArrayList<String>()
     val replyBodies = CopyOnWriteArrayList<String>()
+    val streamPaths = CopyOnWriteArrayList<String>()
+    @Volatile var boundConversation: String? = null
 }
 
 private suspend fun visible(harness: Harness): List<ChatMessageEntity> {
@@ -247,12 +444,13 @@ private fun harness(server: MockWebServer): Harness {
         firstReadMillis = 8_000,
     )
     val dao = MemoryChatDao()
-    return Harness(ChatRepositoryImpl(dao, File("voice-notes-test"), api), dao)
+    return Harness(ChatRepositoryImpl(dao, File("voice-notes-test"), api), dao, api)
 }
 
 private class Harness(
     val repo: ChatRepositoryImpl,
     val dao: MemoryChatDao,
+    val api: ApiClient,
 )
 
 private fun scriptedServer(ledger: Ledger, script: Script): MockWebServer {
@@ -263,7 +461,7 @@ private fun scriptedServer(ledger: Ledger, script: Script): MockWebServer {
             val key = request.getHeader(IDEMPOTENCY_KEY_HEADER)
             return when {
                 path.contains("/reply/stream") -> reply(ledger, script, path, request.body.readUtf8())
-                path.contains("/messages/stream") -> sendStream(ledger, script, key, request.body.readUtf8())
+                path.contains("/messages/stream") -> sendStream(ledger, script, key, request.body.readUtf8(), path)
                 request.method == "GET" && path.contains("/messages") -> list(ledger, script)
                 request.method == "POST" && path.contains("/messages") -> blocking(ledger, key)
                 else -> MockResponse().setResponseCode(404)
@@ -273,10 +471,23 @@ private fun scriptedServer(ledger: Ledger, script: Script): MockWebServer {
     return server
 }
 
-private fun sendStream(ledger: Ledger, script: Script, key: String?, body: String): MockResponse {
+private fun sendStream(
+    ledger: Ledger,
+    script: Script,
+    key: String?,
+    body: String,
+    path: String,
+): MockResponse {
     ledger.streams.incrementAndGet()
     ledger.streamBodies.add(body)
+    ledger.streamPaths.add(path)
     if (!key.isNullOrBlank()) ledger.streamKeys.add(key)
+    if (script == Script.InvalidKey) return invalidKey()
+    if (script == Script.KeyReused) return keyReused()
+    if (script == Script.Accept) return freshReply()
+    if (script == Script.OtherConversation) return otherConversation(ledger, key, path)
+    if (script == Script.ReplayOriginal) return replayOriginal(ledger, key)
+    if (script == Script.StaleReplay) return staleReplay(ledger, key)
     val firstTime = rememberUser(ledger, key)
     if (script == Script.StallThenReply) return acceptedThenQuiet()
     if (script == Script.NotSentReplay && ledger.streams.get() == 1) {
@@ -287,6 +498,52 @@ private fun sendStream(ledger: Ledger, script: Script, key: String?, body: Strin
         ledger.replies.incrementAndGet()
     }
     return freshReply()
+}
+
+private fun replayOriginal(ledger: Ledger, key: String?): MockResponse {
+    val first = rememberUser(ledger, key)
+    if (!first) return originalReplay()
+    ledger.charges.incrementAndGet()
+    ledger.replies.incrementAndGet()
+    return freshReply()
+}
+
+private fun staleReplay(ledger: Ledger, key: String?): MockResponse {
+    val first = rememberUser(ledger, key)
+    if (!first) {
+        return jsonStatus(
+            409,
+            """{"statusCode":409,"message":"Only the latest user message can be retried","error":"Conflict","code":"NOT_LATEST_USER_MESSAGE"}""",
+        )
+    }
+    ledger.charges.incrementAndGet()
+    ledger.replies.incrementAndGet()
+    return freshReply()
+}
+
+private fun otherConversation(ledger: Ledger, key: String?, path: String): MockResponse {
+    val conversation = conversationIdOf(path)
+    if (ledger.streams.get() == 1) {
+        rememberUser(ledger, key)
+        ledger.boundConversation = conversation
+        return MockResponse().setResponseCode(500).setBody("""{"message":"lost","code":"LOST"}""")
+    }
+    if (!key.isNullOrBlank() && ledger.keys.contains(key) && conversation != ledger.boundConversation) {
+        return keyReused()
+    }
+    val first = rememberUser(ledger, key)
+    if (first) {
+        ledger.charges.incrementAndGet()
+        ledger.replies.incrementAndGet()
+    }
+    return freshReply()
+}
+
+private fun conversationIdOf(path: String): String {
+    val marker = "/conversations/"
+    val start = path.indexOf(marker)
+    if (start < 0) return ""
+    return path.substring(start + marker.length).substringBefore('/')
 }
 
 private fun rememberUser(ledger: Ledger, key: String?): Boolean {
@@ -318,7 +575,7 @@ private fun reply(ledger: Ledger, script: Script, path: String, body: String): M
     return when (script) {
         Script.NotLatest -> jsonStatus(
             409,
-            """{"message":"The conversation does not end with a user message","code":"NOT_LATEST_USER_MESSAGE"}""",
+            """{"statusCode":409,"message":"Only the latest user message can be retried","error":"Conflict","code":"NOT_LATEST_USER_MESSAGE"}""",
         )
         Script.RateLimited -> jsonStatus(
             429,
@@ -350,6 +607,29 @@ private fun acceptedThenQuiet(): MockResponse {
         .addHeader("Content-Type", "text/event-stream")
         .setBody(body)
         .throttleBody(event.length.toLong(), 5, TimeUnit.SECONDS)
+}
+
+private fun invalidKey(): MockResponse {
+    return jsonStatus(
+        400,
+        """{"statusCode":400,"message":"Idempotency-Key must be a UUID","error":"Bad Request","code":"INVALID_IDEMPOTENCY_KEY"}""",
+    )
+}
+
+private fun keyReused(): MockResponse {
+    return jsonStatus(
+        409,
+        """{"statusCode":409,"message":"Idempotency-Key was already used for a different conversation","error":"Conflict","code":"IDEMPOTENCY_KEY_REUSED"}""",
+    )
+}
+
+private fun originalReplay(): MockResponse {
+    val body = "event: message\ndata: {\"type\":\"message\",\"message\":{\"id\":1,\"role\":\"USER\",\"content\":\"hello\"}}\n\n" +
+        "event: done\ndata: {\"type\":\"done\",\"message\":{\"id\":2,\"role\":\"ASSISTANT\",\"content\":\"hi back\"}}\n\n"
+    return MockResponse()
+        .setResponseCode(200)
+        .addHeader("Content-Type", "text/event-stream")
+        .setBody(body)
 }
 
 private fun freshReply(): MockResponse {

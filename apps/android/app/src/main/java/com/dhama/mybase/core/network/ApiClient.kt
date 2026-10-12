@@ -565,7 +565,7 @@ class ApiClient(
             else -> error("Unsupported body")
         }
         val request = authed("POST", path, payload, access)
-        val key = idempotencyKey?.takeIf { it.isNotBlank() } ?: return request
+        val key = idempotencyKeyOrNull(idempotencyKey) ?: return request
         return request.newBuilder().header(IDEMPOTENCY_KEY_HEADER, key).build()
     }
 

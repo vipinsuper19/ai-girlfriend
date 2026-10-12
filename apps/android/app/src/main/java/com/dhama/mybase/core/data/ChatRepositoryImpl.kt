@@ -22,6 +22,8 @@ import com.dhama.mybase.core.network.RemoteMessage
 import com.dhama.mybase.core.network.RemoteSendFailure
 import com.dhama.mybase.core.network.STALLED_STREAM
 import com.dhama.mybase.core.network.StreamIdleException
+import com.dhama.mybase.core.network.idempotencyKeyFor
+import com.dhama.mybase.core.network.idempotencyKeyOrNull
 import com.dhama.mybase.core.network.remoteSendFailure
 import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
@@ -42,6 +44,9 @@ class ChatRepositoryImpl(
     private val api: ApiClient,
     private val lastUserReply: LastUserReplyApi = api,
 ) : ChatRepository {
+
+    /** Conversation a UUID was first sent to. Reusing it elsewhere would 409. */
+    private val keyConversation = HashMap<String, Int>()
 
     override fun observe(): Flow<List<ChatMessageEntity>> = dao.observe()
 
@@ -68,7 +73,11 @@ class ChatRepositoryImpl(
     ) {
         val body = text.trim()
         if (body.isEmpty()) return
-        val messageId = clientMessageId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        val messageId = if (conversationId != null) {
+            keyForSend(clientMessageId, conversationId)
+        } else {
+            idempotencyKeyOrNull(clientMessageId) ?: UUID.randomUUID().toString()
+        }
         if (conversationId != null) {
             sendRemote(body, conversationId, messageId)
             return
@@ -209,6 +218,7 @@ class ChatRepositoryImpl(
                         event.code,
                         event.retryAfterSeconds,
                     )
+                    // A 24h replay emits the original user line. It is already stored.
                     is ChatStreamEvent.UserMessage -> userAccepted = true
                 }
             }
@@ -242,20 +252,11 @@ class ChatRepositoryImpl(
                 idleStallDelivery(userAccepted, built.isNotEmpty()),
             )
         } catch (error: Exception) {
-            if (isUsageLimit(error)) {
-                dao.delete(assistantId)
-                dao.delete(userLocalId)
-                throw error
-            }
-            if (isRateLimited(error)) {
-                markReplyFailed(
-                    assistantId,
-                    built.toString(),
-                    now,
-                    error.message ?: "Too many requests. Try again later.",
-                    "FAILED",
+            if (error is ApiStatusException && settleSendFailure(
+                    error, conversationId, text, userLocalId, assistantId, now, built.toString(),
                 )
-                throw error
+            ) {
+                return
             }
             if (streamRecovery(userAccepted, built.isNotEmpty(), finished) == StreamRecovery.Fallback) {
                 try {
@@ -264,20 +265,11 @@ class ChatRepositoryImpl(
                     dao.delete(assistantId)
                     throw cancelled
                 } catch (fallback: Exception) {
-                    if (isUsageLimit(fallback)) {
-                        dao.delete(assistantId)
-                        dao.delete(userLocalId)
-                        throw fallback
-                    }
-                    if (isRateLimited(fallback)) {
-                        markReplyFailed(
-                            assistantId,
-                            "",
-                            now,
-                            fallback.message ?: "Too many requests. Try again later.",
-                            "FAILED",
+                    if (fallback is ApiStatusException && settleSendFailure(
+                            fallback, conversationId, text, userLocalId, assistantId, now, "",
                         )
-                        throw fallback
+                    ) {
+                        return
                     }
                     markReplyFailed(
                         assistantId,
@@ -299,14 +291,96 @@ class ChatRepositoryImpl(
         }
     }
 
+    /**
+     * @return true when the send is finished (reload, no further post).
+     * Throws when the UI has to show the failure. Returns false for a failure
+     * that can still fall back to the blocking post.
+     */
+    private suspend fun settleSendFailure(
+        error: ApiStatusException,
+        conversationId: Int,
+        text: String,
+        userLocalId: String,
+        assistantId: String,
+        now: Long,
+        visible: String,
+    ): Boolean {
+        when (remoteSendFailure(error.status, error.code)) {
+            RemoteSendFailure.UsageLimit -> {
+                dao.delete(assistantId)
+                dao.delete(userLocalId)
+                throw error
+            }
+            RemoteSendFailure.RateLimited -> {
+                markReplyFailed(
+                    assistantId,
+                    visible,
+                    now,
+                    error.message ?: "Too many requests. Try again later.",
+                    "FAILED",
+                )
+                throw error
+            }
+            RemoteSendFailure.NotLatest -> {
+                dao.delete(assistantId)
+                reload(conversationId)
+                return true
+            }
+            RemoteSendFailure.InvalidKey,
+            RemoteSendFailure.KeyReused,
+            -> {
+                retireIdempotencyKey(userLocalId, text, now)
+                markReplyFailed(
+                    assistantId,
+                    visible,
+                    now,
+                    error.message ?: "Couldn't send that.",
+                    "FAILED",
+                )
+                throw error
+            }
+            RemoteSendFailure.Missing -> {
+                dao.delete(assistantId)
+                reload(conversationId)
+                throw error
+            }
+            RemoteSendFailure.Other -> return false
+        }
+    }
+
+    private fun keyForSend(requested: String?, conversationId: Int): String {
+        val normalized = idempotencyKeyOrNull(requested)
+        val chosen = idempotencyKeyFor(
+            requested,
+            conversationId,
+            normalized?.let { keyConversation[it] },
+        ) ?: UUID.randomUUID().toString()
+        keyConversation[chosen] = conversationId
+        return chosen
+    }
+
+    private suspend fun retireIdempotencyKey(userLocalId: String, text: String, now: Long) {
+        idempotencyKeyOrNull(userLocalId)?.let { keyConversation.remove(it) }
+        val fresh = UUID.randomUUID().toString()
+        val existing = dao.find(userLocalId)
+        dao.delete(userLocalId)
+        dao.upsert(
+            ChatMessageEntity(
+                id = fresh,
+                role = ROLE_USER,
+                text = existing?.text?.ifBlank { text } ?: text,
+                createdAtEpochMs = existing?.createdAtEpochMs ?: now,
+                delivery = DELIVERY_SENT,
+                kind = existing?.kind ?: ChatMessageEntity.KIND_TEXT,
+                audioPath = existing?.audioPath.orEmpty(),
+                durationMs = existing?.durationMs ?: 0L,
+            ),
+        )
+    }
+
     private fun isUsageLimit(error: Throwable): Boolean {
         return error is ApiStatusException &&
             remoteSendFailure(error.status, error.code) == RemoteSendFailure.UsageLimit
-    }
-
-    private fun isRateLimited(error: Throwable): Boolean {
-        return error is ApiStatusException &&
-            remoteSendFailure(error.status, error.code) == RemoteSendFailure.RateLimited
     }
 
     private suspend fun storeFinishedReply(
@@ -427,8 +501,14 @@ class ChatRepositoryImpl(
         clientMessageId: String,
         failedLocalId: String,
     ) {
-        if (failedLocalId != clientMessageId) discard(failedLocalId)
-        send(text, name, relationship, traits, conversationId, clientMessageId)
+        val key = if (conversationId != null) {
+            keyForSend(clientMessageId, conversationId)
+        } else {
+            idempotencyKeyOrNull(clientMessageId) ?: UUID.randomUUID().toString()
+        }
+        if (clientMessageId.isNotBlank() && clientMessageId != key) discard(clientMessageId)
+        if (failedLocalId != key) discard(failedLocalId)
+        send(text, name, relationship, traits, conversationId, key)
     }
 
     private suspend fun streamLastUserReply(conversationId: Int, user: ChatMessageEntity) {
@@ -510,7 +590,10 @@ class ChatRepositoryImpl(
                     reload(conversationId)
                     throw error
                 }
-                RemoteSendFailure.Other -> markReplyFailed(
+                RemoteSendFailure.InvalidKey,
+                RemoteSendFailure.KeyReused,
+                RemoteSendFailure.Other,
+                -> markReplyFailed(
                     assistantId,
                     built.toString(),
                     userAt,
