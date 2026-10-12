@@ -259,6 +259,29 @@ test('a safe sentence streams before a later unsafe sentence is replaced', async
     assert.equal(doneContent.includes('bomb'), false);
 });
 
+test('a minor age in an earlier turn blocks the next line before the model', async () => {
+    const blocked = harness({
+        messages: [
+            { role: 'USER', content: 'Kiss me goodnight' },
+            { role: 'USER', content: "I'm 15" },
+        ],
+    });
+    const saved = await blocked.ai.generateResponse(1, 3);
+    assert.equal(blocked.prompts.length, 0);
+    assert.equal(saved.metadata.safety.code, 'content_policy');
+
+    const allowed = harness({
+        messages: [
+            { role: 'USER', content: 'Kiss me goodnight' },
+            { role: 'USER', content: 'I miss you' },
+        ],
+    });
+    const flirt = await allowed.ai.generateResponse(1, 3);
+    assert.equal(allowed.prompts.length, 1);
+    assert.equal(flirt.content, 'Hello love');
+    assert.equal(flirt.metadata, null);
+});
+
 test('a flagged user line is marked and left out of the next model prompt', async () => {
     const flagged = {
         action: 'refuse' as const,

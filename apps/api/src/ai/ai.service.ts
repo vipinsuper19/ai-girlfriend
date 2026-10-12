@@ -11,6 +11,7 @@ import { ModerationService } from '../moderation/moderation.service.js';
 import {
     companionSafetyRules,
     hiddenFromModel,
+    priorUserTexts,
     type SafetyNotice,
 } from '../moderation/safety-policy.js';
 import { takeReadyWindow } from '../moderation/text-windows.js';
@@ -156,6 +157,10 @@ export class AiService {
             {
                 userId: numericUserId,
                 conversationId: numericConversationId,
+                priorTexts: priorUserTexts(
+                    chronologicalMessages,
+                    currentUserMessage,
+                ),
             },
         );
 
@@ -497,6 +502,10 @@ export class AiService {
             {
                 userId: numericUserId,
                 conversationId: numericConversationId,
+                priorTexts: priorUserTexts(
+                    chronologicalMessages,
+                    currentUserMessage,
+                ),
             },
         );
 

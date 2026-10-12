@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { ModerationService } from '../moderation/moderation.service.js';
 import {
     MemorySearchService,
     type RelevantMemory,
@@ -30,6 +31,7 @@ export class MemoryContextService {
 
     constructor(
         private readonly memorySearchService: MemorySearchService,
+        private readonly moderation: ModerationService,
     ) { }
 
     async buildContext(
@@ -66,8 +68,22 @@ export class MemoryContextService {
                 return '';
             }
 
+            const safeMemories: RelevantMemory[] = [];
+            for (const memory of relevantMemories) {
+                const notice = await this.moderation.noticeFor(
+                    memory.content,
+                    'input',
+                    { userId },
+                );
+                if (!notice) safeMemories.push(memory);
+            }
+
+            if (safeMemories.length === 0) {
+                return '';
+            }
+
             return this.formatMemoryContext(
-                relevantMemories,
+                safeMemories,
             );
         } catch (error) {
             /*

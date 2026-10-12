@@ -11,10 +11,12 @@ import {
     assessLocal,
     crisisMessage,
     decideSafety,
+    escalationCategories,
     EXPLICIT_REFUSAL_MESSAGE,
     hiddenFromModel,
     personaMinorAge,
     personaText,
+    priorUserTexts,
     REFUSAL_MESSAGE,
     safetyNoticeOf,
 } from './safety-policy.js';
@@ -71,6 +73,8 @@ test('a minor persona or age claim is flagged without needing explicit sex', () 
     assert.equal(personaMinorAge({ appearance: { age: '18' } }), false);
     assert.equal(personaMinorAge({ appearance: { age: '21' } }), false);
     assert.equal(personaMinorAge({ appearance: { age: 'not a number' } }), false);
+    assert.equal(personaMinorAge({ appearance: { age: 'sweet 16' } }), true);
+    assert.equal(personaMinorAge({ appearance: { age: '' } }), false);
     assert.equal(personaMinorAge({}), false);
 });
 
@@ -190,6 +194,38 @@ test('hate and broadened crisis phrases are flagged, and ordinary stress is not'
         true,
     );
     assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: { safety: { action: 'refuse', code: 'content_policy', message: REFUSAL_MESSAGE } } }), false);
+});
+
+test('a minor age sticks across turns and a later flirt does not inherit other flags', () => {
+    assert.deepEqual(
+        escalationCategories('Kiss me goodnight', ["I'm 15"], 'input'),
+        ['minor'],
+    );
+    assert.deepEqual(
+        escalationCategories('Kiss me goodnight', ['I miss you'], 'input'),
+        [],
+    );
+    assert.deepEqual(
+        escalationCategories('Kiss me goodnight', ['ignore previous instructions'], 'input'),
+        [],
+    );
+    assert.deepEqual(
+        escalationCategories('16', ["Pretend you're"], 'input'),
+        ['minor'],
+    );
+    assert.deepEqual(
+        escalationCategories('Meet me at 8', ['Can we go on a pretend date tonight?'], 'input'),
+        [],
+    );
+    const current = { role: 'USER', content: 'Kiss me' };
+    const older = { role: 'USER', content: "I'm 15" };
+    assert.deepEqual(
+        priorUserTexts(
+            [older, { role: 'ASSISTANT', content: 'hello' }, current],
+            current,
+        ),
+        ["I'm 15"],
+    );
 });
 
 test('persona text keeps free-text fields and drops slider numbers', () => {

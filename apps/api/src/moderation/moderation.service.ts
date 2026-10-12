@@ -5,6 +5,7 @@ import type { SafetyConfig } from './safety.config.js';
 import {
     assessLocal,
     decideSafety,
+    escalationCategories,
     personaMinorAge,
     personaText,
     unavailableNotice,
@@ -49,6 +50,12 @@ export class ModerationService {
         let categories = [...extra];
         if (trimmed) {
             categories = merge(categories, assessLocal(trimmed, surface));
+            if (surface === 'input' && ctx.priorTexts && ctx.priorTexts.length > 0) {
+                categories = merge(
+                    categories,
+                    escalationCategories(trimmed, ctx.priorTexts, surface),
+                );
+            }
         }
         if (categories.length === 0 && trimmed && this.provider.id !== 'local') {
             const maxChars = this.provider.maxChars;
