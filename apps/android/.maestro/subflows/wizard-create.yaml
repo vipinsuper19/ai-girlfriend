@@ -1,0 +1,46 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Voice is off in app/build.gradle.kts (featureVoice = false), so the wizard is 3 steps.
+- assertVisible:
+    id: wizard_intro
+- tapOn:
+    id: wizard_start
+- extendedWaitUntil:
+    visible: "How should she look"
+    timeout: 15000
+- assertVisible: "Step 1 of 3"
+- tapOn: "Illustrated"
+- tapOn:
+    id: wizard_continue
+- extendedWaitUntil:
+    visible: "Who is she"
+    timeout: 15000
+- assertVisible: "Step 2 of 3"
+- scrollUntilVisible:
+    element:
+      text: "Witty"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Witty"
+- tapOn:
+    id: wizard_continue
+- extendedWaitUntil:
+    visible:
+      id: wizard_name
+    timeout: 15000
+- assertVisible: "Step 3 of 3"
+- tapOn:
+    id: wizard_name
+- eraseText: 30
+- inputText: ${output.companion}
+- hideKeyboard
+- tapOn:
+    id: wizard_create
+- extendedWaitUntil:
+    visible:
+      id: home_talk
+    timeout: 120000
+- assertVisible: ${output.companion}
+- assertVisible: "Say hello"

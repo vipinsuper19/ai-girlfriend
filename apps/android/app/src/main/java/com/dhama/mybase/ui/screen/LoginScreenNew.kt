@@ -30,7 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dhama.mybase.R // Replace with your actual R file path
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
-import kotlinx.coroutines.launch
+import com.dhama.mybase.ui.test.testId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,24 +45,9 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
 
     val authState by viewModel.authState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(authState) {
-        when (authState) {
-            is UiState.Success -> {
-                onLogin()
-            }
-            is UiState.Error -> {
-                coroutineScope.launch {
-                    snackbarHostState.showSnackbar(
-                        message = (authState as UiState.Error).message,
-                        duration = SnackbarDuration.Short // Or Indefinite, Long
-                    )
-                }
-            }
-            else -> Unit
-        }
+        if (authState is UiState.Success) onLogin()
     }
 
     Column(
@@ -100,7 +85,9 @@ fun LoginScreen(
             label = { Text("Username") },
             leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Username Icon") },
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testId("login_email"),
             singleLine = true,
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
@@ -116,7 +103,9 @@ fun LoginScreen(
             label = { Text("Password") },
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Password Icon") },
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testId("login_password"),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
@@ -138,13 +127,25 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (authState is UiState.Loading) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(modifier = Modifier.testId("login_progress"))
             Spacer(modifier = Modifier.height(32.dp))
+        }
+        if (authState is UiState.Error) {
+            Text(
+                text = (authState as UiState.Error).message,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testId("login_error"),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
         }
         // Sign In Button
         Button(
             onClick = { viewModel.emailSignIn(username,password) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testId("login_submit"),
             shape = RoundedCornerShape(24.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             contentPadding = PaddingValues(vertical = 12.dp)

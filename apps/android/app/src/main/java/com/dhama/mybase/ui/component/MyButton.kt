@@ -23,13 +23,14 @@ fun MyButton(
      loading: Boolean,
      text: String,
      textLoading: String,
+     modifier: Modifier = Modifier,
      onClick: () -> Unit
 ){
     Button(
         onClick = {
             onClick()
         },
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(60.dp),
         shape = RoundedCornerShape(8.dp),

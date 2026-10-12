@@ -50,6 +50,7 @@ import com.dhama.mybase.core.age.parseDateOfBirth
 import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.AgeConfirmViewModel
+import com.dhama.mybase.ui.test.testId
 import java.time.LocalDate
 
 @Composable
@@ -112,6 +113,7 @@ fun AgeConfirmContent(
             Text(
                 text = "Confirm your age",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                modifier = Modifier.testId("age_title"),
             )
             Spacer(Modifier.height(8.dp))
             Text(
@@ -135,6 +137,7 @@ fun AgeConfirmContent(
                                 text = dobMessage,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.testId("age_error"),
                             )
                         }
                     },
@@ -148,6 +151,7 @@ fun AgeConfirmContent(
                 Box(
                     Modifier
                         .matchParentSize()
+                        .testId("age_dob")
                         .clickable { showDatePicker = true }
                         .semantics { contentDescription = "Date of birth" },
                 )
@@ -156,6 +160,7 @@ fun AgeConfirmContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .testId("age_adult")
                     .toggleable(
                         value = confirmedAdult,
                         role = Role.Checkbox,
@@ -179,6 +184,7 @@ fun AgeConfirmContent(
                 loading = saving,
                 text = "Continue",
                 textLoading = "Saving...",
+                modifier = Modifier.testId("age_continue"),
             ) {
                 attempted = true
                 val birth = parseDateOfBirth(dateOfBirthIso)
@@ -186,7 +192,12 @@ fun AgeConfirmContent(
                 if (gate.allowed && birth != null) onConfirm(birth.toString())
             }
             Spacer(Modifier.height(16.dp))
-            TextButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
+            TextButton(
+                onClick = onSignOut,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testId("age_sign_out"),
+            ) {
                 Text("Sign out")
             }
         }

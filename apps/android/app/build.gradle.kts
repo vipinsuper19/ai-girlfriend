@@ -64,6 +64,8 @@ fun javaStringLiteral(value: String): String {
 
 fun configKey(raw: String): String = raw.uppercase().replace('-', '_').replace('.', '_')
 
+// Local debug talks to the host machine. Maestro overrides this with
+// -PAPI_BASE_URL_DEBUG (see .maestro/run-all.sh). That property wins for debug.
 val debugApiBaseUrl = "http://10.0.2.2:3001/api/v1/"
 val placeholderApiBaseUrl = "https://api.example.invalid/api/v1/"
 

@@ -1,0 +1,33 @@
+appId: com.dhama.mybase
+name: Privacy and Terms
+tags:
+  - known-failure
+  - legal
+---
+# KNOWN FAILURE. Do not "fix" WelcomeScreen to make this pass.
+# Terms and Privacy Policy click handlers only call Log.d (WelcomeScreen.kt).
+# This flow expects each link to leave welcome and open its page. It fails while those handlers only log.
+# run-all.sh treats that failure as the expected result, and fails the run if this flow starts passing.
+- runFlow:
+    file: ../subflows/launch-fresh.yaml
+- tapOn:
+    id: welcome_terms
+- extendedWaitUntil:
+    notVisible:
+      id: welcome_get_started
+    timeout: 10000
+- assertVisible: ".*[Tt]erms of.*"
+- back
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: welcome_privacy
+    timeout: 10000
+- tapOn:
+    id: welcome_privacy
+- extendedWaitUntil:
+    notVisible:
+      id: welcome_get_started
+    timeout: 10000
+- assertVisible: "privacy policy"

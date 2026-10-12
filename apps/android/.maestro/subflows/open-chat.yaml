@@ -1,0 +1,16 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+- tapOn:
+    id: tab_chat
+- extendedWaitUntil:
+    visible:
+      id: chat_ai_ack
+    timeout: 20000
+- tapOn:
+    id: chat_ai_ack
+- extendedWaitUntil:
+    visible:
+      id: chat_composer
+    timeout: 15000

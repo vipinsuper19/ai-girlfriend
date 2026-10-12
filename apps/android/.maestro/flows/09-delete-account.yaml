@@ -1,0 +1,45 @@
+appId: com.dhama.mybase
+name: Delete account
+tags:
+  - account
+---
+# Deletes the account from You, returns to welcome, then the same email and password must not sign in.
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- tapOn:
+    id: tab_you
+- extendedWaitUntil:
+    visible: "Display name"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: settings_delete_account
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: settings_delete_account
+- extendedWaitUntil:
+    visible:
+      id: settings_delete_field
+    timeout: 10000
+- tapOn:
+    id: settings_delete_field
+- inputText: "DELETE"
+- hideKeyboard
+- tapOn:
+    id: settings_delete_confirm
+- extendedWaitUntil:
+    visible:
+      id: welcome_get_started
+    timeout: 60000
+- runFlow:
+    file: ../subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: login_error
+    timeout: 60000
+- assertVisible: "Login to your account"
+- assertNotVisible:
+    id: home_talk
+- assertNotVisible:
+    id: wizard_intro

@@ -1,0 +1,31 @@
+appId: com.dhama.mybase
+name: Report assistant message
+tags:
+  - chat
+---
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- runFlow:
+    file: ../subflows/open-chat.yaml
+- runFlow:
+    file: ../subflows/send-and-wait-reply.yaml
+- longPressOn:
+    id: chat_assistant_reply
+- extendedWaitUntil:
+    visible:
+      id: chat_report
+    timeout: 10000
+- tapOn:
+    id: chat_report
+- extendedWaitUntil:
+    visible: "What should we look at?"
+    timeout: 10000
+- tapOn:
+    id: report_reason_INACCURATE
+- tapOn:
+    id: report_send
+- extendedWaitUntil:
+    visible:
+      id: report_thanks
+      text: "Thanks. We'll review this reply."
+    timeout: 60000

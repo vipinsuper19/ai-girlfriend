@@ -1,0 +1,20 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Logout clears the on-device age attestation, so the next sign-in stops here.
+- extendedWaitUntil:
+    visible:
+      id: age_title
+    timeout: 30000
+- runFlow:
+    file: pick-dob.yaml
+    env:
+      DOB_FIELD_ID: age_dob
+      DOB_DIGITS: "01151990"
+      DOB_LABEL: "January 15, 1990"
+- tapOn:
+    id: age_adult
+- hideKeyboard
+- tapOn:
+    id: age_continue

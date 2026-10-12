@@ -1,0 +1,67 @@
+appId: com.dhama.mybase
+name: Age gate
+tags:
+  - age-gate
+---
+# Under 18 is rejected on the sign-up form. An adult date is allowed through to the wizard.
+# January 15, 2015 is under 18 until 2033. January 15, 1990 is an adult.
+- runFlow:
+    file: ../subflows/credentials.yaml
+- runFlow:
+    file: ../subflows/launch-fresh.yaml
+- tapOn:
+    id: welcome_get_started
+- extendedWaitUntil:
+    visible: "Create your account"
+    timeout: 15000
+- runFlow:
+    file: ../subflows/fill-signup-fields.yaml
+- runFlow:
+    file: ../subflows/pick-dob.yaml
+    env:
+      DOB_FIELD_ID: signup_dob
+      DOB_DIGITS: "01152015"
+      DOB_LABEL: "January 15, 2015"
+- scrollUntilVisible:
+    element:
+      id: signup_adult
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_adult
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: signup_submit
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_submit
+- extendedWaitUntil:
+    visible:
+      id: signup_age_error
+      text: "You must be 18 or older to create an account."
+    timeout: 10000
+- assertVisible:
+    id: signup_submit
+- assertNotVisible:
+    id: wizard_intro
+- runFlow:
+    file: ../subflows/pick-dob.yaml
+    env:
+      DOB_FIELD_ID: signup_dob
+      DOB_DIGITS: "01151990"
+      DOB_LABEL: "January 15, 1990"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: signup_submit
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_submit
+- extendedWaitUntil:
+    visible:
+      id: wizard_intro
+    timeout: 120000
+- assertNotVisible: "You must be 18 or older to create an account."

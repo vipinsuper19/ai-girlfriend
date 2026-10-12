@@ -84,10 +84,12 @@ import com.dhama.mybase.ui.settings.SubscriptionScreen
 import com.dhama.mybase.ui.settings.YouSettingsScreen
 import com.dhama.mybase.ui.settings.rememberSettingsViewModel
 import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
 
 private enum class MainTab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Default.Home),
@@ -163,6 +165,7 @@ fun MainShell(
                             onClick = { tab = item.ordinal },
                             icon = { Icon(item.icon, contentDescription = item.label) },
                             label = { Text(item.label) },
+                            modifier = Modifier.testId("tab_${item.name.lowercase(Locale.US)}"),
                         )
                     }
                 }
@@ -282,7 +285,7 @@ private fun HomeTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onSettings) {
+            IconButton(onClick = onSettings, modifier = Modifier.testId("home_settings")) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
@@ -328,7 +331,8 @@ private fun HomeTab(
             onClick = onTalk,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp),
+                .heightIn(min = 56.dp)
+                .testId("home_talk"),
             shape = RoundedCornerShape(28.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {

@@ -1,0 +1,25 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Material date picker, en-US input mode (MMDDYYYY). Caller sets:
+# DOB_FIELD_ID, DOB_DIGITS (8 digits), DOB_LABEL (Locale.US "MMMM d, yyyy").
+- scrollUntilVisible:
+    element:
+      id: ${DOB_FIELD_ID}
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: ${DOB_FIELD_ID}
+- extendedWaitUntil:
+    visible: "Switch to text input mode"
+    timeout: 10000
+- tapOn: "Switch to text input mode"
+- tapOn: "^Date$"
+- eraseText: 20
+- inputText: ${DOB_DIGITS}
+- hideKeyboard
+- tapOn: "OK"
+- extendedWaitUntil:
+    visible: ${DOB_LABEL}
+    timeout: 10000

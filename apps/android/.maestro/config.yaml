@@ -1,0 +1,14 @@
+# Supported entry point is ./run-all.sh.
+# That script builds the debug APK with -PAPI_BASE_URL_DEBUG, installs it,
+# runs the offline flow through adb, and treats flows/08-privacy-terms.yaml
+# as a known failure.
+#
+# A plain `maestro test` of this folder runs flows/* and skips the tags below,
+# so helper subflows, the airplane-mode parts, and the known-failure flow
+# are not executed on their own.
+flows:
+  - flows/*
+excludeTags:
+  - helper
+  - offline-part
+  - known-failure

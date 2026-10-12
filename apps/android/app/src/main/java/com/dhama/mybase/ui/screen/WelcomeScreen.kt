@@ -4,8 +4,11 @@ import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,20 +26,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WelcomeScreen(
     modifier: Modifier = Modifier,
@@ -109,7 +108,8 @@ fun WelcomeScreen(
                 onClick = onGetStarted,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp),
+                    .heightIn(min = 56.dp)
+                    .testId("welcome_get_started"),
                 shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -138,64 +138,57 @@ fun WelcomeScreen(
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
                     ),
-                    modifier = Modifier.clickable {
-                        onLogin?.invoke()
-                    }
+                    modifier = Modifier
+                        .testId("welcome_login")
+                        .clickable {
+                            onLogin?.invoke()
+                        }
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Footnote with link interactions using modern LinkAnnotation
-            val footnoteText = buildAnnotatedString {
-                val grayStyle = SpanStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontSize = 12.sp
-                )
-                val linkStyle = SpanStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
-                    textDecoration = TextDecoration.Underline
-                )
-
-                withStyle(grayStyle) {
-                    append("By continuing you agree to our ")
-                }
-
-                val termsLink = LinkAnnotation.Clickable(
-                    tag = "Terms",
-                    styles = TextLinkStyles(style = linkStyle)
-                ) {
-                    Log.d("WelcomeScreen", "Terms clicked")
-                }
-                withLink(termsLink) {
-                    append("Terms")
-                }
-
-                withStyle(grayStyle) {
-                    append(" and ")
-                }
-
-                val privacyLink = LinkAnnotation.Clickable(
-                    tag = "Privacy",
-                    styles = TextLinkStyles(style = linkStyle)
-                ) {
-                    Log.d("WelcomeScreen", "Privacy clicked")
-                }
-                withLink(privacyLink) {
-                    append("Privacy Policy")
-                }
-
-                withStyle(grayStyle) {
-                    append(".")
-                }
-            }
-
-            Text(
-                text = footnoteText,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
+            // Each link is its own node so Maestro can tap it. The handlers still only log.
+            val gray = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                fontSize = 12.sp,
             )
+            val link = gray.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                textDecoration = TextDecoration.Underline,
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "By continuing you agree to our ",
+                    style = gray,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Terms",
+                    style = link,
+                    modifier = Modifier
+                        .testId("welcome_terms")
+                        .clickable { Log.d("WelcomeScreen", "Terms clicked") },
+                )
+                Text(
+                    text = " and ",
+                    style = gray,
+                )
+                Text(
+                    text = "Privacy Policy",
+                    style = link,
+                    modifier = Modifier
+                        .testId("welcome_privacy")
+                        .clickable { Log.d("WelcomeScreen", "Privacy clicked") },
+                )
+                Text(
+                    text = ".",
+                    style = gray,
+                )
+            }
         }
     }
 }
