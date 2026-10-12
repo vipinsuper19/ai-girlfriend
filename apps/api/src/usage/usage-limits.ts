@@ -16,14 +16,18 @@ export type SubscriptionPlan =
  * once the commercial limits are finalized.
  *
  * null means unlimited.
+ *
+ * Free-tier MESSAGES and TEXT_TOKENS are enforced from `free-tier-llm.ts`
+ * (UTC day by default, overridable with FREE_TIER_LLM_*). The numbers below
+ * are the other plans, plus the free image and voice quotas, which stay monthly.
  */
 export const USAGE_LIMITS: Record<
     SubscriptionPlan,
     Partial<Record<UsageFeatureDto, UsageLimit>>
 > = {
     FREE: {
-        MESSAGES: 100,
-        TEXT_TOKENS: 100_000,
+        MESSAGES: 40,
+        TEXT_TOKENS: 50_000,
         IMAGE_GENERATIONS: 5,
         VOICE_MINUTES: 10,
         AUDIO_CALL_MINUTES: 0,

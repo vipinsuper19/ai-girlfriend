@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 
 import { Public } from '../common/decorators/public.decorator.js';
+import { RateLimit } from '../rate-limit/rate-limit.decorator.js';
+import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 
 import { AuthService } from './auth.service.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
@@ -23,12 +25,14 @@ import { RefreshTokenDto } from '../dto/refresh-token.dto.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 
 @Controller('auth')
+@UseGuards(RateLimitGuard)
 export class AuthController {
     constructor(
         private readonly authService: AuthService,
     ) { }
 
     @Public()
+    @RateLimit('register')
     @Post('register')
     register(
         @Body() dto: RegisterDto,
@@ -37,6 +41,7 @@ export class AuthController {
     }
 
     @Public()
+    @RateLimit('login')
     @Post('login')
     login(
         @Body() dto: LoginDto,
@@ -56,6 +61,7 @@ export class AuthController {
     }
 
     @Public()
+    @RateLimit('password-reset')
     @Post('password/forgot')
     @HttpCode(200)
     forgotPassword(
@@ -65,6 +71,7 @@ export class AuthController {
     }
 
     @Public()
+    @RateLimit('password-reset')
     @Post('password/reset/check')
     @HttpCode(200)
     checkResetToken(
@@ -74,6 +81,7 @@ export class AuthController {
     }
 
     @Public()
+    @RateLimit('password-reset')
     @Post('password/reset')
     @HttpCode(200)
     resetPassword(

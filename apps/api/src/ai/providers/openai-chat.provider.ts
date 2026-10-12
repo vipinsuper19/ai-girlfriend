@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import OpenAI from 'openai';
 
+import { isAbortError } from '../abort-error.js';
 import type {
     ChatProvider,
     GenerateChatOptions,
@@ -47,7 +48,7 @@ export class OpenAiChatProvider
                             content: message.content,
                         }),
                     ),
-                });
+                }, options.signal ? { signal: options.signal } : undefined);
 
             const content =
                 response.output_text?.trim();
@@ -60,6 +61,10 @@ export class OpenAiChatProvider
 
             return content;
         } catch (error) {
+            if (options.signal?.aborted || isAbortError(error)) {
+                throw error;
+            }
+
             console.error(
                 'OpenAI chat generation failed',
                 error,
@@ -86,9 +91,10 @@ export class OpenAiChatProvider
                         }),
                     ),
                     stream: true,
-                });
+                }, options.signal ? { signal: options.signal } : undefined);
 
             for await (const event of stream) {
+                if (options.signal?.aborted) return;
                 if (
                     event.type ===
                     'response.output_text.delta'
@@ -97,6 +103,10 @@ export class OpenAiChatProvider
                 }
             }
         } catch (error) {
+            if (options.signal?.aborted || isAbortError(error)) {
+                throw error;
+            }
+
             console.error(
                 'OpenAI streaming generation failed',
                 error,

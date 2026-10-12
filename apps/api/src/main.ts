@@ -26,6 +26,13 @@ async function bootstrap(): Promise<void> {
   // const configService = app.get(ConfigService);
 
   app.use(helmet());
+  // Render terminates TLS and appends the client to X-Forwarded-For.
+  // One trusted hop makes req.ip that client. TRUST_PROXY_HOPS=0 keeps the socket address.
+  const trustProxyHops = Number(process.env['TRUST_PROXY_HOPS'] ?? 1);
+  app.set(
+    'trust proxy',
+    Number.isInteger(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1,
+  );
   // app.setGlobalPrefix('api');
 
   // app.enableVersioning({
