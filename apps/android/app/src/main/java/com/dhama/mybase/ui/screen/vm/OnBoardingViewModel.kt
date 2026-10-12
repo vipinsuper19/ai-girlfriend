@@ -65,11 +65,15 @@ class OnBoardingViewModel @Inject constructor(
     }
 
 
-    fun createEmailSignIn(email: String, password: String) {
+    fun createEmailSignIn(email: String, password: String, dateOfBirth: String) {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _authState.value = UiState.Loading
+                // POST /auth/register accepts email, password, and displayName only.
+                // Unknown fields are rejected, so the date of birth stays on this device.
+                dataStoreRepo.saveString(PreferencesKeys.DATE_OF_BIRTH, dateOfBirth)
+                dataStoreRepo.saveBoolean(PreferencesKeys.AGE_CONFIRMED, true)
                 if (authRepository.register(email, password)) {
                     saveLoggedInStatus(true)
                     val result = "Account created successfully!"

@@ -63,6 +63,12 @@ class ChatViewModel @Inject constructor(
     val warningDismissedPeriod = dataStoreRepo.getString(PreferencesKeys.USAGE_WARNING_PERIOD, false)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
+    /** Null until DataStore has loaded, so the first chat does not flash the notice for someone who already accepted it. */
+    val aiDisclosureAcknowledged = dataStoreRepo
+        .getBoolean(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED, false)
+        .map { acknowledged -> acknowledged as Boolean? }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val planUsage = dataStoreRepo.getString(PreferencesKeys.USAGE_SUMMARY, false)
         .map { parseUsageSummary(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -260,6 +266,12 @@ class ChatViewModel @Inject constructor(
     fun dismissUsageWarning(periodStartEpochMs: Long) {
         viewModelScope.launch {
             dataStoreRepo.saveString(PreferencesKeys.USAGE_WARNING_PERIOD, periodStartEpochMs.toString())
+        }
+    }
+
+    fun acknowledgeAiDisclosure() {
+        viewModelScope.launch {
+            dataStoreRepo.saveBoolean(PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED, true)
         }
     }
 
