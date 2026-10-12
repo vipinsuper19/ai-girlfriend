@@ -50,6 +50,8 @@ import com.dhama.mybase.core.age.parseDateOfBirth
 import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.AgeConfirmViewModel
+import com.dhama.mybase.ui.test.DebugDobField
+import com.dhama.mybase.ui.test.debugDobValue
 import com.dhama.mybase.ui.test.testId
 import java.time.LocalDate
 
@@ -152,10 +154,15 @@ fun AgeConfirmContent(
                     Modifier
                         .matchParentSize()
                         .testId("age_dob")
+                        .debugDobValue(dateOfBirth?.let(::formatDateOfBirth).orEmpty())
                         .clickable { showDatePicker = true }
                         .semantics { contentDescription = "Date of birth" },
                 )
             }
+            DebugDobField(
+                id = "age_dob_iso",
+                onDateOfBirthIso = { dateOfBirthIso = it },
+            )
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier

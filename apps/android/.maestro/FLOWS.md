@@ -7,8 +7,8 @@ The entry point is [`run-all.sh`](run-all.sh). It builds the debug APK, installs
 ## What the job needs
 
 - A booted Android emulator, **API 34**, **x86_64**. `reactivecircus/android-emulator-runner` is the expected runner.
-- Profile **pixel_6** (or another tall phone). The sign-up form and the date picker need the height.
-- Locale **en_US**. The date picker input mode types `MMDDYYYY`. The app then shows the date in US English (`January 15, 1990`), regardless of the device locale, but the picker itself follows the device locale.
+- Profile **pixel_6** (or another tall phone). The sign-up form needs the height.
+- Locale **en_US** is still worth setting for the rest of the device, but do not pass it with `emulator -prop persist.sys.locale`. The emulator ignores that flag (`only qemu.* properties are supported`), and `persist.sys.locale` stays empty. Date of birth does not depend on it: debug builds have a `YYYY-MM-DD` field (`signup_dob_iso`, `age_dob_iso`). The flow types `2015-01-15` or `1990-01-15` there and asserts the US English value on `signup_dob` or `age_dob` (`January 15, 2015`). Release builds do not show that field. The date picker is unchanged.
 - Animations off. `run-all.sh` sets the three animator scales to 0. The runner's `disable-animations: true` is still worth setting.
 - `adb` and `maestro` on `PATH`. Install Maestro with the [published installer](https://get.maestro.mobile.dev) (`curl -Ls "https://get.maestro.mobile.dev" | bash`).
 - JDK 17 and the Android SDK, same as the existing Android CI job (`actions/setup-java`, `android-actions/setup-android`).
@@ -91,9 +91,9 @@ Resource ids below are Compose test tags (`Modifier.testId`). They show up to Ma
 
 ### 1. Age gate
 
-Preconditions: fresh install, welcome screen, en-US date picker, API and Firebase available for the adult sign-up.
+Preconditions: fresh install, welcome screen, debug build (for the `YYYY-MM-DD` field), API and Firebase available for the adult sign-up.
 
-Steps: open sign-up, enter the throwaway email and password, set the date of birth to 15 Jan 2015, check "I am 18 or older", tap Sign up. Then change the date to 15 Jan 1990 and tap Sign up again.
+Steps: open sign-up, enter the throwaway email and password, type `2015-01-15` into `signup_dob_iso`, check "I am 18 or older", tap Sign up. Then type `1990-01-15` and tap Sign up again. The flow asserts `January 15, 2015` and `January 15, 1990` on `signup_dob`, not on the date-picker header.
 
 Expected: the under-18 attempt stays on "Create your account" and shows "You must be 18 or older to create an account." The adult attempt leaves that error and opens the wizard ("Let's create her.").
 
@@ -182,7 +182,7 @@ Shots after the meaningful steps include:
 
 | Prefix | Steps |
 |---|---|
-| `01-age-gate` | `welcome`, `signup-open`, `signup-fields`, `dob-signup_dob-01152015`, `under-18-rejected`, `dob-signup_dob-01151990`, `adult-allowed` |
+| `01-age-gate` | `welcome`, `signup-open`, `signup-fields`, `dob-signup_dob-2015-01-15`, `under-18-rejected`, `dob-signup_dob-1990-01-15`, `adult-allowed` |
 | `02-signup-logout-login` | sign-up and wizard shots, then `you`, `logged-out`, `login-form`, `confirm-age`, `confirm-age-ready`, `home-after-login` |
 | `03-companion-wizard` | sign-up and wizard shots, then `home-tabs` |
 | `04-chat-stream` | sign-up, wizard, `ai-disclosure`, `chat-ready`, `user-message`, `assistant-reply`, `stream-checked` |
