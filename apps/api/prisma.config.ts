@@ -11,7 +11,10 @@ export default definePrismaConfig({
     extensions: [pgvector],
 
     db: {
-      connection: process.env['DATABASE_URL']!,
+      // Migrations and other CLI work need a direct session connection (Supabase
+      // port 5432). The app runtime uses DATABASE_URL (pooler, port 6543,
+      // ?pgbouncer=true) in src/prisma/db.ts.
+      connection: (process.env['DIRECT_URL'] ?? process.env['DATABASE_URL'])!,
     },
   }),
 });

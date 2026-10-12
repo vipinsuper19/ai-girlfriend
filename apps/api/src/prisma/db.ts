@@ -5,6 +5,9 @@ import postgres from '@prisma/orm-postgres/runtime';
 import type { Contract } from './contract.d.js';
 import contractJson from './contract.json' with { type: 'json' };
 
+// Runtime connection. On Supabase set this to the transaction pooler
+// (port 6543) with ?pgbouncer=true. The pg driver ignores that flag, so it
+// is not sent to Postgres. Migrations use DIRECT_URL via prisma.config.ts.
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
