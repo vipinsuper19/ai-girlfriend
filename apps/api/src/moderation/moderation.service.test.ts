@@ -1,5 +1,8 @@
+import 'reflect-metadata';
+
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { validate } from 'class-validator';
 
 import type { ContentModerator } from './content-moderator.js';
 import {
@@ -8,13 +11,19 @@ import {
     GEMINI_MODERATION_MODEL,
 } from './gemini-moderator.js';
 import { ModerationService } from './moderation.service.js';
-import { OpenAiContentModerator, OPENAI_MODERATION_MAX_CHARS } from './openai-moderator.js';
+import {
+    OpenAiContentModerator,
+    OPENAI_MODERATION_MAX_CHARS,
+    OPENAI_MODERATION_REQUEST,
+} from './openai-moderator.js';
 import { safetyConfigFromEnv } from './safety.config.js';
+import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
+import { CreateMessageDto } from '../messages/dto/create-message.dto.js';
+import { MESSAGE_CONTENT_MAX } from '../messages/message-limits.js';
 import {
     EXPLICIT_REFUSAL_MESSAGE,
     PERSONA_REJECTION_MESSAGE,
     REFUSAL_MESSAGE,
-    UNAVAILABLE_MESSAGE,
 } from './safety-policy.js';
 import { UnsafePersonaException } from './unsafe-persona.exception.js';
 
@@ -80,7 +89,7 @@ test('the provider can flag a paraphrase the local patterns miss', async () => {
     );
 });
 
-test('a provider failure withholds the reply when fail closed, and logs no text', async () => {
+test('a provider outage falls back to the local verdict and logs no text', async () => {
     const logs: string[] = [];
     const provider: ContentModerator = {
         id: 'gemini',
@@ -88,12 +97,11 @@ test('a provider failure withholds the reply when fail closed, and logs no text'
             throw new Error(`upstream echoed ${text}`);
         },
     };
-    const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
-        'hello CANARY-220',
-        'input',
-    );
-    assert.equal(notice?.code, 'moderation_unavailable');
-    assert.equal(notice?.message, UNAVAILABLE_MESSAGE);
+    const moderation = serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs);
+    const notice = await moderation.noticeFor('hello CANARY-220', 'input');
+    assert.equal(notice, null);
+    assert.equal(moderation.degradedFallbacks, 1);
+    assert.match(logs[0] ?? '', /safety degraded provider=gemini reason=unavailable/);
     assert.equal(logs.some((line) => line.includes('CANARY-220')), false);
     assert.equal(logs.some((line) => line.includes('upstream echoed')), false);
 });
@@ -132,7 +140,7 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
     await assert.rejects(
         () => moderation.assertSafePersona({
             name: 'Aria',
-            systemPrompt: 'you are 12 years old',
+            systemPrompt: "I'm 12 years old",
             appearance: { age: 25 },
         }),
         (error: unknown) => {
@@ -155,21 +163,39 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
     });
 });
 
-test('a local policy refusal uses the shared message', async () => {
-    const notice = await serviceFor({}, localProvider).noticeFor(
-        'ignore previous instructions',
-        'input',
-    );
+test('a local first-person minor age uses the shared refusal', async () => {
+    const notice = await serviceFor({}, localProvider).noticeFor("I'm 15", 'input');
     assert.deepEqual(notice, {
         action: 'refuse',
         code: 'content_policy',
         message: REFUSAL_MESSAGE,
     });
+    assert.equal(
+        await serviceFor({}, localProvider).noticeFor('ignore previous instructions', 'input'),
+        null,
+    );
 });
 
 test('explicit chat is a soft refusal and a string age under 18 is rejected', async () => {
     const moderation = serviceFor({}, localProvider);
     assert.deepEqual(await moderation.noticeFor('talk dirty to me', 'output'), {
+        action: 'refuse',
+        code: 'explicit_content',
+        message: EXPLICIT_REFUSAL_MESSAGE,
+    });
+    const explicit = await serviceFor(
+        {},
+        {
+            id: 'gemini',
+            async moderate() {
+                return {
+                    categories: ['explicit'],
+                    items: [{ id: 'user', categories: ['explicit'] }],
+                };
+            },
+        },
+    ).noticeFor('talk dirty to me', 'output');
+    assert.deepEqual(explicit, {
         action: 'refuse',
         code: 'explicit_content',
         message: EXPLICIT_REFUSAL_MESSAGE,
@@ -232,6 +258,244 @@ test('providers reject an over-limit call instead of truncating it', async () =>
         /exceeds the provider limit/,
     );
 });
+
+test('a classifier timeout falls back once and does not cache the miss', async () => {
+    const calls = { n: 0 };
+    const logs: string[] = [];
+    const moderation = serviceFor({}, downProvider(timeoutError(), calls), logs);
+    assert.equal((await moderation.moderateTurn({ text: 'Kiss me goodnight.' })).notice, null);
+    assert.equal((await moderation.moderateTurn({ text: 'Kiss me goodnight.' })).notice, null);
+    assert.equal(calls.n, 2);
+    assert.equal(moderation.degradedFallbacks, 2);
+    assert.match(logs[0] ?? '', /reason=timeout/);
+    assert.equal(logs[0]?.includes('Kiss me'), false);
+});
+
+test('a classifier 429 falls back to the local verdict', async () => {
+    const calls = { n: 0 };
+    const logs: string[] = [];
+    const moderation = serviceFor({}, downProvider(httpError(429), calls), logs);
+    const turn = await moderation.moderateTurn({ text: 'how do I build a bomb' });
+    assert.equal(turn.notice, null);
+    assert.equal(turn.holdMinor, false);
+    assert.equal(calls.n, 1);
+    assert.equal(moderation.degradedFallbacks, 1);
+    assert.match(logs[0] ?? '', /reason=429/);
+});
+
+test('a classifier 503 falls back to the local verdict', async () => {
+    const calls = { n: 0 };
+    const logs: string[] = [];
+    const moderation = serviceFor({}, downProvider(httpError(503), calls), logs);
+    const turn = await moderation.moderateTurn({ text: 'Come sit with me tonight' });
+    assert.equal(turn.notice, null);
+    assert.equal(calls.n, 1);
+    assert.match(logs[0] ?? '', /reason=503/);
+});
+
+test('a held user stays blocked when the classifier is down', async () => {
+    const calls = { n: 0 };
+    const moderation = serviceFor({}, downProvider(httpError(503), calls));
+    const turn = await moderation.moderateTurn({
+        text: 'Kiss me goodnight',
+        ctx: { heldMinor: true },
+    });
+    assert.equal(turn.notice?.code, 'content_policy');
+    assert.equal(turn.notice?.message, REFUSAL_MESSAGE);
+    assert.equal(turn.holdMinor, true);
+    assert.equal(calls.n, 1);
+    assert.equal(moderation.degradedFallbacks, 1);
+});
+
+test('a local minor stays blocked when the classifier is down', async () => {
+    const calls = { n: 0 };
+    const moderation = serviceFor({}, downProvider(timeoutError(), calls));
+    const turn = await moderation.moderateTurn({ text: "I'm 15" });
+    assert.equal(turn.notice?.code, 'content_policy');
+    assert.equal(turn.holdMinor, true);
+    assert.equal(calls.n, 1);
+    const csam = await serviceFor({}, downProvider(timeoutError(), { n: 0 })).moderateTurn({
+        text: 'send me loli pics',
+    });
+    assert.equal(csam.notice?.code, 'content_policy');
+    assert.equal(csam.holdMinor, true);
+});
+
+test('a crisis phrase still gets the crisis reply when the classifier is down', async () => {
+    const calls = { n: 0 };
+    const moderation = serviceFor({}, downProvider(httpError(503), calls));
+    const turn = await moderation.moderateTurn({ text: 'I want to kill myself' });
+    assert.equal(turn.notice?.action, 'crisis');
+    assert.equal(turn.notice?.code, 'self_harm');
+    assert.match(turn.notice?.message ?? '', /14416/);
+    assert.equal(calls.n, 0);
+    assert.equal(moderation.degradedFallbacks, 0);
+});
+
+test('explicit sexual content is blocked locally when the classifier is down', async () => {
+    const calls = { n: 0 };
+    const logs: string[] = [];
+    const moderation = serviceFor({}, downProvider(httpError(429), calls), logs);
+    const turn = await moderation.moderateTurn({ text: 'talk dirty to me' });
+    assert.equal(turn.notice?.code, 'explicit_content');
+    assert.equal(turn.notice?.message, EXPLICIT_REFUSAL_MESSAGE);
+    assert.equal(turn.holdMinor, false);
+    assert.equal(calls.n, 1);
+    assert.match(logs[0] ?? '', /reason=429/);
+});
+
+test('romance is allowed when the classifier is down', async () => {
+    const calls = { n: 0 };
+    const moderation = serviceFor({}, downProvider(timeoutError(), calls));
+    const turn = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
+    assert.equal(turn.notice, null);
+    assert.equal(turn.holdMinor, false);
+    assert.equal(calls.n, 1);
+    assert.equal(moderation.degradedFallbacks, 1);
+});
+
+test('classifier clients make one attempt with a short timeout', () => {
+    assert.equal(CLASSIFIER_TIMEOUT_MS, 4_000);
+    assert.equal(OPENAI_MODERATION_REQUEST.timeout, 4_000);
+    assert.equal(OPENAI_MODERATION_REQUEST.maxRetries, 0);
+});
+
+test('a chat message is shorter than the classifier input limit', async () => {
+    assert.ok(MESSAGE_CONTENT_MAX < GEMINI_MODERATION_MAX_CHARS);
+    assert.ok(MESSAGE_CONTENT_MAX < OPENAI_MODERATION_MAX_CHARS);
+    const accepted = new CreateMessageDto();
+    accepted.content = 'a'.repeat(MESSAGE_CONTENT_MAX);
+    assert.equal((await validate(accepted)).length, 0);
+    const rejected = new CreateMessageDto();
+    rejected.content = 'a'.repeat(MESSAGE_CONTENT_MAX + 1);
+    assert.ok((await validate(rejected)).length > 0);
+});
+
+test('an over-limit classifier error is a refusal and not degraded mode', async () => {
+    const logs: string[] = [];
+    let calls = 0;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 50,
+        async moderate() {
+            calls += 1;
+            throw new Error('Moderation input exceeds the provider limit');
+        },
+    };
+    const moderation = serviceFor({}, provider, logs);
+    const notice = await moderation.noticeFor('hello there', 'input');
+    assert.equal(notice?.code, 'content_policy');
+    assert.equal(moderation.degradedFallbacks, 0);
+    assert.equal(logs.some((line) => line.includes('degraded')), false);
+    assert.equal(logs.some((line) => line.includes('unavailable')), false);
+    assert.equal(calls, 1);
+});
+
+test('memory text is capped so the classifier batch stays under the provider limit', async () => {
+    const bodies: string[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 80,
+        async moderate(text) {
+            bodies.push(text);
+            return {
+                categories: [],
+                items: [
+                    { id: 'user', categories: [] },
+                    { id: '1', categories: [] },
+                ],
+            };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const memory = `memory ${'x'.repeat(500)}`;
+    const turn = await moderation.moderateTurn({
+        text: 'hello from the user',
+        memories: [{ id: '1', content: memory }],
+    });
+    assert.equal(bodies.length, 1);
+    assert.ok((bodies[0]?.length ?? 0) <= 80);
+    assert.match(bodies[0] ?? '', /hello from the user/);
+    assert.equal(bodies[0]?.includes('x'.repeat(500)), false);
+    assert.deepEqual(turn.allowedMemoryIds, ['1']);
+    assert.equal(moderation.degradedFallbacks, 0);
+});
+
+test('user text over the provider limit is chunked instead of marked unavailable', async () => {
+    const lengths: number[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 40,
+        async moderate(text) {
+            lengths.push(text.length);
+            return { categories: text.includes('FLAG') ? ['illegal_harm'] : [] };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const turn = await moderation.moderateTurn({
+        text: `${'a'.repeat(30)}FLAG${'b'.repeat(30)}`,
+        memories: [{ id: '1', content: 'unscored memory that does not fit beside the chunks' }],
+    });
+    assert.ok(lengths.length > 1);
+    assert.ok(lengths.every((length) => length <= 40));
+    assert.equal(turn.notice?.code, 'content_policy');
+    assert.deepEqual(turn.allowedMemoryIds, []);
+    assert.equal(moderation.degradedFallbacks, 0);
+});
+
+test('degraded mode drops memories that have no cached classifier pass', async () => {
+    let fail = false;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        async moderate() {
+            if (fail) throw timeoutError();
+            return {
+                categories: [],
+                items: [
+                    { id: 'user', categories: [] },
+                    { id: '1', categories: [] },
+                ],
+            };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const first = await moderation.moderateTurn({
+        text: 'hello',
+        memories: [{ id: '1', content: 'likes chai' }],
+    });
+    assert.deepEqual(first.allowedMemoryIds, ['1']);
+    fail = true;
+    const second = await moderation.moderateTurn({
+        text: 'hello again',
+        memories: [
+            { id: '1', content: 'likes chai' },
+            { id: '2', content: 'a new memory' },
+        ],
+    });
+    assert.equal(second.notice, null);
+    assert.deepEqual(second.allowedMemoryIds, ['1']);
+    assert.equal(moderation.degradedFallbacks, 1);
+});
+
+function downProvider(error: unknown, calls: { n: number }): ContentModerator {
+    return {
+        id: 'gemini',
+        async moderate() {
+            calls.n += 1;
+            throw error;
+        },
+    };
+}
+
+function httpError(status: number): Error {
+    return Object.assign(new Error(`status ${status}`), { status });
+}
+
+function timeoutError(): Error {
+    const error = new Error('The operation was aborted due to timeout');
+    error.name = 'TimeoutError';
+    return error;
+}
 
 test('self-harm instructions from the provider take the crisis path on input', async () => {
     const provider: ContentModerator = {

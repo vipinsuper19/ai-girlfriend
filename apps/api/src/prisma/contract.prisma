@@ -201,6 +201,8 @@ notificationsEnabledAt TimestamptzString?
 // When the person confirmed they are 18 or older. The date of birth is checked
 // and then discarded; it is not stored.
 ageConfirmedAt         TimestamptzString?
+// Set when chat shows this person is under 18. It does not expire with the message window.
+minorHeldAt            TimestamptzString?
 
 accounts     Account[]
 sessions     Session[]
@@ -213,6 +215,7 @@ subscriptions Subscription[]
 usageRecords UsageRecord[]
 deviceTokens DeviceToken[]
 messageReports MessageReport[]
+messages Message[]
 
 @@index([status])
 @@index([createdAt])
@@ -435,6 +438,8 @@ companionId   Int
 
 title         String?
 lastMessageAt TimestamptzString?
+// Set when this conversation shows someone under 18. It does not expire with the message window.
+minorHeldAt   TimestamptzString?
 
 metadata      Json?
 
@@ -485,6 +490,12 @@ metadata       Json?
 audioUrl       String?
 imageUrl       String?
 
+// Copied onto a user line sent with Idempotency-Key. Null on every other
+// row, including assistant replies. The pair is unique so a resend cannot
+// insert a second message for the same person and key.
+userId         Int?
+idempotencyKey String?
+
 createdAt      TimestamptzString   @default(now())
 updatedAt      temporal.updatedAtString()
 deletedAt      TimestamptzString?
@@ -498,6 +509,13 @@ references: [id],
 onDelete: Cascade
 )
 
+user User? @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([userId, idempotencyKey])
 @@index([conversationId, createdAt])
 @@index([createdAt])
 }
@@ -790,6 +808,22 @@ onDelete: Cascade
 }
 
 // ============================================================
+// WEB ACCOUNT-DELETION REQUEST
+// ============================================================
+
+model DeletionRequest {
+id          Int               @id @default(autoincrement())
+email       String
+note        String            @default("")
+tokenHash   String            @unique
+confirmedAt TimestamptzString?
+createdAt   TimestamptzString @default(now())
+
+@@index([email])
+@@index([createdAt])
+}
+
+// ============================================================
 // MESSAGE REPORTS
 // ============================================================
 
@@ -834,5 +868,20 @@ onDelete: Cascade
 @@index([status, createdAt])
 @@index([messageId])
 @@index([conversationId])
+}
+
+// ============================================================
+// STORAGE CLEANUP
+// ============================================================
+
+// Object deletes that failed during account deletion. No foreign key to
+// user: the row is removed after these keys are recorded, and Android treats
+// a later 404 as success, so the retry cannot depend on the account.
+model StorageCleanup {
+objectKey String            @id
+lastError String
+attempts  Int               @default(1)
+createdAt TimestamptzString @default(now())
+updatedAt TimestamptzString @default(now())
 }
 

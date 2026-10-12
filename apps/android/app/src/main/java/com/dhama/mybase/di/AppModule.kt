@@ -1,11 +1,8 @@
 package com.dhama.mybase.di
 
 import com.dhama.mybase.core.FeatureFlags
-import com.dhama.mybase.core.data.NotesRepositoryImpl
 import com.dhama.mybase.core.data.UserRepoImpl
-import com.dhama.mybase.core.db.dao.NotesDao
 import com.dhama.mybase.core.db.dao.UserDao
-import com.dhama.mybase.core.domain.NotesRepository
 import com.dhama.mybase.core.domain.UserRepo
 import dagger.Module
 import dagger.Provides
@@ -20,12 +17,6 @@ object AppModule {
     @Provides
     @Singleton
     fun provideFeatureFlags(): FeatureFlags = FeatureFlags.build
-
-    @Provides
-    @Singleton
-    fun provideNotesRepo(notesDao: NotesDao): NotesRepository {
-        return NotesRepositoryImpl(notesDao)
-    }
 
     @Provides
     @Singleton

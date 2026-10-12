@@ -4,10 +4,11 @@ import {
     HarmCategory,
 } from '@google/genai';
 
+import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
-    categoriesFromClassifier,
     GEMINI_CLASSIFIER_INSTRUCTION,
+    parseClassifier,
 } from './provider-categories.js';
 
 /**
@@ -51,6 +52,10 @@ export function geminiModerationRequest(model: string, text: string) {
         config: {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
+            httpOptions: {
+                timeout: CLASSIFIER_TIMEOUT_MS,
+                retryOptions: { attempts: 1 },
+            },
             safetySettings: SAFETY_OFF.map((category) => ({
                 category,
                 threshold: HarmBlockThreshold.BLOCK_NONE,
@@ -82,13 +87,19 @@ export class GeminiContentModerator implements ContentModerator {
             throw new Error('GEMINI_API_KEY is not configured');
         }
         this.client ??= new GoogleGenAI({ apiKey: this.apiKey });
-        const response = await this.client.models.generateContent(
-            geminiModerationRequest(this.model, text),
-        );
+        const request = geminiModerationRequest(this.model, text);
+        const response = await this.client.models.generateContent({
+            ...request,
+            config: {
+                ...request.config,
+                abortSignal: AbortSignal.timeout(CLASSIFIER_TIMEOUT_MS),
+            },
+        });
         const raw = response.text?.trim();
         if (!raw) {
             throw new Error('Moderation classifier returned an empty response');
         }
-        return { categories: categoriesFromClassifier(raw) };
+        const parsed = parseClassifier(raw);
+        return { categories: parsed.categories, items: parsed.items };
     }
 }
