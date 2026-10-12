@@ -11,6 +11,7 @@ import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
 import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
+import { safetyNoticeOf } from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { estimateTokens } from '../usage/estimate-tokens.js';
@@ -75,24 +76,35 @@ export class MessagesService {
                 conversationId,
             );
 
-        await this.chargeSuccessfulReply(
-            numericUserId,
-            numericConversationId,
-            dto.content,
-            messageContent(assistantMessage),
-        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.chargeSuccessfulReply(
+                numericUserId,
+                numericConversationId,
+                dto.content,
+                messageContent(assistantMessage),
+            );
+            void this.memoryExtractorService.extractFromConversation(
+                numericUserId,
+                conversation.companionId,
+                numericConversationId,
+                message.content,
+                assistantMessage.content,
+            );
+        }
 
-        void this.memoryExtractorService.extractFromConversation(
-            numericUserId,
-            conversation.companionId,
-            numericConversationId,
-            message.content,
-            assistantMessage.content,
-        );
+        let userMessage = message;
+        if (safety && message?.id != null) {
+            const fresh = await this.db.orm.public.Message
+                .where({ id: message.id })
+                .first();
+            if (fresh && fresh.id === message.id) userMessage = fresh;
+        }
 
         return {
-            userMessage: message,
+            userMessage,
             assistantMessage,
+            ...(safety ? { safety } : {}),
         };
     }
 
@@ -248,7 +260,7 @@ export class MessagesService {
             .where({ id: numericMessageId })
             .update({ deletedAt: now, updatedAt: now });
 
-        let assistantMessage: { content?: string };
+        let assistantMessage: { content?: string; metadata?: unknown };
         try {
             assistantMessage =
                 await this.aiService.generateResponse(
@@ -262,17 +274,21 @@ export class MessagesService {
             throw error;
         }
 
-        await this.chargeSuccessfulReply(
-            numericUserId,
-            conversation.id,
-            '',
-            messageContent(assistantMessage),
-            { source: 'regenerate' },
-        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.chargeSuccessfulReply(
+                numericUserId,
+                conversation.id,
+                '',
+                messageContent(assistantMessage),
+                { source: 'regenerate' },
+            );
+        }
 
         return {
             replacedId: numericMessageId,
             assistantMessage,
+            ...(safety ? { safety } : {}),
         };
     }
 
@@ -381,12 +397,19 @@ export class MessagesService {
             )
         ) {
             if (event.type === 'done') {
-                await this.chargeSuccessfulReply(
-                    numericUserId,
-                    numericConversationId,
-                    dto.content,
-                    messageContent(event.message),
-                );
+                const notice =
+                    event.safety ??
+                    safetyNoticeOf(
+                        event.message as { metadata?: unknown },
+                    );
+                if (!notice) {
+                    await this.chargeSuccessfulReply(
+                        numericUserId,
+                        numericConversationId,
+                        dto.content,
+                        messageContent(event.message),
+                    );
+                }
             }
             if (signal?.aborted) return;
             yield event;

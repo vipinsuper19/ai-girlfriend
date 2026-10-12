@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.home.homeGreeting
 import com.dhama.mybase.core.home.presenceLine
 import com.dhama.mybase.core.memory.MemoryHighlight
@@ -116,6 +117,11 @@ fun MainShell(
     val scope = rememberCoroutineScope()
     var tab by rememberSaveable { mutableIntStateOf(MainTab.Home.ordinal) }
     var screen by rememberSaveable { mutableStateOf("tabs") }
+    val visibleScreen = when {
+        screen == "gallery" && !FeatureFlags.build.gallery -> "tabs"
+        screen == "plans" && !FeatureFlags.build.billing -> "tabs"
+        else -> screen
+    }
     var memoryId by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -139,14 +145,14 @@ fun MainShell(
             memoryViewModel.undoDelete()
         }
     }
-    BackHandler(enabled = screen != "tabs") {
-        screen = if (screen == "edit") "profile" else "tabs"
+    BackHandler(enabled = visibleScreen != "tabs") {
+        screen = if (visibleScreen == "edit") "profile" else "tabs"
     }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (screen == "tabs") {
+            if (visibleScreen == "tabs") {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     MainTab.entries.forEach { item ->
                         NavigationBarItem(
@@ -161,13 +167,13 @@ fun MainShell(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (screen) {
+            when (visibleScreen) {
                 "memory" -> MemoryDetailScreen(memoryId, onBack = { screen = "tabs" }, viewModel = memoryViewModel)
                 "privacy" -> MemoryPrivacyScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
                 "profile" -> CompanionProfileScreen(onBack = { screen = "tabs" }, onEdit = { screen = "edit" })
                 "edit" -> EditCompanionScreen(onBack = { screen = "profile" })
-                "plans" -> SubscriptionScreen(onBack = { screen = "tabs" })
-                "gallery" -> GalleryScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
+                "plans" -> if (FeatureFlags.build.billing) SubscriptionScreen(onBack = { screen = "tabs" })
+                "gallery" -> if (FeatureFlags.build.gallery) GalleryScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
                 "history" -> ConversationHistoryScreen(
                     onBack = { screen = "tabs" },
                     onOpened = {
@@ -195,7 +201,11 @@ fun MainShell(
                         onPhotos = { screen = "gallery" },
                     )
                     MainTab.Chat -> ChatScreen(
-                        onSeePlans = { screen = "plans" },
+                        onSeePlans = if (FeatureFlags.build.billing) {
+                            { screen = "plans" }
+                        } else {
+                            null
+                        },
                         onHistory = { screen = "history" },
                     )
                     MainTab.Memory -> MemoryListScreen(
@@ -209,7 +219,11 @@ fun MainShell(
                     MainTab.You -> YouSettingsScreen(
                         onProfile = { screen = "profile" },
                         onPrivacy = { screen = "privacy" },
-                        onPlans = { screen = "plans" },
+                        onPlans = if (FeatureFlags.build.billing) {
+                            { screen = "plans" }
+                        } else {
+                            null
+                        },
                         onLogout = viewModel::logout,
                     )
                 }
@@ -334,7 +348,7 @@ private fun HomeTab(
             QuickAction("Talk", onTalk, Modifier.weight(1f))
             QuickAction("Memories", onMemories, Modifier.weight(1f))
             QuickAction("Profile", onProfile, Modifier.weight(1f))
-            if (companion.conversationId != null) {
+            if (FeatureFlags.build.gallery && companion.conversationId != null) {
                 QuickAction("Photos", onPhotos, Modifier.weight(1f))
             }
         }

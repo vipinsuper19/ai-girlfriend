@@ -4,6 +4,7 @@ import {
     Delete,
     Get,
     Header,
+    Inject,
     Param,
     Post,
     Query,
@@ -31,6 +32,7 @@ import { formatSseEvent, SSE_KEEPALIVE_MS, streamErrorPayload, writeServerSentEv
 @UseGuards(JwtAuthGuard)
 export class MessagesController {
     constructor(
+        @Inject(MessagesService)
         private readonly messagesService: MessagesService,
     ) { }
 

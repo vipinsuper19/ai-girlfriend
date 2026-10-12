@@ -5,13 +5,8 @@ import test from 'node:test';
 
 import { Test } from '@nestjs/testing';
 
-import { AiService } from '../ai/ai.service.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
-import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
-import { StorageService } from '../storage/storage.service.js';
-import { UsageService } from '../usage/usage.service.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
 
@@ -54,67 +49,55 @@ test('a client disconnect mid-stream aborts and does not persist or charge', asy
         },
     };
 
+    const messagesService = new MessagesService(
+        {
+            client: { orm: { public: { Conversation: conversation, Message: message } } },
+        } as never,
+        {
+            async *streamResponse(
+                _userId: string,
+                _conversationId: string,
+                options?: { signal?: AbortSignal },
+            ) {
+                const signal = options?.signal;
+                try {
+                    yield { type: 'delta', content: 'Hel' };
+                    await new Promise<void>((resolve) => {
+                        if (signal?.aborted) {
+                            resolve();
+                            return;
+                        }
+                        const timer = setTimeout(resolve, 4_000);
+                        signal?.addEventListener('abort', () => {
+                            clearTimeout(timer);
+                            resolve();
+                        }, { once: true });
+                    });
+                    if (signal?.aborted) return;
+                    assistantPersisted = true;
+                    yield { type: 'done', message: { id: 9, content: 'Hello' } };
+                } finally {
+                    sawAbort = signal?.aborted === true;
+                    release();
+                }
+            },
+        } as never,
+        { extractFromConversation() { return Promise.resolve(); } } as never,
+        {
+            async check() {
+                return { allowed: true };
+            },
+            async charge(_userId: number, feature: string) {
+                charges.push(feature);
+            },
+        } as never,
+        { removeVoiceFile() { return Promise.resolve(); } } as never,
+    );
+
     const moduleRef = await Test.createTestingModule({
         controllers: [MessagesController],
         providers: [
-            MessagesService,
-            {
-                provide: PrismaService,
-                useValue: {
-                    client: { orm: { public: { Conversation: conversation, Message: message } } },
-                },
-            },
-            {
-                provide: AiService,
-                useValue: {
-                    async *streamResponse(
-                        _userId: string,
-                        _conversationId: string,
-                        options?: { signal?: AbortSignal },
-                    ) {
-                        const signal = options?.signal;
-                        try {
-                            yield { type: 'delta', content: 'Hel' };
-                            await new Promise<void>((resolve) => {
-                                if (signal?.aborted) {
-                                    resolve();
-                                    return;
-                                }
-                                const timer = setTimeout(resolve, 4_000);
-                                signal?.addEventListener('abort', () => {
-                                    clearTimeout(timer);
-                                    resolve();
-                                }, { once: true });
-                            });
-                            if (signal?.aborted) return;
-                            assistantPersisted = true;
-                            yield { type: 'done', message: { id: 9, content: 'Hello' } };
-                        } finally {
-                            sawAbort = signal?.aborted === true;
-                            release();
-                        }
-                    },
-                },
-            },
-            {
-                provide: MemoryExtractorService,
-                useValue: { extractFromConversation() { return Promise.resolve(); } },
-            },
-            {
-                provide: UsageService,
-                useValue: {
-                    async check() {
-                        return { allowed: true };
-                    },
-                    async charge(_userId: number, feature: string) {
-                        charges.push(feature);
-                    },
-                },
-            },
-            {
-                provide: StorageService,
-                useValue: { removeVoiceFile() { return Promise.resolve(); } },
-            },
+            { provide: MessagesService, useValue: messagesService },
         ],
     })
         .overrideGuard(JwtAuthGuard)
@@ -175,12 +158,17 @@ test('a client disconnect mid-stream aborts and does not persist or charge', asy
             throw new Error(`stream ended before the delta (${statusCode}): ${received}`);
         }
 
-        await Promise.race([
-            settled,
-            new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('server did not settle after disconnect')), 7_000);
-            }),
-        ]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                settled,
+                new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('server did not settle after disconnect')), 7_000);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
 
         assert.match(received, /Hel/);
         assert.equal(sawAbort, true);
