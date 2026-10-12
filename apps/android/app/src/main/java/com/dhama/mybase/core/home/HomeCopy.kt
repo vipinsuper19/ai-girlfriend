@@ -16,8 +16,9 @@ fun homeGreeting(hourOfDay: Int, displayName: String): String {
     return if (name.isEmpty()) hello else "$hello, $name"
 }
 
-/** "Active now" only when this phone is on her server conversation. */
-fun presenceLine(linkedToServer: Boolean): String {
+/** "Active now" only when this phone is on her server conversation. A late first byte wins. */
+fun presenceLine(linkedToServer: Boolean, waking: String? = null): String {
+    if (!waking.isNullOrBlank()) return waking
     return if (linkedToServer) "Active now" else "On this phone"
 }
 

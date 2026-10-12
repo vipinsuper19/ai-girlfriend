@@ -9,8 +9,12 @@ import kotlinx.serialization.json.Json
 sealed interface ChatStreamEvent {
     data class UserMessage(val content: String) : ChatStreamEvent
     data class Delta(val content: String) : ChatStreamEvent
-    data class Done(val content: String) : ChatStreamEvent
-    data class Error(val message: String, val code: String? = null) : ChatStreamEvent
+    data class Done(val content: String, val serverMessageId: Int? = null) : ChatStreamEvent
+    data class Error(
+        val message: String,
+        val code: String? = null,
+        val retryAfterSeconds: Int? = null,
+    ) : ChatStreamEvent
 }
 
 @Serializable
@@ -22,6 +26,7 @@ private data class SseData(
 
 @Serializable
 private data class SseMessageBody(
+    val id: Int? = null,
     val content: String? = null,
 )
 
@@ -29,6 +34,7 @@ private data class SseMessageBody(
 private data class ErrorEnvelope(
     val message: String? = null,
     val code: String? = null,
+    val retryAfterSeconds: Int? = null,
     val content: String? = null,
     val prompt: String? = null,
     val text: String? = null,
@@ -96,12 +102,16 @@ private fun parseBlock(block: String): ChatStreamEvent? {
     return when (type) {
         "message" -> ChatStreamEvent.UserMessage(text)
         "delta" -> ChatStreamEvent.Delta(text)
-        "done" -> ChatStreamEvent.Done(text.ifBlank { payload?.message?.content.orEmpty() })
+        "done" -> ChatStreamEvent.Done(
+            text.ifBlank { payload?.message?.content.orEmpty() },
+            payload?.message?.id,
+        )
         "error" -> {
             val envelope = runCatching { json.decodeFromString<ErrorEnvelope>(raw) }.getOrNull()
             ChatStreamEvent.Error(
                 streamErrorMessage(envelope),
                 envelope?.code,
+                envelope?.retryAfterSeconds,
             )
         }
         else -> null
@@ -159,7 +169,24 @@ fun replyFailureDelivery(userAccepted: Boolean, replyStarted: Boolean, finished:
     }
 }
 
+/**
+ * Idle timeout after the stream is open. Retry stays on screen.
+ * A line the server already accepted is reloaded; otherwise the same send can be tried again.
+ */
+fun idleStallDelivery(userAccepted: Boolean, replyStarted: Boolean): String {
+    return if (userAccepted || replyStarted) DROPPED_DELIVERY else "FAILED"
+}
+
 fun retriesByReload(delivery: String): Boolean = delivery == DROPPED_DELIVERY
+
+/**
+ * Oldest-first thread, after reload. A system note is not her reply.
+ * [roles] and [kinds] are parallel.
+ */
+fun endsWithUserMessage(roles: List<String>, kinds: List<String>): Boolean {
+    val last = roles.indices.reversed().firstOrNull { kinds.getOrNull(it) != "SYSTEM" } ?: return false
+    return roles[last] == "USER"
+}
 
 fun retryCaption(delivery: String): String {
     return if (retriesByReload(delivery)) "Reply didn't finish · Retry" else "Not sent · Retry"
@@ -173,4 +200,22 @@ fun keptOnReload(delivery: String, kind: String): Boolean {
 /** Shown once, under a reply that arrived from the non-streaming route. */
 fun droppedStreamLine(): String {
     return "The live connection dropped, so this reply arrived all at once."
+}
+
+/** App-bar line while a send is in flight. A cold start replaces "Typing…". */
+fun chatStatusLine(
+    recording: Boolean,
+    waking: String?,
+    voiceStage: String?,
+    streaming: Boolean,
+    onServer: Boolean,
+): String {
+    return when {
+        recording -> "Recording…"
+        !waking.isNullOrBlank() -> waking
+        !voiceStage.isNullOrBlank() -> voiceStage
+        streaming -> "Typing…"
+        onServer -> "Active now"
+        else -> "On this phone"
+    }
 }

@@ -20,6 +20,8 @@ class HomeCopyTest {
     fun presenceFollowsTheServerConversation() {
         assertEquals("Active now", presenceLine(linkedToServer = true))
         assertEquals("On this phone", presenceLine(linkedToServer = false))
+        assertEquals("Waking up the server…", presenceLine(linkedToServer = true, waking = "Waking up the server…"))
+        assertEquals("Active now", presenceLine(linkedToServer = true, waking = "  "))
     }
 
     @Test

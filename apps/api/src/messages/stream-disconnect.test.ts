@@ -7,10 +7,11 @@ import { Test } from '@nestjs/testing';
 
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
+import { acquireConversationLock } from './conversation-lock.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
 
-test('a client disconnect mid-stream aborts and does not persist or charge', async () => {
+async function disconnectMidStream() {
     const created: Array<Record<string, unknown>> = [];
     const charges: string[] = [];
     let assistantPersisted = false;
@@ -170,13 +171,50 @@ test('a client disconnect mid-stream aborts and does not persist or charge', asy
             clearTimeout(timer);
         }
 
-        assert.match(received, /Hel/);
-        assert.equal(sawAbort, true);
-        assert.equal(assistantPersisted, false);
-        assert.equal(created.some((row) => row['role'] === 'ASSISTANT'), false);
-        assert.deepEqual(charges, []);
-    } finally {
+        return {
+            received,
+            sawAbort,
+            assistantPersisted,
+            created,
+            charges,
+            close: () => app.close(),
+        };
+    } catch (error) {
         release();
         await app.close();
+        throw error;
+    }
+}
+
+test('a client disconnect mid-stream aborts and does not persist or charge', async () => {
+    const result = await disconnectMidStream();
+    try {
+        assert.match(result.received, /Hel/);
+        assert.equal(result.sawAbort, true);
+        assert.equal(result.assistantPersisted, false);
+        assert.equal(result.created.some((row) => row['role'] === 'ASSISTANT'), false);
+        assert.deepEqual(result.charges, []);
+    } finally {
+        await result.close();
+    }
+});
+
+test('the conversation lock is released when the client disconnects mid-stream', async () => {
+    const result = await disconnectMidStream();
+    try {
+        let lockReleased = false;
+        const next = acquireConversationLock(5).then((releaseNext) => {
+            lockReleased = true;
+            releaseNext();
+        });
+        await Promise.race([
+            next,
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('conversation lock was still held after disconnect')), 1_000);
+            }),
+        ]);
+        assert.equal(lockReleased, true);
+    } finally {
+        await result.close();
     }
 });

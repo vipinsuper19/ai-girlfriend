@@ -80,6 +80,8 @@ services:
     name: ai-girlfriend-api
     runtime: node
     plan: free
+    # One instance. Reply generation takes an in-process lock per conversation,
+    # so a second instance can generate two replies for the same line.
     region: singapore
     branch: main
     # NODE_ENV=production would omit the TypeScript toolchain. Install it, then compile.

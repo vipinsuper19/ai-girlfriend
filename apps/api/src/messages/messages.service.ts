@@ -421,16 +421,10 @@ export class MessagesService {
             await this.assertWithinLlmCap(numericUserId);
             const release = await acquireConversationLock(numericConversationId);
             try {
-                const again = await this.followingAssistant(existing);
-                yield { type: 'message', message: existing };
-                if (again) {
-                    yield this.doneEvent(again);
-                    return;
-                }
-                yield* this.billableStream(
+                yield* this.streamExistingUserLine(
+                    existing,
                     userId,
                     numericConversationId,
-                    messageContent(existing),
                     signal,
                 );
             } finally {
@@ -452,16 +446,10 @@ export class MessagesService {
                 if (inserted.message.conversationId !== numericConversationId) {
                     throw new IdempotencyKeyReusedException();
                 }
-                const reply = await this.followingAssistant(inserted.message);
-                yield { type: 'message', message: inserted.message };
-                if (reply) {
-                    yield this.doneEvent(reply);
-                    return;
-                }
-                yield* this.billableStream(
+                yield* this.streamExistingUserLine(
+                    inserted.message,
                     userId,
                     numericConversationId,
-                    messageContent(inserted.message),
                     signal,
                 );
                 return;
@@ -482,6 +470,35 @@ export class MessagesService {
         } finally {
             release();
         }
+    }
+
+    /**
+     * Caller holds the conversation lock. A newer user line that landed
+     * while this request waited for the lock is rejected here, after the
+     * pre-lock check in prepareSend.
+     */
+    private async *streamExistingUserLine(
+        message: { id: number; conversationId: number; content?: string | null },
+        userId: string | number,
+        conversationId: number,
+        signal?: AbortSignal,
+    ) {
+        const reply = await this.followingAssistant(message);
+        if (reply) {
+            yield { type: 'message' as const, message };
+            yield this.doneEvent(reply);
+            return;
+        }
+        if (await this.hasLaterUserMessage(message)) {
+            throw new NotLatestUserMessageException();
+        }
+        yield { type: 'message' as const, message };
+        yield* this.billableStream(
+            userId,
+            conversationId,
+            messageContent(message),
+            signal,
+        );
     }
 
     private async *billableStream(
@@ -621,10 +638,19 @@ export class MessagesService {
             if (!isUniqueViolation(error)) throw error;
             const raced = await this.freshIdempotentMessage(userId, key);
             if (raced) return { message: raced, reused: true };
-            return {
-                message: await this.db.orm.public.Message.create(data),
-                reused: false,
-            };
+            try {
+                return {
+                    message: await this.db.orm.public.Message.create(data),
+                    reused: false,
+                };
+            } catch (again) {
+                if (!isUniqueViolation(again)) throw again;
+                const winner = await this.db.orm.public.Message
+                    .where({ userId, idempotencyKey: key })
+                    .first();
+                if (!winner) throw again;
+                return { message: winner, reused: true };
+            }
         }
     }
 

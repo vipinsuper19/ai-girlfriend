@@ -2,9 +2,12 @@ package com.dhama.mybase
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.chat.StreamRecovery
+import com.dhama.mybase.core.chat.chatStatusLine
 import com.dhama.mybase.core.chat.chunkReply
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.droppedStreamLine
+import com.dhama.mybase.core.chat.endsWithUserMessage
+import com.dhama.mybase.core.chat.idleStallDelivery
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.chat.keptOnReload
 import com.dhama.mybase.core.chat.messageListQuery
@@ -16,6 +19,7 @@ import com.dhama.mybase.core.chat.replyFailureDelivery
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.retriesByReload
 import com.dhama.mybase.core.chat.streamRecovery
+import com.dhama.mybase.core.network.WAKING_SERVER
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,6 +56,13 @@ class ChatStreamTest {
             events,
         )
         assertEquals("", rest)
+    }
+
+    @Test
+    fun doneCarriesTheAssistantMessageAndIgnoresSafety() {
+        val raw = "event: done\ndata: {\"type\":\"done\",\"message\":{\"id\":2,\"content\":\"Hi\"},\"safety\":{\"code\":\"content_policy\",\"message\":\"no\"}}\n\n"
+        val (events, _) = consumeSse(raw)
+        assertEquals(listOf(ChatStreamEvent.Done("Hi", serverMessageId = 2)), events)
     }
 
     @Test
@@ -125,10 +136,42 @@ class ChatStreamTest {
         assertFalse(retriesByReload("FAILED"))
         assertEquals("Reply didn't finish · Retry", retryCaption("DROPPED"))
         assertEquals("Not sent · Retry", retryCaption("FAILED"))
+        assertEquals("FAILED", idleStallDelivery(userAccepted = false, replyStarted = false))
+        assertEquals("Not sent · Retry", retryCaption(idleStallDelivery(userAccepted = false, replyStarted = false)))
+        assertEquals("DROPPED", idleStallDelivery(userAccepted = true, replyStarted = false))
+        assertEquals("Reply didn't finish · Retry", retryCaption(idleStallDelivery(userAccepted = true, replyStarted = true)))
         assertTrue(keptOnReload("FAILED", "TEXT"))
         assertTrue(keptOnReload("SENT", "SYSTEM"))
         assertFalse(keptOnReload("DROPPED", "TEXT"))
         assertFalse(keptOnReload("SENT", "TEXT"))
+        assertTrue(endsWithUserMessage(listOf("USER"), listOf("TEXT")))
+        assertFalse(endsWithUserMessage(listOf("USER", "ASSISTANT"), listOf("TEXT", "TEXT")))
+        assertTrue(endsWithUserMessage(listOf("USER", "SYSTEM"), listOf("TEXT", "SYSTEM")))
+        assertFalse(endsWithUserMessage(emptyList(), emptyList()))
+    }
+
+    @Test
+    fun slowFirstByteReplacesTyping() {
+        assertEquals(
+            WAKING_SERVER,
+            chatStatusLine(
+                recording = false,
+                waking = WAKING_SERVER,
+                voiceStage = null,
+                streaming = true,
+                onServer = true,
+            ),
+        )
+        assertEquals(
+            "Typing…",
+            chatStatusLine(
+                recording = false,
+                waking = null,
+                voiceStage = null,
+                streaming = true,
+                onServer = true,
+            ),
+        )
     }
 
     @Test
