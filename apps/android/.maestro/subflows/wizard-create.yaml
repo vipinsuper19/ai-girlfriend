@@ -8,7 +8,7 @@ tags:
 - tapOn:
     id: wizard_start
 - extendedWaitUntil:
-    visible: "How should she look"
+    visible: "How should she look[?]"
     timeout: 15000
 - assertVisible: "Step 1 of 3"
 - tapOn: "Illustrated"
@@ -16,7 +16,7 @@ tags:
 - tapOn:
     id: wizard_continue
 - extendedWaitUntil:
-    visible: "Who is she"
+    visible: "Who is she[?]"
     timeout: 15000
 - assertVisible: "Step 2 of 3"
 - scrollUntilVisible:
