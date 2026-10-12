@@ -207,6 +207,11 @@ android {
         manifestPlaceholders["pushServiceEnabled"] = featurePush.toString()
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
+
     signingConfigs {
         releaseSigning?.let { signing ->
             create("release") {
@@ -254,6 +259,9 @@ val featureFlagManifest = tasks.register<FeatureFlagManifestTask>("writeFeatureF
 // unless a URL is configured, or -PallowPlaceholderApi=true opts into the placeholder.
 androidComponents {
     onVariants { variant ->
+        if (variant.buildType == "debug") {
+            variant.sources.assets?.addStaticSourceDirectory("schemas")
+        }
         variant.sources.manifests.addGeneratedManifestFile(featureFlagManifest) { task ->
             task.outputManifest
         }
@@ -336,6 +344,10 @@ kotlin {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
@@ -372,6 +384,9 @@ dependencies {
     implementation(libs.room.kotlin)
     implementation(libs.room.paging)
     testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.junit)
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.16")
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)

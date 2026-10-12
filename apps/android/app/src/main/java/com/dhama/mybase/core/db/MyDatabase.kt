@@ -14,7 +14,7 @@ import com.dhama.mybase.core.db.entity.User
 @Database(
     entities = [User::class, ChatMessageEntity::class, MemoryEntity::class],
     version = 8,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -24,7 +24,8 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         /**
          * Drops the unused notes table and leaves chat, memory, and user rows in place.
-         * Installs that are not already on version 7 still use the destructive fallback.
+         * Versions before 7 use the earlier migrations. Versions 1–3 have no schema
+         * in this repository and use a destructive fallback only for those versions.
          */
         val MIGRATION_7_8: Migration = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
