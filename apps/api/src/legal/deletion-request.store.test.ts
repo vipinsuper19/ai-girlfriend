@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import {
     MemoryDeletionRequestStore,
     PrismaDeletionRequestStore,
+    deleteDeletionRequestsForEmail,
     deletionRequestCutoff,
 } from './deletion-request.store.js';
 
@@ -75,4 +76,27 @@ test('postgres prune deletes rows older than the retention cutoff', async () => 
     assert.equal(deleted, true);
     assert.equal(cutoff, deletionRequestCutoff(now));
     assert.equal(cutoff, '2026-09-12T00:00:00.000Z');
+});
+
+test('account deletion deletes requests stored for that email', async () => {
+    let seen = '';
+    const client = {
+        orm: {
+            public: {
+                DeletionRequest: {
+                    where(filter: { email?: string }) {
+                        seen = filter.email ?? '';
+                        return {
+                            deleteAndCount: async () => 2,
+                        };
+                    },
+                },
+            },
+        },
+    };
+
+    assert.equal(await deleteDeletionRequestsForEmail(client, ' User@Example.com '), 2);
+    assert.equal(seen, 'user@example.com');
+    assert.equal(await deleteDeletionRequestsForEmail(client, 'not-an-email'), 0);
+    assert.equal(await deleteDeletionRequestsForEmail(client, null), 0);
 });

@@ -46,7 +46,7 @@ type DeletionTable = {
         confirmedAt: null;
         createdAt: string;
     }): Promise<DeletionRow>;
-    where(filter: { tokenHash: string } | { id: number } | ((row: { createdAt: CreatedAtFilter }) => unknown)): {
+    where(filter: { tokenHash: string } | { id: number } | { email: string } | ((row: { createdAt: CreatedAtFilter }) => unknown)): {
         first(): Promise<DeletionRow | null>;
         update(data: { confirmedAt: string }): Promise<unknown>;
         deleteAndCount(): Promise<number>;
@@ -132,9 +132,22 @@ export class PrismaDeletionRequestStore implements DeletionRequestStore {
     }
 
     private table(): DeletionTable {
-        const client = this.prisma.client as {
-            orm: { public: { DeletionRequest: DeletionTable } };
-        };
-        return client.orm.public.DeletionRequest;
+        return deletionRequestTable(this.prisma.client);
     }
+}
+
+/** Account deletion removes every web deletion request stored for that email. */
+export async function deleteDeletionRequestsForEmail(
+    client: unknown,
+    email: unknown,
+): Promise<number> {
+    if (typeof email !== 'string') return 0;
+    const normalized = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) return 0;
+    return deletionRequestTable(client).where({ email: normalized }).deleteAndCount();
+}
+
+function deletionRequestTable(client: unknown): DeletionTable {
+    return (client as { orm: { public: { DeletionRequest: DeletionTable } } })
+        .orm.public.DeletionRequest;
 }

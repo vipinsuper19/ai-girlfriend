@@ -3,6 +3,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 
+import { deleteDeletionRequestsForEmail } from '../legal/deletion-request.store.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -162,6 +163,8 @@ export class UsersService {
             await db.orm.public.Companion.where({
                 userId: Number(userId),
             }).all();
+
+        await deleteDeletionRequestsForEmail(db, user.email);
 
         await db.orm.public.User.where({
             id: userId,
