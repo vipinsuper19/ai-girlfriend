@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import coil.util.CoilUtils.result
 import com.dhama.mybase.R
 import com.dhama.mybase.core.FeatureFlags
+import com.dhama.mybase.core.age.redactAge
+import com.dhama.mybase.core.data.AgeAttestationStore
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.UserRepo
@@ -29,13 +31,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 import javax.inject.Inject
 
 @HiltViewModel
 class OnBoardingViewModel @Inject constructor(
     private val userRepo: UserRepo,
     private val dataStoreRepo: DataStoreRepo,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val ageAttestation: AgeAttestationStore,
 ) : ViewModel() {
 
     private val tag: String = "OnBoardingViewModel"
@@ -66,12 +70,14 @@ class OnBoardingViewModel @Inject constructor(
     }
 
 
-    fun createEmailSignIn(email: String, password: String) {
+    fun createEmailSignIn(email: String, password: String, dateOfBirth: String) {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _authState.value = UiState.Loading
-                if (authRepository.register(email, password)) {
+                val confirmedAt = Instant.now().toString()
+                if (authRepository.register(email, password, dateOfBirth, confirmedAt)) {
+                    ageAttestation.save(dateOfBirth, confirmedAt)
                     saveLoggedInStatus(true)
                     val result = "Account created successfully!"
                     _authState.value = UiState.Success(result)
@@ -102,12 +108,16 @@ class OnBoardingViewModel @Inject constructor(
     }
 
     fun googleSignIn(
-        credentialResponse: GetCredentialResponse
+        credentialResponse: GetCredentialResponse,
+        dateOfBirth: String,
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _authState.value = UiState.Loading
-                if (authRepository.signInWithGoogle(credentialResponse)) {
+                val confirmedAt = Instant.now().toString()
+                if (authRepository.signInWithGoogle(credentialResponse, dateOfBirth, confirmedAt)) {
+                    ageAttestation.save(dateOfBirth, confirmedAt)
+                    ageAttestation.pushIfEnabled(dateOfBirth, confirmedAt)
                     saveLoggedInStatus(true)
                     val result = "User logged in successfully!"
                     _authState.value = UiState.Success(result)
@@ -116,7 +126,7 @@ class OnBoardingViewModel @Inject constructor(
             } catch (e: Exception) {
                 if(e is kotlin.coroutines.cancellation.CancellationException) throw e
 
-                 println("$tag login exception ${e.message}")
+                 println(redactAge("$tag login exception ${e.message}"))
                 _authState.value = UiState.Error(e.message ?: "Login failed")
             }
         }
