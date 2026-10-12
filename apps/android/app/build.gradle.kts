@@ -1,4 +1,7 @@
+import com.android.build.api.variant.BuildConfigField
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.File
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -8,6 +11,120 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.parcelize)
+}
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) {
+        file.inputStream().use(::load)
+    }
+}
+
+fun configuredValue(name: String): String? {
+    val env = System.getenv(name).normalizeConfig()
+    if (env != null) return env
+    val property = (findProperty(name) as? String).normalizeConfig()
+    if (property != null) return property
+    return localProperties.getProperty(name).normalizeConfig()
+}
+
+fun signingSecret(name: String): String? {
+    val env = System.getenv(name).normalizeConfig()
+    if (env != null) return env
+    return localProperties.getProperty(name).normalizeConfig()
+}
+
+fun String?.normalizeConfig(): String? =
+    this?.trim()?.removeSurrounding("\"")?.trim()?.takeIf { it.isNotEmpty() }
+
+fun javaStringLiteral(value: String): String {
+    val escaped = value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\r", "")
+        .replace("\n", "")
+    return "\"$escaped\""
+}
+
+fun configKey(raw: String): String = raw.uppercase().replace('-', '_').replace('.', '_')
+
+fun apiBaseUrl(buildType: String, flavors: List<String>): String {
+    val type = configKey(buildType)
+    val flavor = flavors.joinToString("_") { configKey(it) }.takeIf { it.isNotEmpty() }
+    val keys = buildList {
+        if (flavor != null) add("API_BASE_URL_${flavor}_$type")
+        if (type.isNotEmpty()) add("API_BASE_URL_$type")
+        if (flavor != null) add("API_BASE_URL_$flavor")
+        add("API_BASE_URL")
+    }
+    keys.firstNotNullOfOrNull { configuredValue(it) }?.let { return it }
+    return if (buildType.equals("debug", ignoreCase = true)) {
+        "http://10.0.2.2:3001/api/v1/"
+    } else {
+        "https://api.example.invalid/api/v1/"
+    }
+}
+
+fun resolveKeystore(path: String): File? {
+    val candidate = File(path)
+    val resolved = if (candidate.isAbsolute) candidate else rootProject.file(path)
+    return resolved.takeIf { it.isFile }
+}
+
+data class ReleaseSigning(
+    val storeFile: File,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
+
+data class ReleaseSigningSetup(
+    val signing: ReleaseSigning?,
+    val problem: String?,
+)
+
+fun loadReleaseSigning(): ReleaseSigningSetup {
+    val path = signingSecret("RELEASE_STORE_FILE")
+    val storePassword = signingSecret("RELEASE_STORE_PASSWORD")
+    val keyAlias = signingSecret("RELEASE_KEY_ALIAS")
+    val keyPassword = signingSecret("RELEASE_KEY_PASSWORD")
+    val storeFile = path?.let(::resolveKeystore)
+    if (storeFile != null && storePassword != null && keyAlias != null && keyPassword != null) {
+        return ReleaseSigningSetup(ReleaseSigning(storeFile, storePassword, keyAlias, keyPassword), null)
+    }
+    val missing = buildList {
+        if (path == null) add("RELEASE_STORE_FILE")
+        if (storePassword == null) add("RELEASE_STORE_PASSWORD")
+        if (keyAlias == null) add("RELEASE_KEY_ALIAS")
+        if (keyPassword == null) add("RELEASE_KEY_PASSWORD")
+    }
+    val details = buildList {
+        if (missing.isNotEmpty()) add("missing ${missing.joinToString(", ")}")
+        if (path != null && storeFile == null) {
+            val lookedUp = if (File(path).isAbsolute) File(path).path else rootProject.file(path).path
+            add("keystore not found at $lookedUp")
+        }
+    }
+    return ReleaseSigningSetup(null, details.joinToString("; "))
+}
+
+val releaseSigningSetup = loadReleaseSigning()
+val releaseSigning = releaseSigningSetup.signing
+
+releaseSigningSetup.problem?.let { problem ->
+    gradle.taskGraph.whenReady {
+        val releaseRequested = allTasks.any { task ->
+            task.project.path == project.path && "Release" in task.name
+        }
+        if (releaseRequested) {
+            logger.warn(
+                "Release signing is not configured ($problem). " +
+                    "bundleRelease will produce an unsigned AAB. " +
+                    "Set RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD " +
+                    "in the environment or local.properties to sign.",
+            )
+        }
+    }
 }
 
 android {
@@ -24,17 +141,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3001/api/v1/\"")
+    signingConfigs {
+        releaseSigning?.let { signing ->
+            create("release") {
+                storeFile = signing.storeFile
+                storePassword = signing.storePassword
+                keyAlias = signing.keyAlias
+                keyPassword = signing.keyPassword
+            }
         }
+    }
+
+    buildTypes {
         release {
+            if (releaseSigning != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            buildConfigField("String", "API_BASE_URL", "\"https://api.example.invalid/api/v1/\"")
         }
     }
     compileOptions {
@@ -44,6 +171,27 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+// One API_BASE_URL per variant (flavor + build type). There are no product flavors
+// today, so debug/release resolve API_BASE_URL_DEBUG / API_BASE_URL_RELEASE, then
+// API_BASE_URL, then the built-in default.
+androidComponents {
+    onVariants { variant ->
+        val flavors = variant.productFlavors.map { it.second }
+        val buildType = variant.buildType.orEmpty()
+        val fields = checkNotNull(variant.buildConfigFields) {
+            "buildConfigFields is unavailable; buildFeatures.buildConfig must stay enabled"
+        }
+        fields.put(
+            "API_BASE_URL",
+            BuildConfigField(
+                type = "String",
+                value = javaStringLiteral(apiBaseUrl(buildType, flavors)),
+                comment = "REST API base URL",
+            ),
+        )
     }
 }
 
