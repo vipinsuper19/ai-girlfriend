@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# CI entry for the emulator job. run-all.sh owns flow 08 (known failure).
-# Flow 04 (chat reply) and flow 09 (Firebase user still signs in after delete)
-# are allowed to fail. Every other flow must pass.
+# CI entry for the emulator job.
+# run-all.sh writes apps/android/.maestro/out/ and handles flow 08.
+# A non-zero exit is a real failure, except flows 04 and 09, which are allowed
+# to fail (chat reply quota, and Firebase user deletion). Every other flow must pass.
 set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,18 +10,16 @@ export PATH="${PATH}:${HOME}/.maestro/bin"
 
 artifacts="${GITHUB_WORKSPACE:-/tmp}/emulator-artifacts"
 mkdir -p "${artifacts}"
-log="${artifacts}/run-all.log"
+# run-all.sh writes this itself, including PASS/FAIL lines. Flow 08 does not
+# make the script exit non-zero. Any other failure does.
+log="${DIR}/out/run-all.log"
 
 set +e
-"${DIR}/run-all.sh" 2>&1 | tee "${log}"
-run_status=${PIPESTATUS[0]}
+"${DIR}/run-all.sh"
+run_status=$?
 set -e
 
 adb logcat -d > "${artifacts}/logcat.txt" || true
-if [[ -d "${HOME}/.maestro/tests" ]]; then
-  mkdir -p "${artifacts}/maestro-tests"
-  cp -a "${HOME}/.maestro/tests/." "${artifacts}/maestro-tests/" || true
-fi
 
 summary="${artifacts}/flow-results.md"
 set +e

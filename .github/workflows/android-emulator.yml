@@ -128,13 +128,29 @@ jobs:
           working-directory: apps/android
           script: bash .maestro/ci-run.sh
 
-      - name: Upload APK, screenshots, and logcat
+      - name: Upload Maestro artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-emulator-artifacts
+          name: android-maestro
           retention-days: 7
           if-no-files-found: warn
-          path: |
-            emulator-artifacts/**
-            apps/android/app/build/outputs/apk/debug/*.apk
+          path: apps/android/.maestro/out/
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          retention-days: 7
+          if-no-files-found: warn
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-logcat
+          retention-days: 7
+          if-no-files-found: warn
+          path: emulator-artifacts/logcat.txt
