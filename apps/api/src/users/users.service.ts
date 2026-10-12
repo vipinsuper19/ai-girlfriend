@@ -6,6 +6,7 @@ import {
 import { parseAgeAttestation } from '../auth/age.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { deleteAccountRecords } from './delete-account.js';
 import type { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import { exportRows, flagColumn, userView } from './user-view.js';
@@ -156,43 +157,21 @@ export class UsersService {
 
     async deleteMe(userId: string) {
         const db = this.prisma.client as any;
-        const user = await db.orm.public.User.where({
-            id: userId,
-        }).first();
+        const id = Number(userId);
+        if (!Number.isInteger(id)) {
+            throw new NotFoundException('User not found');
+        }
 
+        const user = await db.orm.public.User.where({ id }).first();
         if (!user) {
             throw new NotFoundException('User not found');
         }
 
-        /*
-         * Delete all active sessions first.
-         * This prevents orphan sessions if your database
-         * schema does not use ON DELETE CASCADE.
-         */
-        const sessions =
-            await db.orm.public.Session.where({
-                userId,
-            }).all();
+        const companions = await db.orm.public.Companion.where({ userId: id }).all();
+        const companionIds = companions.map((companion: { id: number }) => companion.id);
 
-        for (const session of sessions) {
-            await db.orm.public.Session.where({
-                id: session.id,
-            }).delete();
-        }
-
-        const companions =
-            await db.orm.public.Companion.where({
-                userId: Number(userId),
-            }).all();
-
-        await db.orm.public.User.where({
-            id: userId,
-        }).delete();
-
-        await this.storage.removeUserFiles(
-            Number(userId),
-            companions.map((companion: { id: number }) => Number(companion.id)),
-        );
+        await deleteAccountRecords(db, id);
+        await this.storage.removeUserFiles(id, companionIds);
 
         return {
             message: 'Account deleted successfully',

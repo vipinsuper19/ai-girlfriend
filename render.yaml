@@ -1,6 +1,77 @@
-# Render Blueprint: API on the free plan. Secrets use sync: false, so Render
-# asks for their values when the Blueprint is first applied. Nothing is in git.
+# Render Blueprint: API on the free plan.
+#
+# Secret values are not in this file. Each one is `sync: false` on the
+# service, so Render asks for it in the dashboard secret manager the first
+# time the Blueprint is applied and keeps the dashboard value after that.
+# `sync: false` inside an env group is ignored by Render and would boot the
+# service with the variable empty, so secrets stay on the service.
+#
+# Non-secret defaults live in the env group. Code defaults match them when
+# the variable is unset.
+#
 # autoDeploy is false: ship with a manual deploy after the image is reviewed.
+envVarGroups:
+  - name: ai-girlfriend-api-config
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: STORAGE_SIGNED_URL_TTL_SECONDS
+        value: "3600"
+      - key: MODERATION_ENABLED
+        value: "true"
+      - key: MODERATION_FAIL_CLOSED
+        value: "true"
+      - key: MODERATION_PROVIDER
+        value: auto
+      - key: FREE_TIER_LLM_PERIOD
+        value: day
+      - key: FREE_TIER_LLM_MESSAGE_LIMIT
+        value: "40"
+      - key: FREE_TIER_LLM_TOKEN_LIMIT
+        value: "50000"
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: RATE_LIMIT_LOGIN_IP_MAX
+        value: "20"
+      - key: RATE_LIMIT_LOGIN_IP_WINDOW_SEC
+        value: "900"
+      - key: RATE_LIMIT_LOGIN_USER_MAX
+        value: "10"
+      - key: RATE_LIMIT_LOGIN_USER_WINDOW_SEC
+        value: "900"
+      - key: RATE_LIMIT_REGISTER_IP_MAX
+        value: "10"
+      - key: RATE_LIMIT_REGISTER_IP_WINDOW_SEC
+        value: "3600"
+      - key: RATE_LIMIT_REGISTER_USER_MAX
+        value: "5"
+      - key: RATE_LIMIT_REGISTER_USER_WINDOW_SEC
+        value: "3600"
+      - key: RATE_LIMIT_PASSWORD_RESET_IP_MAX
+        value: "10"
+      - key: RATE_LIMIT_PASSWORD_RESET_IP_WINDOW_SEC
+        value: "3600"
+      - key: RATE_LIMIT_PASSWORD_RESET_USER_MAX
+        value: "5"
+      - key: RATE_LIMIT_PASSWORD_RESET_USER_WINDOW_SEC
+        value: "3600"
+      - key: RATE_LIMIT_MESSAGES_IP_MAX
+        value: "60"
+      - key: RATE_LIMIT_MESSAGES_IP_WINDOW_SEC
+        value: "60"
+      - key: RATE_LIMIT_MESSAGES_USER_MAX
+        value: "30"
+      - key: RATE_LIMIT_MESSAGES_USER_WINDOW_SEC
+        value: "60"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+
 services:
   - type: web
     name: ai-girlfriend-api
@@ -13,34 +84,55 @@ services:
     healthCheckPath: /health
     autoDeploy: false
     envVars:
-      - key: NODE_ENV
-        value: production
+      - fromGroup: ai-girlfriend-api-config
+      # --- Secret manager (sync: false). Required in production. ---
       # Supabase session pooler, port 5432 (*.pooler.supabase.com).
       # Do not use the transaction pooler on port 6543: the runtime sends
-      # named prepared statements and cannot turn them off. The app reads
-      # this in src/prisma/db.ts. Render injects PORT itself.
+      # named prepared statements and cannot turn them off.
       - key: DATABASE_URL
         sync: false
-      # Required. The container runs prisma db migrate against this URL
-      # before the API listens, and exits if it is empty. Session pooler
-      # port 5432. Enable the vector extension in Supabase first.
+      # Same session pooler. The container migrates with this URL and the
+      # process refuses to boot when it is empty. Enable the vector extension
+      # in Supabase first.
       - key: DIRECT_URL
         sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # SMTP URL includes the mailbox password.
+      - key: SMTP_URL
+        sync: false
+      # Private Supabase Storage, S3 endpoint. Storage → S3 in the project.
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # --- Per-deploy settings, not credentials. Still not committed. ---
       - key: CORS_ORIGIN
         sync: false
       - key: APP_URL
         sync: false
-      - key: JWT_ACCESS_SECRET
+      - key: MAIL_FROM
         sync: false
-      - key: JWT_ACCESS_EXPIRES_IN
+      - key: S3_ENDPOINT
         sync: false
-      - key: JWT_REFRESH_SECRET
+      - key: S3_REGION
         sync: false
-      - key: JWT_REFRESH_EXPIRES_IN
+      - key: S3_BUCKET
         sync: false
+      # --- Optional secrets. Leave the dashboard value empty to keep the
+      # feature off (password-reset secret falls back, Play billing 503,
+      # push 503, OpenAI moderation unused). Do not set value: "". ---
       - key: JWT_RESET_SECRET
         sync: false
-      - key: GEMINI_API_KEY
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_CHAT_MODEL
+        sync: false
+      - key: STORAGE_SIGNING_SECRET
         sync: false
       - key: GEMINI_CHAT_MODEL
         sync: false
@@ -50,27 +142,17 @@ services:
         sync: false
       - key: GEMINI_TTS_MODEL
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_CHAT_MODEL
+      - key: GOOGLE_CLIENT_IDS
         sync: false
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
-      - key: GOOGLE_CLIENT_IDS
-        sync: false
-      # Optional. Leave the Render prompt empty to keep Play billing off.
-      # The API treats a missing or blank value as unconfigured (503).
-      # Render still prompts because sync: false has no optional flag.
-      # Do not set value: "" — a later Blueprint sync can wipe a real key.
       - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
         sync: false
       - key: GOOGLE_PLAY_PACKAGE_NAME
         sync: false
       - key: GOOGLE_PLAY_PRODUCTS
         sync: false
-      - key: SMTP_URL
-        sync: false
-      - key: MAIL_FROM
+      - key: MODERATION_MODEL
         sync: false

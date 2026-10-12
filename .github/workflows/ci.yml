@@ -46,10 +46,10 @@ jobs:
       - run: pnpm install --frozen-lockfile --filter @ai-girlfriend/api...
       - run: pnpm run lint
       - run: pnpm exec tsc --noEmit -p tsconfig.json
-      - run: pnpm run test
       - run: pnpm exec prisma migration check
       - name: Apply migrations on a clean database
         run: pnpm exec prisma db migrate --no-interactive
+      - run: pnpm run test
 
   android:
     name: Android (unit tests, bundleRelease)

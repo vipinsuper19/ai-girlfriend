@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import { validateEnv } from './config/env.validation.js';
 import {
   ValidationPipe,
   VersioningType
@@ -17,6 +18,8 @@ import { API_BASE_PATH } from './common/constants/api.constants.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
+
+validateEnv(process.env);
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(

@@ -85,6 +85,32 @@ clients hide the matching controls, so nothing is faked.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
+`node dist/main` validates the environment before it listens. Production refuses to boot when a required secret is missing, when `MODERATION_ENABLED=false`, when `MODERATION_PROVIDER=local`, or when `STORAGE_DRIVER` is not `s3`.
+
+### Secret manager
+
+Put these in the Render dashboard (Blueprint `sync: false` on the service). They are not in git. `sync: false` inside an env group does not prompt, so the secrets stay on the service and the non-secret defaults stay in the `ai-girlfriend-api-config` group.
+
+| Secret | Required in production |
+| --- | --- |
+| `DATABASE_URL` | Yes. Supabase session pooler, port 5432 |
+| `DIRECT_URL` | Yes. Same pooler, used by migrations |
+| `JWT_ACCESS_SECRET` | Yes. At least 32 characters |
+| `JWT_REFRESH_SECRET` | Yes. At least 32 characters |
+| `GEMINI_API_KEY` | Yes. Chat, embeddings, images, and moderation unless OpenAI is set |
+| `SMTP_URL` | Yes. Includes the mailbox password |
+| `S3_ACCESS_KEY_ID` | Yes. Supabase Storage → S3 |
+| `S3_SECRET_ACCESS_KEY` | Yes. Private bucket |
+| `JWT_RESET_SECRET` | No. Falls back to a value derived from `JWT_ACCESS_SECRET` |
+| `OPENAI_API_KEY` | No. Moderation when that provider is selected |
+| `STORAGE_SIGNING_SECRET` | No. Local downloads fall back to `JWT_ACCESS_SECRET` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | No. Push stays off until it is set |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | No. Play billing stays off until it is set |
+
+These are not credentials, but they differ per deploy, so they are `sync: false` as well: `CORS_ORIGIN`, `APP_URL`, `MAIL_FROM`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`.
+
+Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. The object-storage driver reads the S3 variables; until it is deployed, account deletion still removes files through `StorageService.removeUserFiles`.
+
 ### Google Play subscriptions
 
 A plan changes only after `POST /api/v1/subscriptions/google-play` fetches the purchase from Google,
