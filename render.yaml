@@ -15,12 +15,15 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Supabase transaction pooler, port 6543, with ?pgbouncer=true.
-      # The app reads this in src/prisma/db.ts. Render injects PORT itself.
+      # Supabase session pooler, port 5432 (*.pooler.supabase.com).
+      # Do not use the transaction pooler on port 6543: the runtime sends
+      # named prepared statements and cannot turn them off. The app reads
+      # this in src/prisma/db.ts. Render injects PORT itself.
       - key: DATABASE_URL
         sync: false
-      # Supabase session/direct connection, port 5432. Prisma CLI migrations
-      # read this from prisma.config.ts and fall back to DATABASE_URL.
+      # Required. The container runs prisma db migrate against this URL
+      # before the API listens, and exits if it is empty. Session pooler
+      # port 5432. Enable the vector extension in Supabase first.
       - key: DIRECT_URL
         sync: false
       - key: CORS_ORIGIN
@@ -57,6 +60,10 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_IDS
         sync: false
+      # Optional. Leave the Render prompt empty to keep Play billing off.
+      # The API treats a missing or blank value as unconfigured (503).
+      # Render still prompts because sync: false has no optional flag.
+      # Do not set value: "" — a later Blueprint sync can wipe a real key.
       - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
         sync: false
       - key: GOOGLE_PLAY_PACKAGE_NAME
