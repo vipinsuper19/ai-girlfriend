@@ -1,19 +1,22 @@
-# Instrumented tests on an API 34 emulator.
-# The job is non-blocking (continue-on-error) and is not a required check.
-# No Play upload steps and no new secrets.
+# Maestro UI flows on an API 34 emulator.
+# This pull request is based on cursor/android-maestro-flows-a17a (PR #34),
+# which owns the flows. The job runs apps/android/.maestro/run-all.sh.
+# It is non-blocking (continue-on-error) and is not a required check.
+# No Play upload steps and no new secrets. PLAY_UPLOAD_ENABLED is untouched.
 name: Android emulator
 
 on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: API base URL for instrumented tests
+        description: API base URL baked into the debug APK
         required: false
         type: string
         default: https://ai-girlfriend-tnu3.onrender.com/api/v1/
   pull_request:
     paths:
       - apps/android/**
+      - .github/workflows/android-emulator.yml
 
 concurrency:
   group: android-emulator-${{ github.ref }}
@@ -23,11 +26,11 @@ permissions:
   contents: read
 
 jobs:
-  instrumented:
-    name: Instrumented tests
+  maestro:
+    name: Maestro flows
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 60
+    timeout-minutes: 90
     # upload-artifact writes to the Actions artifact store, not the repo.
     permissions:
       contents: read
@@ -52,6 +55,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
       - name: AVD snapshot cache
         id: avd-cache
         uses: actions/cache@v4
@@ -59,7 +68,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ runner.os }}-34-google_apis-x86_64
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-en_US
 
       - name: Create AVD and generate snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -68,8 +77,9 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
+          profile: pixel_6
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -prop persist.sys.locale=en-US -prop persist.sys.language=en -prop persist.sys.country=US
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -83,37 +93,41 @@ jobs:
             *) origin="$api_base" ;;
           esac
           health="${origin}/health"
-          echo "Warming ${health}"
+          echo "Warming ${health} for up to 150s"
+          deadline=$((SECONDS + 150))
           ok=0
-          for attempt in $(seq 1 24); do
+          attempt=0
+          while (( SECONDS < deadline )); do
+            attempt=$((attempt + 1))
             code="$(curl -sS -o /tmp/health-body -w '%{http_code}' --max-time 20 "$health" || true)"
             echo "attempt ${attempt}: HTTP ${code}"
-            if [ "$code" = "200" ]; then
+            if [[ "$code" == "200" ]]; then
               ok=1
               break
             fi
-            sleep 10
+            sleep 5
           done
-          if [ "$ok" != "1" ]; then
-            echo "::warning::API health did not return 200 at ${health}. Instrumented tests will still run."
+          if [[ "$ok" != "1" ]]; then
+            echo "::warning::API health did not return 200 at ${health} within 150s. Maestro will still run."
             cat /tmp/health-body || true
             exit 1
           fi
 
-      - name: Run instrumented tests
+      - name: Run Maestro flows
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64
           target: google_apis
+          profile: pixel_6
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -prop persist.sys.locale=en-US -prop persist.sys.language=en -prop persist.sys.country=US
           disable-animations: true
           disable-spellchecker: true
           working-directory: apps/android
-          script: bash scripts/connected-android-test.sh
+          script: bash .maestro/ci-run.sh
 
-      - name: Upload screenshots and logcat
+      - name: Upload APK, screenshots, and logcat
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -122,5 +136,4 @@ jobs:
           if-no-files-found: warn
           path: |
             emulator-artifacts/**
-            apps/android/app/build/reports/androidTests/**
-            apps/android/app/build/outputs/androidTest-results/**
+            apps/android/app/build/outputs/apk/debug/*.apk
