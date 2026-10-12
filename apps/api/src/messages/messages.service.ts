@@ -11,6 +11,7 @@ import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
 import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
+import { safetyNoticeOf } from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { UsageService } from '../usage/usage.service.js';
@@ -40,13 +41,6 @@ export class MessagesService {
         const conversation = await this.getOwnedConversation(
             userId,
             conversationId,
-        );
-
-        await this.usageService.consume(
-            numericUserId,
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: numericConversationId },
         );
 
         const now = new Date().toISOString();
@@ -79,17 +73,35 @@ export class MessagesService {
                 conversationId,
             );
 
-        void this.memoryExtractorService.extractFromConversation(
-            numericUserId,
-            conversation.companionId,
-            numericConversationId,
-            message.content,
-            assistantMessage.content,
-        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            await this.usageService.consume(
+                numericUserId,
+                UsageFeatureDto.MESSAGES,
+                1,
+                { conversationId: numericConversationId },
+            );
+            void this.memoryExtractorService.extractFromConversation(
+                numericUserId,
+                conversation.companionId,
+                numericConversationId,
+                message.content,
+                assistantMessage.content,
+            );
+        }
+
+        let userMessage = message;
+        if (safety && message?.id != null) {
+            const fresh = await this.db.orm.public.Message
+                .where({ id: message.id })
+                .first();
+            if (fresh && fresh.id === message.id) userMessage = fresh;
+        }
 
         return {
-            userMessage: message,
+            userMessage,
             assistantMessage,
+            ...(safety ? { safety } : {}),
         };
     }
 
@@ -238,13 +250,6 @@ export class MessagesService {
             throw new BadRequestException(problem);
         }
 
-        await this.usageService.consume(
-            numericUserId,
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: conversation.id, source: 'regenerate' },
-        );
-
         const now = new Date().toISOString();
         await this.db.orm.public.Message
             .where({ id: numericMessageId })
@@ -257,9 +262,20 @@ export class MessagesService {
                     conversation.id,
                 );
 
+            const safety = safetyNoticeOf(assistantMessage);
+            if (!safety) {
+                await this.usageService.consume(
+                    numericUserId,
+                    UsageFeatureDto.MESSAGES,
+                    1,
+                    { conversationId: conversation.id, source: 'regenerate' },
+                );
+            }
+
             return {
                 replacedId: numericMessageId,
                 assistantMessage,
+                ...(safety ? { safety } : {}),
             };
         } catch (error) {
             await this.db.orm.public.Message
@@ -321,13 +337,6 @@ export class MessagesService {
             conversationId,
         );
 
-        await this.usageService.consume(
-            Number(userId),
-            UsageFeatureDto.MESSAGES,
-            1,
-            { conversationId: numericConversationId },
-        );
-
         const now = new Date().toISOString();
 
         const userMessage =
@@ -362,6 +371,21 @@ export class MessagesService {
                 conversationId,
             )
         ) {
+            if (event.type === 'done') {
+                const notice =
+                    event.safety ??
+                    safetyNoticeOf(
+                        event.message as { metadata?: unknown },
+                    );
+                if (!notice) {
+                    await this.usageService.consume(
+                        Number(userId),
+                        UsageFeatureDto.MESSAGES,
+                        1,
+                        { conversationId: numericConversationId },
+                    );
+                }
+            }
             yield event;
         }
     }
