@@ -70,9 +70,23 @@ jobs:
           sleep 1
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
+      - name: Install the emulator package
+        run: |
+          set -u
+          yes | sdkmanager --licenses >/dev/null || true
+          for attempt in 1 2 3; do
+            if sdkmanager --install emulator --channel=0; then
+              exit 0
+            fi
+            echo "emulator package install failed (attempt ${attempt})"
+            rm -rf "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/emulator"
+            sleep 15
+          done
+          exit 1
+
       - name: AVD snapshot cache
         id: avd-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.android/avd/*
@@ -80,6 +94,7 @@ jobs:
           key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
 
       - name: Create AVD and generate snapshot
+        id: avd-snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -93,6 +108,15 @@ jobs:
           emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
+
+      - name: Save AVD snapshot cache
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.avd-snapshot.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
 
       - name: Warm up API
         continue-on-error: true
