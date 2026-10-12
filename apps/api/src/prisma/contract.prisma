@@ -155,6 +155,25 @@ AUDIO_CALL_MINUTES   = "AUDIO_CALL_MINUTES"
 VIDEO_CALL_MINUTES   = "VIDEO_CALL_MINUTES"
 }
 
+// Strings the Android report picker sends as `reason`.
+enum MessageReportReason {
+@@type("pg/text@1")
+
+HARMFUL    = "HARMFUL"
+SEXUAL     = "SEXUAL"
+HATE       = "HATE"
+INACCURATE = "INACCURATE"
+OTHER      = "OTHER"
+}
+
+enum MessageReportStatus {
+@@type("pg/text@1")
+
+PENDING   = "PENDING"
+REVIEWED  = "REVIEWED"
+DISMISSED = "DISMISSED"
+}
+
 
 
 
@@ -179,6 +198,9 @@ deletedAt    TimestamptzString?
 memoryPausedAt         TimestamptzString?
 // Set while the user wants push notifications.
 notificationsEnabledAt TimestamptzString?
+// When the person confirmed they are 18 or older. The date of birth is checked
+// and then discarded; it is not stored.
+ageConfirmedAt         TimestamptzString?
 
 accounts     Account[]
 sessions     Session[]
@@ -190,6 +212,7 @@ calls Call[]
 subscriptions Subscription[]
 usageRecords UsageRecord[]
 deviceTokens DeviceToken[]
+messageReports MessageReport[]
 
 @@index([status])
 @@index([createdAt])
@@ -435,6 +458,7 @@ messages Message[]
 memories Memory[]
 imageGenerations ImageGeneration[]
 calls Call[]
+messageReports MessageReport[]
 
 @@index([userId])
 @@index([companionId])
@@ -466,6 +490,7 @@ updatedAt      temporal.updatedAtString()
 deletedAt      TimestamptzString?
 
 imageGeneration ImageGeneration?
+messageReports MessageReport[]
 
 conversation Conversation @relation(
 fields: [conversationId],
@@ -762,5 +787,52 @@ onDelete: Cascade
 @@index([userId, feature])
 @@index([userId, createdAt])
 @@index([feature, createdAt])
+}
+
+// ============================================================
+// MESSAGE REPORTS
+// ============================================================
+
+// One person's flag of one assistant reply. `content` is a snapshot taken
+// when the report is filed, so later edits do not change it. Soft-deletes
+// keep the row. Hard-deleting the message or conversation removes it.
+model MessageReport {
+id             Int                   @id @default(autoincrement())
+
+userId         Int
+messageId      Int
+conversationId Int
+
+reason         MessageReportReason
+note           String?
+content        String?
+
+status         MessageReportStatus   @default(PENDING)
+
+createdAt      TimestamptzString     @default(now())
+updatedAt      temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+message Message @relation(
+fields: [messageId],
+references: [id],
+onDelete: Cascade
+)
+
+conversation Conversation @relation(
+fields: [conversationId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([userId, messageId])
+@@index([status, createdAt])
+@@index([messageId])
+@@index([conversationId])
 }
 

@@ -84,8 +84,11 @@ function messagesFor(
             },
         } as never,
         {
-            consume: async () => {
-                consumed += 1;
+            async check() {
+                return { allowed: true };
+            },
+            async charge(_userId: number, feature: string) {
+                if (feature === 'MESSAGES') consumed += 1;
             },
         } as never,
         {} as never,

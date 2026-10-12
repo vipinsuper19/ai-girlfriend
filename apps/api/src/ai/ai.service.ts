@@ -16,6 +16,7 @@ import {
 } from '../moderation/safety-policy.js';
 import { takeReadyWindow } from '../moderation/text-windows.js';
 
+import { isAbortError } from './abort-error.js';
 import {
     CHAT_PROVIDER,
     type AiChatMessage,
@@ -394,6 +395,7 @@ export class AiService {
     async *streamResponse(
         userId: string | number,
         conversationId: string | number,
+        options: { signal?: AbortSignal } = {},
     ): AsyncGenerator<
         | {
             type: 'delta';
@@ -510,16 +512,19 @@ export class AiService {
         );
 
         if (inputNotice) {
+            if (options.signal?.aborted) return;
             if (currentUserMessage) {
                 await this.flagUserMessage(
                     currentUserMessage,
                     inputNotice,
                 );
             }
+            if (options.signal?.aborted) return;
             yield {
                 type: 'delta',
                 content: inputNotice.message,
             };
+            if (options.signal?.aborted) return;
             const assistantMessage = await this.finishTurn(
                 numericConversationId,
                 numericUserId,
@@ -527,6 +532,7 @@ export class AiService {
                 inputNotice,
                 true,
             );
+            if (options.signal?.aborted) return;
             yield {
                 type: 'done',
                 message: assistantMessage,
@@ -575,7 +581,12 @@ export class AiService {
          * Score sentence-sized windows so a safe sentence can
          * leave before the rest of the reply is known. A flagged
          * window is replaced by the refusal and the rest is dropped.
+         *
+         * The reply is persisted only when that loop finishes and
+         * the client is still connected. Stop / disconnect aborts
+         * `options.signal` and skips the insert.
          */
+        const signal = options.signal;
         const outputContext = {
             userId: numericUserId,
             conversationId: numericConversationId,
@@ -584,40 +595,51 @@ export class AiService {
         let safeText = '';
         let outputNotice: SafetyNotice | null = null;
 
-        for await (
-            const chunk of this.chatProvider.streamChat({
-                messages: aiMessages,
-            })
-        ) {
-            if (outputNotice) continue;
-            pending += chunk;
-            while (!outputNotice) {
-                const window = takeReadyWindow(pending);
-                if (!window.ready) {
+        try {
+            for await (
+                const chunk of this.chatProvider.streamChat({
+                    messages: aiMessages,
+                    signal,
+                })
+            ) {
+                if (signal?.aborted) return;
+                if (outputNotice) continue;
+                pending += chunk;
+                while (!outputNotice) {
+                    if (signal?.aborted) return;
+                    const window = takeReadyWindow(pending);
+                    if (!window.ready) {
+                        pending = window.rest;
+                        break;
+                    }
                     pending = window.rest;
-                    break;
-                }
-                pending = window.rest;
-                const notice = await this.moderation.noticeFor(
-                    window.ready,
-                    'output',
-                    outputContext,
-                );
-                if (notice) {
-                    outputNotice = notice;
+                    const notice = await this.moderation.noticeFor(
+                        window.ready,
+                        'output',
+                        outputContext,
+                    );
+                    if (signal?.aborted) return;
+                    if (notice) {
+                        outputNotice = notice;
+                        yield {
+                            type: 'delta',
+                            content: notice.message,
+                        };
+                        break;
+                    }
+                    safeText += window.ready;
                     yield {
                         type: 'delta',
-                        content: notice.message,
+                        content: window.ready,
                     };
-                    break;
                 }
-                safeText += window.ready;
-                yield {
-                    type: 'delta',
-                    content: window.ready,
-                };
             }
+        } catch (error) {
+            if (signal?.aborted || isAbortError(error)) return;
+            throw error;
         }
+
+        if (signal?.aborted) return;
 
         if (!outputNotice && pending.trim()) {
             const notice = await this.moderation.noticeFor(
@@ -625,6 +647,7 @@ export class AiService {
                 'output',
                 outputContext,
             );
+            if (signal?.aborted) return;
             if (notice) {
                 outputNotice = notice;
                 yield {
@@ -639,6 +662,8 @@ export class AiService {
                 };
             }
         }
+
+        if (signal?.aborted) return;
 
         const streamedContent = outputNotice
             ? [safeText.trim(), outputNotice.message]
@@ -657,6 +682,7 @@ export class AiService {
          * 9. Persist complete streamed response
          * ------------------------------------------------------
          */
+        if (signal?.aborted) return;
         const assistantMessage = await this.finishTurn(
             numericConversationId,
             numericUserId,
@@ -664,6 +690,7 @@ export class AiService {
             outputNotice,
             true,
         );
+        if (signal?.aborted) return;
 
         yield {
             type: 'done',

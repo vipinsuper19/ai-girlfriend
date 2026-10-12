@@ -5,6 +5,7 @@ import type { ContentModerator } from '../moderation/content-moderator.js';
 import { ModerationService } from '../moderation/moderation.service.js';
 import { safetyConfigFromEnv } from '../moderation/safety.config.js';
 import { EXPLICIT_REFUSAL_MESSAGE, REFUSAL_MESSAGE } from '../moderation/safety-policy.js';
+import { MessagesService } from '../messages/messages.service.js';
 import { AiService, SAFETY_SYSTEM_RULES } from './ai.service.js';
 
 const localProvider: ContentModerator = {
@@ -53,6 +54,7 @@ function harness(options: {
     provider?: ContentModerator;
     generate?: (prompt: string) => string;
     stream?: string[];
+    streamChat?: (request: { signal?: AbortSignal }) => AsyncGenerator<string>;
 }) {
     const created: Record<string, unknown>[] = [];
     const prompts: string[] = [];
@@ -102,8 +104,12 @@ function harness(options: {
                 sent.push(request.messages.map((message) => message.content));
                 return options.generate?.(request.messages[0]?.content ?? '') ?? 'Hello love';
             },
-            async *streamChat() {
+            async *streamChat(request: { signal?: AbortSignal }) {
                 streamed += 1;
+                if (options.streamChat) {
+                    yield* options.streamChat(request);
+                    return;
+                }
                 for (const chunk of options.stream ?? ['Hello ', 'love']) {
                     yield chunk;
                 }
@@ -119,6 +125,7 @@ function harness(options: {
     );
     return {
         ai,
+        db,
         created,
         prompts,
         memories: () => memories,
@@ -280,6 +287,76 @@ test('a minor age in an earlier turn blocks the next line before the model', asy
     assert.equal(allowed.prompts.length, 1);
     assert.equal(flirt.content, 'Hello love');
     assert.equal(flirt.metadata, null);
+});
+
+test('an aborted moderated stream neither persists nor charges', async () => {
+    const charges: string[] = [];
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const { ai, db, created } = harness({
+        messages: [{ role: 'USER', content: 'Tell me a story' }],
+        streamChat: async function* (request) {
+            try {
+                yield 'I saved you a seat. ';
+                await new Promise<void>((resolve) => {
+                    if (request.signal?.aborted) {
+                        resolve();
+                        return;
+                    }
+                    const timer = setTimeout(resolve, 4_000);
+                    request.signal?.addEventListener('abort', () => {
+                        clearTimeout(timer);
+                        resolve();
+                    }, { once: true });
+                });
+            } finally {
+                release();
+            }
+        },
+    });
+    const messages = new MessagesService(
+        { client: db } as never,
+        ai as never,
+        { extractFromConversation() { return Promise.resolve(); } } as never,
+        {
+            async check() {
+                return { allowed: true };
+            },
+            async charge(_userId: number, feature: string) {
+                charges.push(feature);
+            },
+        } as never,
+        {} as never,
+    );
+    const controller = new AbortController();
+    const iterator = messages.createAndStream(
+        '1',
+        '3',
+        { content: 'Tell me a story' },
+        controller.signal,
+    );
+    const events = [];
+    const first = await iterator.next();
+    events.push(first.value);
+    const second = await iterator.next();
+    events.push(second.value);
+    controller.abort();
+    for await (const event of iterator) events.push(event);
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+        held.then(() => undefined, () => undefined),
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('moderated stream did not settle')), 7_000);
+        }),
+    ]);
+    clearTimeout(timer);
+
+    assert.equal(events.some((event) => event?.type === 'done'), false);
+    assert.equal(created.some((row) => row['role'] === 'ASSISTANT'), false);
+    assert.deepEqual(charges, []);
 });
 
 test('a flagged user line is marked and left out of the next model prompt', async () => {
