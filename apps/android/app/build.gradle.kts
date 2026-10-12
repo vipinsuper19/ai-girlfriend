@@ -22,6 +22,19 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // v1 leaves these off. Set a field to true and rebuild to show that feature again.
+        val featureVoice = false
+        val featureGallery = false
+        val featurePush = false
+        val featureBilling = false
+        val featurePhoneSignIn = false
+        buildConfigField("boolean", "FEATURE_VOICE", featureVoice.toString())
+        buildConfigField("boolean", "FEATURE_GALLERY", featureGallery.toString())
+        buildConfigField("boolean", "FEATURE_PUSH", featurePush.toString())
+        buildConfigField("boolean", "FEATURE_BILLING", featureBilling.toString())
+        buildConfigField("boolean", "FEATURE_PHONE_SIGN_IN", featurePhoneSignIn.toString())
+        manifestPlaceholders["pushServiceEnabled"] = featurePush.toString()
     }
 
     // Release signing comes from CI secrets. If they are missing, the release build is unsigned.

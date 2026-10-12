@@ -60,6 +60,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.model.CompanionDraft
 import com.dhama.mybase.core.model.companionGender
 import com.dhama.mybase.core.model.relationshipOptions
@@ -116,7 +117,9 @@ fun CompanionWizardScreen(
             when (state.step) {
                 WizardStep.Appearance -> AppearanceStep(state.draft, viewModel::update, viewModel::next)
                 WizardStep.Personality -> PersonalityStep(state.draft, viewModel::update, viewModel::next)
-                WizardStep.Voice -> VoiceStep(state.draft, viewModel::update, viewModel::next)
+                WizardStep.Voice -> if (FeatureFlags.voice) {
+                    VoiceStep(state.draft, viewModel::update, viewModel::next)
+                }
                 WizardStep.Finalize -> FinalizeStep(
                     draft = state.draft,
                     creating = state.creating,
@@ -212,16 +215,17 @@ private fun StepHeader(
     onSkip: () -> Unit,
 ) {
     val index = step.progressIndex()
+    val total = wizardStepTotal()
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
-                "Step ${index} of 4",
+                "Step ${index} of $total",
                 modifier = Modifier
                     .weight(1f)
-                    .semantics { stateDescription = "Step $index of 4" },
+                    .semantics { stateDescription = "Step $index of $total" },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -232,7 +236,7 @@ private fun StepHeader(
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(4) { segment ->
+            repeat(total) { segment ->
                 Box(
                     Modifier
                         .weight(1f)
@@ -463,7 +467,7 @@ private fun FinalizeStep(
             Spacer(Modifier.height(12.dp))
             Text(draft.traits.joinToString(" · ").ifBlank { "Your choices" }, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "${draft.voiceLabel} voice · ${draft.relationship}",
+                if (FeatureFlags.voice) "${draft.voiceLabel} voice · ${draft.relationship}" else draft.relationship,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

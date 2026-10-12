@@ -65,6 +65,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dhama.mybase.ui.companion.CompanionPortrait
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.retryCaption
 import com.dhama.mybase.core.chat.shouldLoadOlder
 import com.dhama.mybase.core.data.ChatRepositoryImpl
@@ -127,7 +128,7 @@ fun ChatScreen(
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
-    val voiceClosed = onServer && voiceAllowanceClosed(allowance)
+    val voiceClosed = FeatureFlags.voice && onServer && voiceAllowanceClosed(allowance)
     val messageLimit = allowance?.messagesLimit
     val showWarning = allowance != null &&
         messageLimit != null &&
@@ -157,6 +158,7 @@ fun ChatScreen(
         micDenied = !granted
     }
     LaunchedEffect(player) {
+        if (!FeatureFlags.voice) return@LaunchedEffect
         viewModel.playRequest.collect { path -> player.toggle(path) }
     }
     DisposableEffect(recorder, player) {
@@ -179,7 +181,7 @@ fun ChatScreen(
     }
 
     fun beginRecording() {
-        if (recording || streaming || voiceClosed) return
+        if (!FeatureFlags.voice || recording || streaming || voiceClosed) return
         if (!micGranted()) {
             showRationale = true
             return
@@ -273,8 +275,8 @@ fun ChatScreen(
         }
         Text(
             when {
-                recording -> "Recording…"
-                !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
+                FeatureFlags.voice && recording -> "Recording…"
+                FeatureFlags.voice && !voiceStage.isNullOrBlank() -> voiceStage.orEmpty()
                 streaming -> "Typing…"
                 companion?.conversationId != null -> "Active now"
                 else -> "On this phone"
@@ -284,8 +286,8 @@ fun ChatScreen(
             modifier = Modifier
                 .padding(horizontal = 20.dp)
                 .semantics {
-                    if (recording) contentDescription = "Recording"
-                    else if (!voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
+                    if (FeatureFlags.voice && recording) contentDescription = "Recording"
+                    else if (FeatureFlags.voice && !voiceStage.isNullOrBlank()) contentDescription = voiceStage.orEmpty()
                     else if (streaming) contentDescription = "$name is typing"
                 },
         )
@@ -301,7 +303,7 @@ fun ChatScreen(
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
-        if (voiceClosed && !showWall) {
+        if (FeatureFlags.voice && voiceClosed && !showWall) {
             Text(
                 "You've used your voice minutes for this month.",
                 style = MaterialTheme.typography.bodySmall,
@@ -393,7 +395,7 @@ fun ChatScreen(
                 }
             }
         }
-        if (micDenied) {
+        if (FeatureFlags.voice && micDenied) {
             Text(
                 "Microphone is off. Allow it in system settings to record a voice note.",
                 style = MaterialTheme.typography.bodySmall,
@@ -430,7 +432,7 @@ fun ChatScreen(
         }
     }
 
-    if (showRationale) {
+    if (FeatureFlags.voice && showRationale) {
         AlertDialog(
             onDismissRequest = { showRationale = false },
             title = { Text("Microphone") },
@@ -483,7 +485,7 @@ fun ChatScreen(
             },
             dismissButton = {
                 Row {
-                    if (canSpeakMessage(message.role, message.kind, message.delivery, message.text)) {
+                    if (FeatureFlags.voice && canSpeakMessage(message.role, message.kind, message.delivery, message.text)) {
                         TextButton(onClick = {
                             viewModel.speak(message)
                             selected = null
@@ -547,7 +549,8 @@ private fun MessageRow(
         val failed = message.delivery == ChatRepositoryImpl.DELIVERY_FAILED ||
             message.delivery == ChatRepositoryImpl.DELIVERY_DROPPED
         val spoken = when {
-            message.kind == ChatMessageEntity.KIND_AUDIO -> "$senderName. Voice note ${message.durationMs / 1000} seconds"
+            FeatureFlags.voice && message.kind == ChatMessageEntity.KIND_AUDIO ->
+                "$senderName. Voice note ${message.durationMs / 1000} seconds"
             message.kind == ChatMessageEntity.KIND_IMAGE -> "$senderName. Photo"
             streaming && message.text.isBlank() -> "$senderName is typing"
             outgoing -> "You. ${message.text}"
@@ -555,7 +558,12 @@ private fun MessageRow(
         }
         Column(horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
             Column(Modifier.alpha(if (failed) 0.5f else 1f)) {
-                when (message.kind) {
+                val shownKind = if (FeatureFlags.voice || message.kind != ChatMessageEntity.KIND_AUDIO) {
+                    message.kind
+                } else {
+                    ChatMessageEntity.KIND_TEXT
+                }
+                when (shownKind) {
                     ChatMessageEntity.KIND_IMAGE -> ImageNote(message.audioPath)
                     ChatMessageEntity.KIND_AUDIO -> VoiceNoteContent(
                         text = message.text,
@@ -588,11 +596,12 @@ private fun MessageRow(
                     )
                 }
             }
-            if (failed) {
+            if (failed && (FeatureFlags.voice || message.kind != ChatMessageEntity.KIND_AUDIO)) {
                 TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(retryCaption(message.delivery), color = MaterialTheme.colorScheme.error)
                 }
             } else if (
+                FeatureFlags.voice &&
                 message.kind == ChatMessageEntity.KIND_AUDIO &&
                 message.text.isBlank() &&
                 !message.audioPath.startsWith("http")
@@ -604,7 +613,7 @@ private fun MessageRow(
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
                 )
             }
-            if (speakCaption != null) {
+            if (FeatureFlags.voice && speakCaption != null) {
                 Text(
                     speakCaption,
                     style = MaterialTheme.typography.bodySmall,
@@ -657,7 +666,7 @@ private fun Composer(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (recording) {
+        if (FeatureFlags.voice && recording) {
             RecordingMeter(
                 amplitudes = amplitudes,
                 elapsedMs = elapsedMs,
@@ -679,7 +688,7 @@ private fun Composer(
                 maxLines = 4,
             )
         }
-        if (!locked) {
+        if (FeatureFlags.voice && !locked) {
             HoldMic(
                 enabled = enabled && !streaming,
                 recording = recording,
@@ -692,7 +701,7 @@ private fun Composer(
             streaming -> IconButton(onClick = onStop) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop")
             }
-            locked -> Row {
+            FeatureFlags.voice && locked -> Row {
                 TextButton(onClick = onVoiceCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 TextButton(onClick = onVoiceSend, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send") }
             }

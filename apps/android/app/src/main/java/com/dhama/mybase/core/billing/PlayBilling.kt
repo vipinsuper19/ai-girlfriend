@@ -13,6 +13,7 @@ import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.planLabel
@@ -86,7 +87,7 @@ class PlayBilling @Inject constructor(
 
     /** Empty unless the server sells plans through Play and Play returns the products. */
     suspend fun offers(): List<PlayOffer> {
-        if (!api.hasSession()) return emptyList()
+        if (!FeatureFlags.billing || !api.hasSession()) return emptyList()
         val config = api.googlePlayConfig()
         if (!config.configured || config.accountId.isNullOrBlank() || config.products.isEmpty()) return emptyList()
         if (!connect()) return emptyList()
@@ -113,6 +114,7 @@ class PlayBilling @Inject constructor(
     }
 
     fun launch(activity: Activity, offer: PlayOffer): Boolean {
+        if (!FeatureFlags.billing) return false
         val account = accountId ?: return false
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
@@ -130,7 +132,7 @@ class PlayBilling @Inject constructor(
 
     /** Re-sends owned subscriptions so renewals and purchases made while offline reach the server. */
     suspend fun syncOwned() {
-        if (!api.hasSession() || !connect()) return
+        if (!FeatureFlags.billing || !api.hasSession() || !connect()) return
         val owned = client.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build(),
         )

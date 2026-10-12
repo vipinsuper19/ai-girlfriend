@@ -2,6 +2,7 @@ package com.dhama.mybase.ui.gallery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.GalleryImage
 import com.dhama.mybase.core.data.GalleryRepository
@@ -31,10 +32,11 @@ class GalleryViewModel @Inject constructor(
     val note = _note.asStateFlow()
 
     init {
-        refresh()
+        if (FeatureFlags.gallery) refresh()
     }
 
     fun refresh() {
+        if (!FeatureFlags.gallery) return
         viewModelScope.launch {
             _loading.value = true
             try {
@@ -50,7 +52,7 @@ class GalleryViewModel @Inject constructor(
     }
 
     fun create(prompt: String) {
-        if (_creating.value) return
+        if (!FeatureFlags.gallery || _creating.value) return
         viewModelScope.launch {
             _creating.value = true
             _note.value = null
@@ -69,6 +71,7 @@ class GalleryViewModel @Inject constructor(
     }
 
     fun delete(image: GalleryImage) {
+        if (!FeatureFlags.gallery) return
         viewModelScope.launch {
             try {
                 gallery.delete(image.id)

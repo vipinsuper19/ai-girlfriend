@@ -3,6 +3,7 @@ package com.dhama.mybase.ui.onboarding
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.model.CompanionDraft
@@ -133,9 +134,10 @@ class CompanionWizardViewModel @Inject constructor(
         val draft = savedStateHandle.get<String>(DRAFT_KEY)?.let { raw ->
             runCatching { json.decodeFromString<CompanionDraft>(raw) }.getOrNull()
         } ?: CompanionDraft()
-        val step = savedStateHandle.get<String>(STEP_KEY)
+        val restored = savedStateHandle.get<String>(STEP_KEY)
             ?.let { runCatching { WizardStep.valueOf(it) }.getOrNull() }
             ?: WizardStep.Intro
+        val step = if (!FeatureFlags.voice && restored == WizardStep.Voice) WizardStep.Finalize else restored
         return WizardUiState(step = step, draft = draft)
     }
 
@@ -148,7 +150,7 @@ class CompanionWizardViewModel @Inject constructor(
 private fun WizardStep.next(): WizardStep? = when (this) {
     WizardStep.Intro -> WizardStep.Appearance
     WizardStep.Appearance -> WizardStep.Personality
-    WizardStep.Personality -> WizardStep.Voice
+    WizardStep.Personality -> if (FeatureFlags.voice) WizardStep.Voice else WizardStep.Finalize
     WizardStep.Voice -> WizardStep.Finalize
     WizardStep.Finalize -> null
 }
@@ -158,7 +160,13 @@ private fun WizardStep.previous(): WizardStep? = when (this) {
     WizardStep.Appearance -> WizardStep.Intro
     WizardStep.Personality -> WizardStep.Appearance
     WizardStep.Voice -> WizardStep.Personality
-    WizardStep.Finalize -> WizardStep.Voice
+    WizardStep.Finalize -> if (FeatureFlags.voice) WizardStep.Voice else WizardStep.Personality
 }
 
-fun WizardStep.progressIndex(): Int = ordinal
+fun WizardStep.progressIndex(): Int = when {
+    FeatureFlags.voice -> ordinal
+    this == WizardStep.Finalize -> 3
+    else -> ordinal.coerceAtMost(2)
+}
+
+fun wizardStepTotal(): Int = if (FeatureFlags.voice) 4 else 3

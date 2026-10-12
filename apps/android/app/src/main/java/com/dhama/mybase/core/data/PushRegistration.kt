@@ -1,5 +1,6 @@
 package com.dhama.mybase.core.data
 
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -21,11 +22,12 @@ class PushRegistration @Inject constructor(
 
     /** False when there is no API session or the server has no push credentials. */
     suspend fun available(): Boolean {
-        if (!api.hasSession()) return false
+        if (!FeatureFlags.push || !api.hasSession()) return false
         return api.notificationStatus().pushConfigured
     }
 
     suspend fun enable() {
+        if (!FeatureFlags.push) return
         if (!api.hasSession()) {
             throw ApiStatusException(401, "Sign in with email to get notifications.", null)
         }
@@ -36,6 +38,7 @@ class PushRegistration @Inject constructor(
     }
 
     suspend fun disable() {
+        if (!FeatureFlags.push) return
         if (api.hasSession()) {
             api.patchPrivacy(notificationsEnabled = false)
             forgetDevice()
@@ -44,13 +47,13 @@ class PushRegistration @Inject constructor(
     }
 
     suspend fun onNewToken(token: String) {
-        if (!observeEnabled().first() || !api.hasSession()) return
+        if (!FeatureFlags.push || !observeEnabled().first() || !api.hasSession()) return
         api.registerDevice(token)
     }
 
     /** Stops pushes to this phone for the signed-in account. Safe to call before signing out. */
     suspend fun forgetDevice() {
-        if (!api.hasSession()) return
+        if (!FeatureFlags.push || !api.hasSession()) return
         try {
             val token = FirebaseMessaging.getInstance().token.await()
             api.removeDevice(token)

@@ -70,6 +70,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalContext
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.memory.togetherLine
 import com.dhama.mybase.core.network.ARCHIVE_NOTICE
 import com.dhama.mybase.core.network.AVATAR_MAX_BYTES
@@ -154,7 +155,7 @@ fun YouSettingsScreen(
         onTheme = viewModel::setThemeMode,
         onDeleteAccount = viewModel::deleteAccount,
         notifications = NotificationRowState(
-            visible = pushAvailable,
+            visible = FeatureFlags.push && pushAvailable,
             on = notificationsOn,
             saving = notificationSaving,
             note = notificationNote,
@@ -273,12 +274,14 @@ private fun YouSettingsContent(
                 onSave = onChangePassword,
             )
         }
-        SectionLabel("Subscription")
-        SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
+        if (FeatureFlags.billing) {
+            SectionLabel("Subscription")
+            SettingsRow("Plan", plan.ifBlank { "Free" }, onClick = onPlans)
+        }
         SectionLabel("App")
         Text("Theme", style = MaterialTheme.typography.bodyLarge)
         ThemePicker(selected = theme.ifBlank { "system" }, onSelect = onTheme)
-        if (notifications.visible) {
+        if (FeatureFlags.push && notifications.visible) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -439,7 +442,9 @@ private fun CompanionProfileContent(
         Spacer(Modifier.height(16.dp))
         GroupLine("Look", saved.lookLine())
         GroupLine("Gender", genderLabel(saved.gender))
-        GroupLine("Voice", "${saved.voiceLabel} voice")
+        if (FeatureFlags.voice) {
+            GroupLine("Voice", "${saved.voiceLabel} voice")
+        }
         GroupLine("Memory", "$memoryCount things remembered")
         Spacer(Modifier.height(28.dp))
         TextButton(
@@ -607,8 +612,10 @@ private fun EditBody(
             LookField("Height", height) { height = it }
             LookField("Clothing", clothing) { clothing = it }
             LookField("Hair style", hairStyle) { hairStyle = it }
-            Text("Voice", style = MaterialTheme.typography.labelLarge)
-            ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
+            if (FeatureFlags.voice) {
+                Text("Voice", style = MaterialTheme.typography.labelLarge)
+                ChoiceChips(voiceChoices.map { it.second }, voiceLabel) { voiceLabel = it }
+            }
             Level("Warmth", warmth) { warmth = it }
             Level("Humour", humour) { humour = it }
             Level("Flirtiness", flirt) { flirt = it }
@@ -662,6 +669,7 @@ private fun EditBody(
 
 @Composable
 fun SubscriptionScreen(onBack: () -> Unit) {
+    if (!FeatureFlags.billing) return
     val viewModel = rememberSettingsViewModel()
     val messages by viewModel.messages.collectAsState()
     val plan by viewModel.planLabel.collectAsState()
