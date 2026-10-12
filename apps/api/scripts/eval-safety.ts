@@ -1,11 +1,13 @@
 /**
- * Score both safety fixture sets with the real classifier.
+ * Score the public safety fixtures, plus a held-out file outside this repo.
  * Not part of CI. Requires OPENAI_API_KEY (preferred) or GEMINI_API_KEY.
  *
- *   pnpm eval:safety
+ *   pnpm eval:safety -- --heldout /absolute/path/outside/the/repo.json
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+import { heldoutPathProblem } from '../src/moderation/heldout-path.js';
 
 import { createContentModerator } from '../src/moderation/moderation.factory.js';
 import { ModerationService } from '../src/moderation/moderation.service.js';
@@ -166,6 +168,14 @@ if (config.provider === 'local') {
     process.exit(1);
 }
 
+const heldout = readHeldoutArg(process.argv.slice(2));
+const repoRoot = resolve(import.meta.dirname, '../../..');
+const problem = heldoutPathProblem(heldout, repoRoot);
+if (problem) {
+    console.error(problem);
+    process.exit(1);
+}
+
 const fixtures = resolve(import.meta.dirname, '../src/moderation/fixtures');
 const moderation = new ModerationService(config, createContentModerator(config, process.env), {
     warn() {},
@@ -173,9 +183,15 @@ const moderation = new ModerationService(config, createContentModerator(config, 
 
 console.log(`classifier=${config.provider}`);
 const missed = (await score(moderation, 'redteam-cases', resolve(fixtures, 'redteam-cases.json')))
-    + (await score(
-        moderation,
-        'redteam-heldout-cases',
-        resolve(fixtures, 'redteam-heldout-cases.json'),
-    ));
+    + (await score(moderation, 'held-out', heldout));
 if (missed > 0) process.exit(1);
+
+function readHeldoutArg(argv: readonly string[]): string {
+    const index = argv.indexOf('--heldout');
+    const value = index >= 0 ? argv[index + 1] : undefined;
+    if (!value || value.startsWith('--')) {
+        console.error('usage: pnpm eval:safety -- --heldout /absolute/path/outside/the/repo.json');
+        process.exit(1);
+    }
+    return value;
+}

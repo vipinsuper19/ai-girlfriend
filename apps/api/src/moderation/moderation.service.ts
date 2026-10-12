@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import {
+    classifierBatchBody,
+    fitClassifierBlocks,
+    isOverLimitError,
+    type ClassifierBlock,
+} from './classifier-batch.js';
 import { degradedReason, type DegradedReason } from './classifier-attempt.js';
 import type { ContentModerator } from './content-moderator.js';
 import type { SafetyConfig } from './safety.config.js';
@@ -90,6 +96,10 @@ export class ModerationService {
                     categories = merge(categories, remote.categories);
                     if (categories.length > 0) break;
                 } catch (error) {
+                    if (isOverLimitError(error)) {
+                        categories = merge(categories, ['illegal_harm']);
+                        break;
+                    }
                     this.noteDegraded(error, surface, ctx, trimmed.length);
                     break;
                 }
@@ -140,8 +150,10 @@ export class ModerationService {
             memoryCategories.set(memory.id, assessLocal(memory.content, 'input'));
         }
 
-        if (!userCategories.includes('self_harm') && this.provider.id !== 'local') {
-            const pending: { id: string; text: string }[] = [];
+        const remoteRequired = this.provider.id !== 'local' && !userCategories.includes('self_harm');
+        const scoredIds = new Set<string>();
+        if (remoteRequired) {
+            const pending: ClassifierBlock[] = [];
             const recalledUser = text ? this.recall(text) : undefined;
             if (recalledUser) userCategories = merge(userCategories, recalledUser);
             else if (text) pending.push({ id: 'user', text });
@@ -152,6 +164,7 @@ export class ModerationService {
                         memory.id,
                         merge(memoryCategories.get(memory.id) ?? [], recalled),
                     );
+                    scoredIds.add(memory.id);
                 } else if (memory.content.trim()) {
                     pending.push({ id: memory.id, text: memory.content });
                 }
@@ -160,8 +173,10 @@ export class ModerationService {
                 const scored = await this.scoreBlocks(pending, ctx, text.length);
                 if (scored) {
                     for (const block of pending) {
+                        if (!scored.has(block.id)) continue;
                         const remote = scored.get(block.id) ?? [];
                         this.remember(block.text, remote);
+                        scoredIds.add(block.id);
                         if (block.id === 'user') userCategories = merge(userCategories, remote);
                         else {
                             memoryCategories.set(
@@ -177,7 +192,11 @@ export class ModerationService {
         const notice = decideSafety(userCategories, 'input', this.config.helplines);
         if (notice) this.logNotice(notice, 'input', ctx, text.length, userCategories);
         const allowedMemoryIds = memories
-            .filter((memory) => this.memoryAllowed(memoryCategories.get(memory.id) ?? []))
+            .filter((memory) => {
+                if (!this.memoryAllowed(memoryCategories.get(memory.id) ?? [])) return false;
+                if (remoteRequired && !scoredIds.has(memory.id)) return false;
+                return true;
+            })
             .map((memory) => memory.id);
         return {
             notice,
@@ -202,17 +221,64 @@ export class ModerationService {
     }
 
     /**
-     * One classifier attempt. `null` means the call failed and the caller must
-     * keep the local verdict without caching the miss.
+     * One classifier attempt, kept under the provider limit. `null` means the
+     * call failed and the caller must keep the local verdict without caching
+     * the miss. An over-limit body is chunked or refused, not treated as an outage.
      */
     private async scoreBlocks(
-        blocks: readonly { id: string; text: string }[],
+        blocks: readonly ClassifierBlock[],
         ctx: SafetyLogContext,
         chars: number,
     ): Promise<Map<string, SafetyCategory[]> | null> {
-        const body = blocks.length === 1 && blocks[0]?.id === 'user'
-            ? blocks[0].text
-            : blocks.map((block) => `[id=${block.id}]\n${block.text}`).join('\n\n');
+        const maxChars = this.provider.maxChars;
+        if (maxChars != null && maxChars < 1) {
+            return this.overLimitVerdict(blocks);
+        }
+        if (maxChars != null) {
+            const fitted = fitClassifierBlocks(blocks, maxChars);
+            if (fitted.userOverLimit) {
+                return this.scoreChunkedUser(fitted.blocks, maxChars, ctx, chars);
+            }
+            return this.scoreBody(fitted.blocks, ctx, chars);
+        }
+        return this.scoreBody(blocks, ctx, chars);
+    }
+
+    private async scoreChunkedUser(
+        blocks: readonly ClassifierBlock[],
+        maxChars: number,
+        ctx: SafetyLogContext,
+        chars: number,
+    ): Promise<Map<string, SafetyCategory[]> | null> {
+        const user = blocks.find((block) => block.id === 'user');
+        if (!user) return new Map();
+        const chunks = textChunks(user.text, maxChars);
+        if (chunks.length === 0) return this.overLimitVerdict(blocks);
+        const categories: SafetyCategory[] = [];
+        for (const chunk of chunks) {
+            try {
+                const remote = await this.provider.moderate(chunk);
+                categories.push(...remote.categories);
+            } catch (error) {
+                if (isOverLimitError(error)) return this.overLimitVerdict(blocks);
+                this.noteDegraded(error, 'input', ctx, chars);
+                return null;
+            }
+        }
+        return new Map([[user.id, merge([], categories)]]);
+    }
+
+    private async scoreBody(
+        blocks: readonly ClassifierBlock[],
+        ctx: SafetyLogContext,
+        chars: number,
+    ): Promise<Map<string, SafetyCategory[]> | null> {
+        if (blocks.length === 0) return new Map();
+        const body = classifierBatchBody(blocks);
+        const maxChars = this.provider.maxChars;
+        if (maxChars != null && maxChars > 0 && body.length > maxChars) {
+            return this.overLimitVerdict(blocks);
+        }
         try {
             const remote = await this.provider.moderate(body);
             const scored = new Map<string, SafetyCategory[]>();
@@ -224,11 +290,25 @@ export class ModerationService {
                 const user = blocks.find((block) => block.id === 'user');
                 if (user) scored.set(user.id, [...remote.categories]);
             }
+            for (const block of blocks) {
+                if (!scored.has(block.id)) scored.set(block.id, []);
+            }
             return scored;
         } catch (error) {
+            if (isOverLimitError(error)) return this.overLimitVerdict(blocks);
             this.noteDegraded(error, 'input', ctx, chars);
             return null;
         }
+    }
+
+    private overLimitVerdict(
+        blocks: readonly ClassifierBlock[],
+    ): Map<string, SafetyCategory[]> {
+        const scored = new Map<string, SafetyCategory[]>();
+        for (const block of blocks) {
+            if (block.id === 'user') scored.set(block.id, ['illegal_harm']);
+        }
+        return scored;
     }
 
     private noteDegraded(

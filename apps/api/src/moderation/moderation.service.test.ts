@@ -1,5 +1,8 @@
+import 'reflect-metadata';
+
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { validate } from 'class-validator';
 
 import type { ContentModerator } from './content-moderator.js';
 import {
@@ -15,6 +18,8 @@ import {
 } from './openai-moderator.js';
 import { safetyConfigFromEnv } from './safety.config.js';
 import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
+import { CreateMessageDto } from '../messages/dto/create-message.dto.js';
+import { MESSAGE_CONTENT_MAX } from '../messages/message-limits.js';
 import {
     EXPLICIT_REFUSAL_MESSAGE,
     PERSONA_REJECTION_MESSAGE,
@@ -353,6 +358,123 @@ test('classifier clients make one attempt with a short timeout', () => {
     assert.equal(CLASSIFIER_TIMEOUT_MS, 4_000);
     assert.equal(OPENAI_MODERATION_REQUEST.timeout, 4_000);
     assert.equal(OPENAI_MODERATION_REQUEST.maxRetries, 0);
+});
+
+test('a chat message is shorter than the classifier input limit', async () => {
+    assert.ok(MESSAGE_CONTENT_MAX < GEMINI_MODERATION_MAX_CHARS);
+    assert.ok(MESSAGE_CONTENT_MAX < OPENAI_MODERATION_MAX_CHARS);
+    const accepted = new CreateMessageDto();
+    accepted.content = 'a'.repeat(MESSAGE_CONTENT_MAX);
+    assert.equal((await validate(accepted)).length, 0);
+    const rejected = new CreateMessageDto();
+    rejected.content = 'a'.repeat(MESSAGE_CONTENT_MAX + 1);
+    assert.ok((await validate(rejected)).length > 0);
+});
+
+test('an over-limit classifier error is a refusal and not degraded mode', async () => {
+    const logs: string[] = [];
+    let calls = 0;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 50,
+        async moderate() {
+            calls += 1;
+            throw new Error('Moderation input exceeds the provider limit');
+        },
+    };
+    const moderation = serviceFor({}, provider, logs);
+    const notice = await moderation.noticeFor('hello there', 'input');
+    assert.equal(notice?.code, 'content_policy');
+    assert.equal(moderation.degradedFallbacks, 0);
+    assert.equal(logs.some((line) => line.includes('degraded')), false);
+    assert.equal(logs.some((line) => line.includes('unavailable')), false);
+    assert.equal(calls, 1);
+});
+
+test('memory text is capped so the classifier batch stays under the provider limit', async () => {
+    const bodies: string[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 80,
+        async moderate(text) {
+            bodies.push(text);
+            return {
+                categories: [],
+                items: [
+                    { id: 'user', categories: [] },
+                    { id: '1', categories: [] },
+                ],
+            };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const memory = `memory ${'x'.repeat(500)}`;
+    const turn = await moderation.moderateTurn({
+        text: 'hello from the user',
+        memories: [{ id: '1', content: memory }],
+    });
+    assert.equal(bodies.length, 1);
+    assert.ok((bodies[0]?.length ?? 0) <= 80);
+    assert.match(bodies[0] ?? '', /hello from the user/);
+    assert.equal(bodies[0]?.includes('x'.repeat(500)), false);
+    assert.deepEqual(turn.allowedMemoryIds, ['1']);
+    assert.equal(moderation.degradedFallbacks, 0);
+});
+
+test('user text over the provider limit is chunked instead of marked unavailable', async () => {
+    const lengths: number[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        maxChars: 40,
+        async moderate(text) {
+            lengths.push(text.length);
+            return { categories: text.includes('FLAG') ? ['illegal_harm'] : [] };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const turn = await moderation.moderateTurn({
+        text: `${'a'.repeat(30)}FLAG${'b'.repeat(30)}`,
+        memories: [{ id: '1', content: 'unscored memory that does not fit beside the chunks' }],
+    });
+    assert.ok(lengths.length > 1);
+    assert.ok(lengths.every((length) => length <= 40));
+    assert.equal(turn.notice?.code, 'content_policy');
+    assert.deepEqual(turn.allowedMemoryIds, []);
+    assert.equal(moderation.degradedFallbacks, 0);
+});
+
+test('degraded mode drops memories that have no cached classifier pass', async () => {
+    let fail = false;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        async moderate() {
+            if (fail) throw timeoutError();
+            return {
+                categories: [],
+                items: [
+                    { id: 'user', categories: [] },
+                    { id: '1', categories: [] },
+                ],
+            };
+        },
+    };
+    const moderation = serviceFor({}, provider);
+    const first = await moderation.moderateTurn({
+        text: 'hello',
+        memories: [{ id: '1', content: 'likes chai' }],
+    });
+    assert.deepEqual(first.allowedMemoryIds, ['1']);
+    fail = true;
+    const second = await moderation.moderateTurn({
+        text: 'hello again',
+        memories: [
+            { id: '1', content: 'likes chai' },
+            { id: '2', content: 'a new memory' },
+        ],
+    });
+    assert.equal(second.notice, null);
+    assert.deepEqual(second.allowedMemoryIds, ['1']);
+    assert.equal(moderation.degradedFallbacks, 1);
 });
 
 function downProvider(error: unknown, calls: { n: number }): ContentModerator {

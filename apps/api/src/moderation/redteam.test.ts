@@ -9,8 +9,8 @@
  * is moderated on its own, before it could be copied into the prompt.
  *
  * CI checks the narrow local pre-filter: romance must stay allowed.
- * The full suite, including the held-out set, is scored by `pnpm eval:safety`
- * against the real classifier and is not part of CI.
+ * `pnpm eval:safety -- --heldout /path` scores this public suite plus a
+ * held-out file that lives outside the repo. That file is not part of CI.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
