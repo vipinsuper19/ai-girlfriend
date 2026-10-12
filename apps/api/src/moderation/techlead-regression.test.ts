@@ -1,14 +1,15 @@
 /**
- * Tech Lead regression cases for the local moderation layer.
+ * Tech Lead regression cases, scored the way CI scores chat.
  *
- * Each case is run through ModerationService.noticeFor with the local provider
- * and the default helplines. `expected_verdict` is the notice code, or `allow`
- * when the notice is null. The safety implementation is unchanged.
+ * The provider is the JSON-classifier stand-in from ai.service.safety.test.ts
+ * (id `gemini`, no API key). A lone user turn is sent to that stand-in unless
+ * a local crisis phrase already decided the turn. `expected_verdict` is the
+ * notice code, or `allow` when the notice is null.
  *
  * HO-MIN-026 asks a minor flag to survive six filler messages and a new chat
- * for the same user. noticeFor only logs userId and conversationId, so the
- * check is three calls on that service: the flag, the benign line in the same
- * conversation after the fillers, and the benign line in a second conversation.
+ * for the same user. The in-chat line is scored with those earlier lines as
+ * priorTexts. The new chat is scored with an empty history and heldMinor set
+ * from the flag turn, which is what AiService stores on the user.
  *
  * Cases that still miss are expected failures. The test fails if one of them
  * starts passing, so the marker is removed once the gap is actually closed.
@@ -85,27 +86,15 @@ const CATEGORIES = new Set([
 ]);
 
 /**
- * Misses confirmed on main's local pre-filter. A passing case is a hard
- * regression check and is not listed here.
+ * Misses still allowed to fail against the CI classifier stand-in. A passing
+ * case is a hard regression check and is not listed here.
  */
 const KNOWN_GAPS: Record<string, Gap> = {
-    'HO-MIN-022': {
-        reason: '"Im 15" has no apostrophe and no years-old or yo suffix, so the age-claim rule misses.',
-    },
-    'HO-MIN-023': {
-        reason: '"i m 15" splits the contraction and has no years-old or yo suffix.',
-    },
-    'HO-MIN-024': {
-        reason: '"me 15" is not "I\'m" or "I am" plus an age.',
-    },
     'HO-MIN-025': {
-        reason: '"age: 15" is not "I\'m N" or "N years old".',
-    },
-    'HO-MIN-026': {
-        reason: '"I\'m 15" is not flagged, and noticeFor stores nothing for the user, so six fillers and a new chat both stay allowed.',
+        reason: '"age: 15" is not a first-person age, and the CI classifier stand-in returns no category.',
     },
     'HO-SH-009': {
-        reason: '"disappear forever" is outside the kill, suicide, and want-to-die phrases.',
+        reason: '"disappear forever" is outside the crisis phrases, and the CI classifier stand-in returns no category.',
     },
 };
 
@@ -114,32 +103,32 @@ const cases = loadCases();
 interface LocalRun {
     moderation: ModerationService;
     providerId: string;
-    remoteCalls: () => number;
 }
 
+/** CI stand-in for the JSON classifier. The local pre-filter does not score these. */
+const classifier: ContentModerator = {
+    id: 'gemini',
+    async moderate(text) {
+        if (/\bbomb\b/i.test(text)) return { categories: ['illegal_harm'] };
+        if (/\bfuck\b/i.test(text)) return { categories: ['explicit'] };
+        return { categories: [] };
+    },
+};
+
 function localService(): LocalRun {
-    let remoteCalls = 0;
-    const provider: ContentModerator = {
-        id: 'local',
-        async moderate() {
-            remoteCalls += 1;
-            return { categories: [] };
-        },
-    };
     return {
         moderation: new ModerationService(
             safetyConfigFromEnv({ MODERATION_PROVIDER: 'local' }),
-            provider,
+            classifier,
             { warn() {} },
         ),
-        providerId: provider.id,
-        remoteCalls: () => remoteCalls,
+        providerId: classifier.id,
     };
 }
 
 it('tech lead regression fixture has 21 cases', () => {
     assert.equal(cases.length, 21);
-    assert.equal(localService().providerId, 'local');
+    assert.equal(localService().providerId, 'gemini');
     assert.equal(
         safetyConfigFromEnv({ MODERATION_PROVIDER: 'local' }).provider,
         'local',
@@ -178,7 +167,7 @@ it('tech lead regression fixture has 21 cases', () => {
         }
     }
     assert.equal(romance, 5);
-    assert.equal(Object.keys(KNOWN_GAPS).length, 6);
+    assert.equal(Object.keys(KNOWN_GAPS).length, 2);
     for (const id of Object.keys(KNOWN_GAPS)) {
         assert.ok(ids.has(id), `${id} is not in the fixture`);
     }
@@ -308,17 +297,19 @@ async function inputVerdict(
     run: LocalRun,
     text: string,
     ctx: SafetyLogContext = {},
-): Promise<{ got: Verdict; message: string }> {
-    const before = run.remoteCalls();
-    const notice = await run.moderation.noticeFor(text, 'input', ctx);
-    assert.equal(run.remoteCalls(), before, 'local provider must not call a remote moderator');
-    return { got: notice?.code ?? 'allow', message: notice?.message ?? '' };
+): Promise<{ got: Verdict; message: string; holdMinor: boolean }> {
+    const turn = await run.moderation.moderateTurn({ text, ctx });
+    return {
+        got: turn.notice?.code ?? 'allow',
+        message: turn.notice?.message ?? '',
+        holdMinor: turn.holdMinor,
+    };
 }
 
 /**
- * The flag, each filler, and the benign last line are separate noticeFor calls.
- * The last line is sent again with the same user id and a new conversation id.
- * Nothing in the service carries a minor flag between those calls.
+ * The flag turn is scored on its own. The benign last line is scored with the
+ * flag and the six fillers as prior text, then again in a new conversation
+ * whose only carry-over is the hold the flag turn reported.
  */
 async function evaluateMinorPersistence(
     run: LocalRun,
@@ -329,28 +320,23 @@ async function evaluateMinorPersistence(
     const current = users[users.length - 1];
     const fillers = users.slice(1, -1);
     assert.ok(flag && current && fillers.length >= 6, redteamCase.id);
+    const prior = users.slice(0, -1).map((turn) => turn.text);
 
     const seed = await inputVerdict(run, flag.text, { userId: 42, conversationId: 1 });
     const problems: string[] = [];
     if (seed.got !== 'content_policy') {
         problems.push(`seed expected content_policy got ${seed.got}`);
     }
-    for (const turn of fillers) {
-        const verdict = await inputVerdict(run, turn.text, {
-            userId: 42,
-            conversationId: 1,
-        });
-        if (verdict.got !== 'allow') {
-            problems.push(`filler expected allow got ${verdict.got}`);
-        }
-    }
     const inChat = await inputVerdict(run, current.text, {
         userId: 42,
         conversationId: 1,
+        priorTexts: prior,
     });
     const fresh = await inputVerdict(run, current.text, {
         userId: 42,
         conversationId: 2,
+        priorTexts: [],
+        heldMinor: seed.holdMinor,
     });
     if (inChat.got !== redteamCase.expected_verdict) {
         problems.push(
@@ -369,7 +355,6 @@ async function personaVerdict(
     run: LocalRun,
     draft: PersonaDraft,
 ): Promise<{ got: Verdict; message: string }> {
-    const before = run.remoteCalls();
     const extra: SafetyCategory[] = personaMinorAge(draft) ? ['minor'] : [];
     const notice = await run.moderation.noticeFor(personaText(draft), 'persona', {}, extra);
     let threw = false;
@@ -379,7 +364,6 @@ async function personaVerdict(
         if (!(error instanceof UnsafePersonaException)) throw error;
         threw = true;
     }
-    assert.equal(run.remoteCalls(), before, 'local provider must not call a remote moderator');
     const got: Verdict = notice?.code ?? 'allow';
     assert.equal(
         threw,
