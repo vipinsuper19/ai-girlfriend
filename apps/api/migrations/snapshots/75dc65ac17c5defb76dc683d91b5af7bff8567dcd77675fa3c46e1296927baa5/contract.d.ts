@@ -38,7 +38,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'3be5e56b6c2f0c213600f79ff21c070dde7aab88682d334e633205f01f529fbf'>;
+  StorageHashBase<'75dc65ac17c5defb76dc683d91b5af7bff8567dcd77675fa3c46e1296927baa5'>;
 export type ExecutionHash =
   ExecutionHashBase<'7373d8b0c1639fe64c311f9ad25bc4bb248774a7ee637791a274d6165c4d1fc1'>;
 export type ProfileHash =
@@ -343,14 +343,6 @@ export type FieldOutputTypes = {
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
-    readonly DeletionRequest: {
-      readonly id: CodecTypes['pg/int4@1']['output'];
-      readonly email: CodecTypes['pg/text@1']['output'];
-      readonly note: CodecTypes['pg/text@1']['output'];
-      readonly tokenHash: CodecTypes['pg/text@1']['output'];
-      readonly confirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
-      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
-    };
     readonly DeviceToken: {
       readonly id: CodecTypes['pg/int4@1']['output'];
       readonly userId: CodecTypes['pg/int4@1']['output'];
@@ -482,6 +474,7 @@ export type FieldOutputTypes = {
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly memoryPausedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly notificationsEnabledAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
   };
 };
@@ -582,14 +575,6 @@ export type FieldInputTypes = {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
-    };
-    readonly DeletionRequest: {
-      readonly id: CodecTypes['pg/int4@1']['input'];
-      readonly email: CodecTypes['pg/text@1']['input'];
-      readonly note: CodecTypes['pg/text@1']['input'];
-      readonly tokenHash: CodecTypes['pg/text@1']['input'];
-      readonly confirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
-      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
     };
     readonly DeviceToken: {
       readonly id: CodecTypes['pg/int4@1']['input'];
@@ -722,6 +707,7 @@ export type FieldInputTypes = {
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly memoryPausedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly notificationsEnabledAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
   };
 };
@@ -822,14 +808,6 @@ export type StorageColumnTypes = {
       readonly title: CodecTypes['pg/text@1']['output'] | null;
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly userId: CodecTypes['pg/int4@1']['output'];
-    };
-    readonly deletionRequest: {
-      readonly confirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
-      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
-      readonly email: CodecTypes['pg/text@1']['output'];
-      readonly id: CodecTypes['pg/int4@1']['output'];
-      readonly note: CodecTypes['pg/text@1']['output'];
-      readonly tokenHash: CodecTypes['pg/text@1']['output'];
     };
     readonly deviceToken: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -951,6 +929,7 @@ export type StorageColumnTypes = {
       readonly userId: CodecTypes['pg/int4@1']['output'];
     };
     readonly user: {
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly avatarUrl: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
@@ -1062,14 +1041,6 @@ export type StorageColumnInputTypes = {
       readonly title: CodecTypes['pg/text@1']['input'] | null;
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly userId: CodecTypes['pg/int4@1']['input'];
-    };
-    readonly deletionRequest: {
-      readonly confirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
-      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
-      readonly email: CodecTypes['pg/text@1']['input'];
-      readonly id: CodecTypes['pg/int4@1']['input'];
-      readonly note: CodecTypes['pg/text@1']['input'];
-      readonly tokenHash: CodecTypes['pg/text@1']['input'];
     };
     readonly deviceToken: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
@@ -1191,6 +1162,7 @@ export type StorageColumnInputTypes = {
       readonly userId: CodecTypes['pg/int4@1']['input'];
     };
     readonly user: {
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly avatarUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
@@ -1978,66 +1950,6 @@ type ContractBase = Omit<
                   };
                 },
               ];
-            };
-            readonly deletionRequest: {
-              columns: {
-                readonly id: {
-                  readonly nativeType: 'int4';
-                  readonly codecId: 'pg/int4@1';
-                  readonly nullable: false;
-                  readonly default: {
-                    readonly kind: 'function';
-                    readonly expression: 'autoincrement()';
-                  };
-                };
-                readonly email: {
-                  readonly nativeType: 'text';
-                  readonly codecId: 'pg/text@1';
-                  readonly nullable: false;
-                };
-                readonly note: {
-                  readonly nativeType: 'text';
-                  readonly codecId: 'pg/text@1';
-                  readonly nullable: false;
-                  readonly default: {
-                    readonly kind: 'literal';
-                    readonly value: DefaultLiteralValue<'pg/text@1', ''>;
-                  };
-                };
-                readonly tokenHash: {
-                  readonly nativeType: 'text';
-                  readonly codecId: 'pg/text@1';
-                  readonly nullable: false;
-                };
-                readonly confirmedAt: {
-                  readonly nativeType: 'timestamptz';
-                  readonly codecId: 'pg/timestamptz-string@1';
-                  readonly nullable: true;
-                };
-                readonly createdAt: {
-                  readonly nativeType: 'timestamptz';
-                  readonly codecId: 'pg/timestamptz-string@1';
-                  readonly nullable: false;
-                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
-                };
-              };
-              primaryKey: { readonly columns: readonly ['id'] };
-              uniques: readonly [{ readonly columns: readonly ['tokenHash'] }];
-              indexes: readonly [
-                {
-                  readonly name: 'deletionRequest_email_idx_46df9cad';
-                  readonly prefix: 'deletionRequest_email_idx';
-                  readonly columns: readonly ['email'];
-                  readonly unique: false;
-                },
-                {
-                  readonly name: 'deletionRequest_createdAt_idx_9575dbd7';
-                  readonly prefix: 'deletionRequest_createdAt_idx';
-                  readonly columns: readonly ['createdAt'];
-                  readonly unique: false;
-                },
-              ];
-              foreignKeys: readonly [];
             };
             readonly deviceToken: {
               columns: {
@@ -3157,6 +3069,11 @@ type ContractBase = Omit<
                   readonly codecId: 'pg/timestamptz-string@1';
                   readonly nullable: true;
                 };
+                readonly ageConfirmedAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: true;
+                };
               };
               primaryKey: { readonly columns: readonly ['id'] };
               uniques: readonly [{ readonly columns: readonly ['email'] }];
@@ -3340,10 +3257,6 @@ type ContractBase = Omit<
     readonly usageRecord: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'UsageRecord';
-    };
-    readonly deletionRequest: {
-      readonly namespace: 'public' & NamespaceId;
-      readonly model: 'DeletionRequest';
     };
     readonly messageReport: {
       readonly namespace: 'public' & NamespaceId;
@@ -4126,53 +4039,6 @@ type ContractBase = Omit<
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly updatedAt: { readonly column: 'updatedAt' };
                 readonly deletedAt: { readonly column: 'deletedAt' };
-              };
-            };
-          };
-          readonly DeletionRequest: {
-            readonly fields: {
-              readonly id: {
-                readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
-              };
-              readonly email: {
-                readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
-              };
-              readonly note: {
-                readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
-              };
-              readonly tokenHash: {
-                readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
-              };
-              readonly confirmedAt: {
-                readonly nullable: true;
-                readonly type: {
-                  readonly kind: 'scalar';
-                  readonly codecId: 'pg/timestamptz-string@1';
-                };
-              };
-              readonly createdAt: {
-                readonly nullable: false;
-                readonly type: {
-                  readonly kind: 'scalar';
-                  readonly codecId: 'pg/timestamptz-string@1';
-                };
-              };
-            };
-            readonly relations: Record<string, never>;
-            readonly storage: {
-              readonly table: 'deletionRequest';
-              readonly namespaceId: 'public';
-              readonly fields: {
-                readonly id: { readonly column: 'id' };
-                readonly email: { readonly column: 'email' };
-                readonly note: { readonly column: 'note' };
-                readonly tokenHash: { readonly column: 'tokenHash' };
-                readonly confirmedAt: { readonly column: 'confirmedAt' };
-                readonly createdAt: { readonly column: 'createdAt' };
               };
             };
           };
@@ -5083,6 +4949,13 @@ type ContractBase = Omit<
                   readonly codecId: 'pg/timestamptz-string@1';
                 };
               };
+              readonly ageConfirmedAt: {
+                readonly nullable: true;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
             };
             readonly relations: {
               readonly accounts: {
@@ -5219,6 +5092,7 @@ type ContractBase = Omit<
                 readonly deletedAt: { readonly column: 'deletedAt' };
                 readonly memoryPausedAt: { readonly column: 'memoryPausedAt' };
                 readonly notificationsEnabledAt: { readonly column: 'notificationsEnabledAt' };
+                readonly ageConfirmedAt: { readonly column: 'ageConfirmedAt' };
               };
             };
           };

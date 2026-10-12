@@ -38,7 +38,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'3be5e56b6c2f0c213600f79ff21c070dde7aab88682d334e633205f01f529fbf'>;
+  StorageHashBase<'35dded391026aaab7feff2d1a78eab124cde1e1979229f05536fb52c1b6a1617'>;
 export type ExecutionHash =
   ExecutionHashBase<'7373d8b0c1639fe64c311f9ad25bc4bb248774a7ee637791a274d6165c4d1fc1'>;
 export type ProfileHash =
@@ -482,6 +482,7 @@ export type FieldOutputTypes = {
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly memoryPausedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly notificationsEnabledAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
   };
 };
@@ -722,6 +723,7 @@ export type FieldInputTypes = {
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly memoryPausedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly notificationsEnabledAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
   };
 };
@@ -951,6 +953,7 @@ export type StorageColumnTypes = {
       readonly userId: CodecTypes['pg/int4@1']['output'];
     };
     readonly user: {
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly avatarUrl: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
@@ -1191,6 +1194,7 @@ export type StorageColumnInputTypes = {
       readonly userId: CodecTypes['pg/int4@1']['input'];
     };
     readonly user: {
+      readonly ageConfirmedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly avatarUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly deletedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
@@ -3157,6 +3161,11 @@ type ContractBase = Omit<
                   readonly codecId: 'pg/timestamptz-string@1';
                   readonly nullable: true;
                 };
+                readonly ageConfirmedAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: true;
+                };
               };
               primaryKey: { readonly columns: readonly ['id'] };
               uniques: readonly [{ readonly columns: readonly ['email'] }];
@@ -5083,6 +5092,13 @@ type ContractBase = Omit<
                   readonly codecId: 'pg/timestamptz-string@1';
                 };
               };
+              readonly ageConfirmedAt: {
+                readonly nullable: true;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
             };
             readonly relations: {
               readonly accounts: {
@@ -5219,6 +5235,7 @@ type ContractBase = Omit<
                 readonly deletedAt: { readonly column: 'deletedAt' };
                 readonly memoryPausedAt: { readonly column: 'memoryPausedAt' };
                 readonly notificationsEnabledAt: { readonly column: 'notificationsEnabledAt' };
+                readonly ageConfirmedAt: { readonly column: 'ageConfirmedAt' };
               };
             };
           };

@@ -3216,6 +3216,13 @@
           },
           "User": {
             "fields": {
+              "ageConfirmedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
               "avatarUrl": {
                 "nullable": true,
                 "type": {
@@ -3469,6 +3476,9 @@
             },
             "storage": {
               "fields": {
+                "ageConfirmedAt": {
+                  "column": "ageConfirmedAt"
+                },
                 "avatarUrl": {
                   "column": "avatarUrl"
                 },
@@ -6041,6 +6051,11 @@
                 }
               ],
               "columns": {
+                "ageConfirmedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
                 "avatarUrl": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -6320,7 +6335,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "3be5e56b6c2f0c213600f79ff21c070dde7aab88682d334e633205f01f529fbf",
+    "storageHash": "35dded391026aaab7feff2d1a78eab124cde1e1979229f05536fb52c1b6a1617",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",
