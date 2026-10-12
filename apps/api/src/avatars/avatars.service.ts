@@ -10,8 +10,8 @@ import type { UpdateAvatarDto } from './dto/update-avatar.dto.js';
 import { StorageService } from '../storage/storage.service.js';
 import {
     appearanceFields,
+    canonicalizeAppearance,
     type FieldPick,
-    ownAvatarUrl,
     personalityFields,
     voiceFields,
 } from './companion-fields.js';
@@ -185,11 +185,10 @@ export class AvatarsService {
         );
 
         const appearance = dto.appearance
-            ? checked(appearanceFields(dto.appearance))
+            ? checked(appearanceFields(
+                canonicalizeAppearance(dto.appearance, numericCompanionId),
+            ))
             : null;
-        if (appearance && 'avatarUrl' in appearance) {
-            appearance.avatarUrl = ownAvatarUrl(appearance.avatarUrl, numericCompanionId);
-        }
         const personality = dto.personality
             ? checked(personalityFields(dto.personality))
             : null;

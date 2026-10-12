@@ -1028,8 +1028,12 @@ produces `audio/mp4` (AAC), which *is* on the accepted list. Voice on web cannot
 backend transcodes or the provider is given a supported container. Detail in
 [`04-chat-and-voice.md`](./04-chat-and-voice.md).
 
-**`GET /uploads/**` is public.** Voice notes and companion avatars are at guessable paths with no
-authorisation. The browser plays them by fetching Nest directly — the one place the BFF is bypassed.
+**Media URLs are signed and short-lived.** The database stores a stable `/uploads/...` key.
+JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a signed URL
+(`STORAGE_SIGNED_URL_TTL_SECONDS`). The local driver rejects `GET /uploads/**` without a valid
+`exp` and `sig`. The S3 driver (Supabase Storage on the Render deploy) returns a presigned URL
+for a private bucket. The browser still fetches the file directly — an `<audio>` or `<img>` cannot
+send the session cookie, which is why the URL itself is the credential, and why it expires.
 
 ### 8.3 Other API facts later documents discovered
 

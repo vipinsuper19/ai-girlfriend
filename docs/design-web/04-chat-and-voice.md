@@ -90,11 +90,12 @@ the `Response` directly.
 `text/event-stream` response. The only genuine non-200 is a guard rejection (§3.7). Status codes are
 not a usable signal here; frames are.
 
-**`CreateMessageDto.audioUrl` and `imageUrl` are validated with `@IsUrl()`.** A relative
-`/uploads/voice/…` path — the only kind `StorageService.save` returns — fails that validator, and the
-global `ValidationPipe` runs with `forbidNonWhitelisted: true`. Text sends are unaffected, but any
-future "send this voice note as a message" flow is blocked until the DTO relaxes or the API returns
-absolute URLs.
+**`CreateMessageDto.audioUrl` and `imageUrl` are validated with `@IsUrl()`.** The value
+`StorageService.save` persists is a relative `/uploads/voice/…` key, and the local driver's signed
+URL is that key plus `exp` and `sig`. Both fail `@IsUrl()`. An S3 presigned URL is absolute and
+passes. The global `ValidationPipe` runs with `forbidNonWhitelisted: true`. Text sends are
+unaffected, but a "send this voice note as a message" flow on the local driver stays blocked until
+the DTO relaxes.
 
 ---
 
@@ -521,8 +522,9 @@ which occurred, which is why voice cannot be diagnosed from the front end today.
 *The user's own audio will not play back even if transcription succeeds.*
 `VoiceService.getAudioExtension` looks the MIME type up as an exact key in a map containing
 `'audio/webm'` but not `'audio/webm;codecs=opus'`, so the parameterised type misses and the file is
-stored as `.audio`. `useStaticAssets` then serves it with no usable `Content-Type` and `<audio>`
-refuses it. Safari's plain `audio/mp4` maps to `.m4a` correctly, so this failure is Chrome- and
+stored as `.audio`. The download handler then serves that extension as
+`application/octet-stream`, and `<audio>` refuses it. Safari's plain `audio/mp4` maps to `.m4a`
+correctly, so this failure is Chrome- and
 Firefox-only — the most common browsers, in the least obvious way. `mimeType.startsWith('audio/')`
 passes throughout, so nothing rejects the upload; it simply produces an unplayable file.
 
@@ -579,22 +581,12 @@ mis-transcription is common, and without it the user sees her answer a question 
 no way to work out why. The label matters as much as the text — an unlabelled outgoing bubble
 containing words the user never typed is confusing in its own right.
 
-Playback is a plain `<audio>` element owned by `AudioMessage`. `StorageService.save` returns a
-**relative** path — `/uploads/voice/{userId}/{uuid}.wav` — which must be resolved against the API base
-URL rather than the web origin. On web that means the browser fetches from the Nest origin directly,
-and it is **the one place the BFF is bypassed**: an `<audio src>` cannot carry a cookie-derived
-Authorization header, and proxying media through a route handler means either buffering it or
-reimplementing range requests, neither worth it for a voice note.
-
-That works today because `main.ts` mounts `useStaticAssets(join(process.cwd(), 'uploads'), { prefix:
-'/uploads/' })` with no guard: `GET /uploads/**` is public. It is also a privacy problem worth
-raising now. **Every voice note in the product — the user's recordings and her replies — is served
-from an unauthenticated URL with no expiry.** Filenames are UUIDv4, so they are not guessable by
-brute force, and that is the only thing protecting them: the user directory is enumerable, the URL is
-a bearer token that never expires, and anything that leaks one — a referrer header, browser-history
-sync, a proxy log — leaks the audio permanently. In a product whose content is intimate by design,
-"the path is hard to guess" is not an authorisation model. The fix is signed time-limited URLs or an
-authenticated media route; the design is indifferent to which.
+Playback is a plain `<audio>` element owned by `AudioMessage`. The database keeps a stable
+`/uploads/voice/{userId}/{uuid}.wav` key. The JSON response replaces `audioUrl` with a short-lived
+signed URL. A local-driver URL is still relative (`/uploads/voice/...?exp=&sig=`), so the web app
+resolves it against the API origin. An S3 URL is already absolute. Either way the browser fetches
+the file directly, and it is **the one place the BFF is bypassed**: an `<audio src>` cannot carry a
+cookie-derived Authorization header. The signature is the credential, and it expires.
 
 ### 8.5 Two backend blockers on voice
 
@@ -774,7 +766,7 @@ whether to transcode server-side before the STT call (correct, backend work) or 
 browser via an `AudioWorklet` (unblocks the client alone, more code, larger uploads). It needs
 answering before the voice UI is built, not after.
 
-**The unauthenticated `/uploads/` path.** `GET /uploads/**` is public with no expiry and is where
-every voice note in the product lives (§8.4); UUIDv4 filenames are the entire access control. Signed
-URLs or an authenticated media route — a backend decision, and the design is indifferent to which,
-but shipping voice without one means shipping intimate audio on permanent public URLs.
+**Download URLs expire.** `GET /uploads/**` is no longer a public directory. The local driver
+checks `exp` and `sig`, and the S3 driver returns a presigned URL for a private bucket (§8.4).
+The TTL is `STORAGE_SIGNED_URL_TTL_SECONDS`. A client that caches a media URL past that window
+has to refetch the message, image, or companion to get a fresh one.

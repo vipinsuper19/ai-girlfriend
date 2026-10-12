@@ -63,6 +63,14 @@ clients hide the matching controls, so nothing is faked.
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
 | `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
 | `CORS_ORIGIN`, `PORT` | HTTP server |
+| `STORAGE_DRIVER` | `local` (default) or `s3` |
+| `STORAGE_SIGNED_URL_TTL_SECONDS` | Lifetime of a download URL. Default 3600, range 60–86400 |
+| `STORAGE_LOCAL_DIR`, `STORAGE_SIGNING_SECRET` | Local driver. The signing secret falls back to `JWT_ACCESS_SECRET` |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | S3-compatible driver. Required together when `STORAGE_DRIVER=s3` |
+
+Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
+
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Deleting an account deletes that user's objects.
 
 ### Google Play subscriptions
 

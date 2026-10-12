@@ -61,8 +61,8 @@ export class UsersService {
     }
 
     /**
-     * Everything stored for this account, as one JSON document. Message rows
-     * keep their media paths; the files stay at those URLs.
+     * Everything stored for this account, as one JSON document. Media fields
+     * are signed on the way out, the same as every other response.
      */
     async exportMe(userId: string) {
         const db = this.prisma.client as any;
