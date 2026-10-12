@@ -37,7 +37,13 @@ $ pnpm install
 $ pnpm --filter @ai-girlfriend/api run db:migrate
 ```
 
-Render native Node start command, with the repo root as the service root:
+Render runs this API as a native Node service, not the image from `apps/api/Dockerfile`. The service root is the repository root, and `render.yaml` sets Node 24. The build command installs devDependencies (production `NODE_ENV` would omit the TypeScript toolchain) and compiles:
+
+```bash
+pnpm install --frozen-lockfile --prod=false && pnpm --filter @ai-girlfriend/api build
+```
+
+The start command migrates, then listens:
 
 ```bash
 pnpm --filter @ai-girlfriend/api run db:migrate && pnpm --filter @ai-girlfriend/api start:prod
@@ -94,6 +100,32 @@ Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE
 The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
+
+`node dist/main` validates the environment before it listens. Production refuses to boot when a required secret is missing, when `MODERATION_ENABLED=false`, when `MODERATION_PROVIDER=local`, or when `STORAGE_DRIVER` is not `s3`.
+
+### Secret manager
+
+Put these in the Render dashboard (Blueprint `sync: false` on the service). They are not in git. `sync: false` inside an env group does not prompt, so the secrets stay on the service and the non-secret defaults stay in the `ai-girlfriend-api-config` group.
+
+| Secret | Required in production |
+| --- | --- |
+| `DATABASE_URL` | Yes. Supabase session pooler, port 5432 |
+| `DIRECT_URL` | Yes. Same pooler, used by migrations |
+| `JWT_ACCESS_SECRET` | Yes. At least 32 characters |
+| `JWT_REFRESH_SECRET` | Yes. At least 32 characters |
+| `GEMINI_API_KEY` | Yes. Chat, embeddings, images, and moderation unless OpenAI is set |
+| `SMTP_URL` | Yes. Includes the mailbox password |
+| `S3_ACCESS_KEY_ID` | Yes. Supabase Storage → S3 |
+| `S3_SECRET_ACCESS_KEY` | Yes. Private bucket |
+| `JWT_RESET_SECRET` | No. Falls back to a value derived from `JWT_ACCESS_SECRET` |
+| `OPENAI_API_KEY` | No. Moderation when that provider is selected |
+| `STORAGE_SIGNING_SECRET` | No. Local downloads fall back to `JWT_ACCESS_SECRET` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | No. Push stays off until it is set |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | No. Play billing stays off until it is set |
+
+These are not credentials, but they differ per deploy, so they are `sync: false` as well: `CORS_ORIGIN`, `APP_URL`, `MAIL_FROM`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`.
+
+Storage variables (`STORAGE_DRIVER`, `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_LOCAL_DIR`, `S3_FORCE_PATH_STYLE`) are not secrets. Production sets `STORAGE_DRIVER=s3`. Account deletion retries `storageCleanup`, then `deleteAccountStorageFirst` calls `StorageService.removeUserFiles` and records any failures before `deleteAccountRecords` removes the user row.
 
 ### Google Play subscriptions
 

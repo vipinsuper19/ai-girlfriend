@@ -28,6 +28,25 @@ function account(email = 'User@Example.com') {
                 DeletionRequest: chain('deletion-requests'),
             },
         },
+        raw: {
+            sql() {
+                return {
+                    returnsRow() {
+                        return { build: () => ({ kind: 'probe' }) };
+                    },
+                    affectedCount() {
+                        return { build: () => ({ kind: 'delete' }) };
+                    },
+                };
+            },
+        },
+        async transaction(fn: (tx: unknown) => Promise<void>) {
+            await fn({
+                orm: this.orm,
+                query: async () => [{ name: null }],
+                execute: async () => undefined,
+            });
+        },
     };
     return { client, calls };
 }
@@ -66,7 +85,7 @@ test('account deletion removes files, then deletion requests, then the user row'
     await users.deleteMe('3');
 
     assert.deepEqual(order, ['retry', 'storage']);
-    assert.deepEqual(calls, ['session', 'deletion-requests', 'user']);
+    assert.deepEqual(calls, ['deletion-requests', 'user']);
 });
 
 test('a failed object delete is recorded, then deletion requests and the user row go', async () => {
@@ -84,7 +103,7 @@ test('a failed object delete is recorded, then deletion requests and the user ro
 
     assert.deepEqual(order, ['retry', 'storage', 'record']);
     assert.deepEqual(recorded, [[{ key: 'voice/3/', error: 'timeout' }]]);
-    assert.deepEqual(calls, ['session', 'deletion-requests', 'user']);
+    assert.deepEqual(calls, ['deletion-requests', 'user']);
 });
 
 test('an incomplete file listing leaves the account and its deletion requests', async () => {
