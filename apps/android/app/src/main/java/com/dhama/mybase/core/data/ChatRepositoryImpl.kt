@@ -19,9 +19,11 @@ import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.LastUserReplyApi
 import com.dhama.mybase.core.network.RemoteMessage
+import com.dhama.mybase.core.network.RemoteSendFailure
 import com.dhama.mybase.core.network.STALLED_STREAM
 import com.dhama.mybase.core.network.StreamIdleException
-import com.dhama.mybase.core.network.clientMessageId
+import com.dhama.mybase.core.network.remoteSendFailure
+import com.dhama.mybase.core.network.serverLocalId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.network.toRestored
 import com.dhama.mybase.core.voice.resolveVoiceUrl
@@ -199,17 +201,14 @@ class ChatRepositoryImpl(
                         built.clear()
                         built.append(finalText)
                         finished = true
-                        dao.upsert(
-                            ChatMessageEntity(
-                                id = assistantId,
-                                role = ROLE_ASSISTANT,
-                                text = finalText,
-                                createdAtEpochMs = now + 1,
-                                delivery = DELIVERY_SENT,
-                            ),
-                        )
+                        storeFinishedReply(assistantId, event.serverMessageId, finalText, now + 1)
                     }
-                    is ChatStreamEvent.Error -> throw ApiStatusException(0, event.message, event.code)
+                    is ChatStreamEvent.Error -> throw ApiStatusException(
+                        0,
+                        event.message,
+                        event.code,
+                        event.retryAfterSeconds,
+                    )
                     is ChatStreamEvent.UserMessage -> userAccepted = true
                 }
             }
@@ -248,6 +247,16 @@ class ChatRepositoryImpl(
                 dao.delete(userLocalId)
                 throw error
             }
+            if (isRateLimited(error)) {
+                markReplyFailed(
+                    assistantId,
+                    built.toString(),
+                    now,
+                    error.message ?: "Too many requests. Try again later.",
+                    "FAILED",
+                )
+                throw error
+            }
             if (streamRecovery(userAccepted, built.isNotEmpty(), finished) == StreamRecovery.Fallback) {
                 try {
                     deliverBlocking(conversationId, text, userLocalId, assistantId, now, clientMessageId)
@@ -258,6 +267,16 @@ class ChatRepositoryImpl(
                     if (isUsageLimit(fallback)) {
                         dao.delete(assistantId)
                         dao.delete(userLocalId)
+                        throw fallback
+                    }
+                    if (isRateLimited(fallback)) {
+                        markReplyFailed(
+                            assistantId,
+                            "",
+                            now,
+                            fallback.message ?: "Too many requests. Try again later.",
+                            "FAILED",
+                        )
                         throw fallback
                     }
                     markReplyFailed(
@@ -281,7 +300,32 @@ class ChatRepositoryImpl(
     }
 
     private fun isUsageLimit(error: Throwable): Boolean {
-        return error is ApiStatusException && error.code == "USAGE_LIMIT_EXCEEDED"
+        return error is ApiStatusException &&
+            remoteSendFailure(error.status, error.code) == RemoteSendFailure.UsageLimit
+    }
+
+    private fun isRateLimited(error: Throwable): Boolean {
+        return error is ApiStatusException &&
+            remoteSendFailure(error.status, error.code) == RemoteSendFailure.RateLimited
+    }
+
+    private suspend fun storeFinishedReply(
+        placeholderId: String,
+        serverMessageId: Int?,
+        text: String,
+        createdAtEpochMs: Long,
+    ) {
+        val id = serverMessageId?.let { serverLocalId(it) } ?: placeholderId
+        if (id != placeholderId) dao.delete(placeholderId)
+        dao.upsert(
+            ChatMessageEntity(
+                id = id,
+                role = ROLE_ASSISTANT,
+                text = text,
+                createdAtEpochMs = createdAtEpochMs,
+                delivery = DELIVERY_SENT,
+            ),
+        )
     }
 
     private suspend fun deliverBlocking(
@@ -369,8 +413,9 @@ class ChatRepositoryImpl(
         reload(conversationId)
         val ordered = orderedThread()
         if (!endsWithUserMessage(ordered.map { it.role }, ordered.map { it.kind })) return
-        val userAt = ordered.last { it.kind != ChatMessageEntity.KIND_SYSTEM }.createdAtEpochMs
-        finishLastUserReply(conversationId, userAt)
+        val user = ordered.last { it.kind != ChatMessageEntity.KIND_SYSTEM }
+        if (user.role != ROLE_USER) return
+        streamLastUserReply(conversationId, user)
     }
 
     override suspend fun retryUnsent(
@@ -382,55 +427,105 @@ class ChatRepositoryImpl(
         clientMessageId: String,
         failedLocalId: String,
     ) {
-        if (conversationId != null) {
-            val remote = try {
-                api.listMessages(conversationId, limit = MESSAGE_PAGE)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                null
-            }
-            if (remote != null && remote.any { it.clientMessageId() == clientMessageId }) {
-                if (failedLocalId != clientMessageId) discard(failedLocalId)
-                reload(conversationId)
-                val tail = remote.lastOrNull()
-                val landed = tail?.role == ROLE_USER && tail.clientMessageId() == clientMessageId
-                if (landed) {
-                    val userAt = orderedThread()
-                        .lastOrNull { it.role == ROLE_USER }
-                        ?.createdAtEpochMs
-                        ?: System.currentTimeMillis()
-                    finishLastUserReply(conversationId, userAt)
-                }
-                return
-            }
-        }
         if (failedLocalId != clientMessageId) discard(failedLocalId)
         send(text, name, relationship, traits, conversationId, clientMessageId)
     }
 
-    private suspend fun finishLastUserReply(conversationId: Int, userAt: Long) {
+    private suspend fun streamLastUserReply(conversationId: Int, user: ChatMessageEntity) {
+        val userMessageId = serverRecordId(user.id) ?: return
+        val assistantId = UUID.randomUUID().toString()
+        val userAt = user.createdAtEpochMs
+        val built = StringBuilder()
+        var finished = false
+        dao.upsert(
+            ChatMessageEntity(
+                id = assistantId,
+                role = ROLE_ASSISTANT,
+                text = "",
+                createdAtEpochMs = userAt + 1,
+                delivery = DELIVERY_STREAMING,
+            ),
+        )
         try {
-            val reply = lastUserReply.replyToLastUserMessage(conversationId)
-            val stored = reply.toStored(api.origin())
-            dao.upsert(
-                stored.copy(
-                    createdAtEpochMs = stored.createdAtEpochMs.takeIf { it > userAt } ?: userAt + 1,
-                ),
-            )
+            lastUserReply.replyToLastUserMessage(conversationId, userMessageId) { event ->
+                when (event) {
+                    is ChatStreamEvent.Delta -> {
+                        built.append(event.content)
+                        dao.upsert(
+                            ChatMessageEntity(
+                                id = assistantId,
+                                role = ROLE_ASSISTANT,
+                                text = built.toString(),
+                                createdAtEpochMs = userAt + 1,
+                                delivery = DELIVERY_STREAMING,
+                            ),
+                        )
+                    }
+                    is ChatStreamEvent.Done -> {
+                        val finalText = event.content.ifBlank { built.toString() }
+                        built.clear()
+                        built.append(finalText)
+                        finished = true
+                        storeFinishedReply(assistantId, event.serverMessageId, finalText, userAt + 1)
+                    }
+                    is ChatStreamEvent.Error -> throw ApiStatusException(
+                        0,
+                        event.message,
+                        event.code,
+                        event.retryAfterSeconds,
+                    )
+                    is ChatStreamEvent.UserMessage -> Unit
+                }
+            }
+            if (!finished) {
+                markReplyFailed(assistantId, built.toString(), userAt, "Something went wrong.", DELIVERY_DROPPED)
+            }
         } catch (error: CancellationException) {
+            dao.delete(assistantId)
             throw error
-        } catch (error: Exception) {
-            dao.upsert(
-                ChatMessageEntity(
-                    id = UUID.randomUUID().toString(),
-                    role = ROLE_ASSISTANT,
-                    text = error.message?.takeIf { it.isNotBlank() } ?: STALLED_STREAM,
-                    createdAtEpochMs = userAt + 1,
-                    delivery = DELIVERY_DROPPED,
-                ),
+        } catch (error: StreamIdleException) {
+            markReplyFailed(
+                assistantId,
+                built.toString(),
+                userAt,
+                error.message ?: STALLED_STREAM,
+                DELIVERY_DROPPED,
             )
-            if (isUsageLimit(error)) throw error
+        } catch (error: ApiStatusException) {
+            dao.delete(assistantId)
+            when (remoteSendFailure(error.status, error.code)) {
+                RemoteSendFailure.UsageLimit -> throw error
+                RemoteSendFailure.RateLimited -> {
+                    markReplyFailed(
+                        assistantId,
+                        "",
+                        userAt,
+                        error.message ?: "Too many requests. Try again later.",
+                        DELIVERY_DROPPED,
+                    )
+                    throw error
+                }
+                RemoteSendFailure.NotLatest -> reload(conversationId)
+                RemoteSendFailure.Missing -> {
+                    reload(conversationId)
+                    throw error
+                }
+                RemoteSendFailure.Other -> markReplyFailed(
+                    assistantId,
+                    built.toString(),
+                    userAt,
+                    error.message ?: "Something went wrong.",
+                    DELIVERY_DROPPED,
+                )
+            }
+        } catch (error: Exception) {
+            markReplyFailed(
+                assistantId,
+                built.toString(),
+                userAt,
+                error.message ?: "Something went wrong.",
+                DELIVERY_DROPPED,
+            )
         }
     }
 

@@ -116,30 +116,52 @@ class ApiClient(
                 val call = streamHttp.newCall(
                     jsonPost(
                         "conversations/$conversationId/messages/stream",
-                        messageBody(content, clientMessageId),
+                        MessageBody(content),
                         access,
                         clientMessageId,
                     ),
                 )
-                try {
-                    // The body read blocks a thread, so Stop cancels the Call from the
-                    // cancellation handler. That closes the socket and the server sees it.
-                    coroutineScope {
-                        val scope = this
-                        suspendCancellableCoroutine { continuation ->
-                            continuation.invokeOnCancellation { call.cancel() }
-                            val reader = scope.launch {
-                                readStream(call, onEvent)
-                            }
-                            reader.invokeOnCompletion { error ->
-                                if (error == null && continuation.isActive) continuation.resume(Unit)
-                            }
-                        }
+                openStream(call, onEvent)
+            }
+        }
+    }
+
+    override suspend fun replyToLastUserMessage(
+        conversationId: Int,
+        userMessageId: Int,
+        onEvent: suspend (ChatStreamEvent) -> Unit,
+    ) {
+        withContext(Dispatchers.IO) {
+            withAuth { access ->
+                val call = streamHttp.newCall(
+                    authed("POST", lastUserReplyPath(conversationId, userMessageId), "{}", access),
+                )
+                openStream(call, onEvent)
+            }
+        }
+    }
+
+    private suspend fun openStream(
+        call: Call,
+        onEvent: suspend (ChatStreamEvent) -> Unit,
+    ) {
+        try {
+            // The body read blocks a thread, so Stop cancels the Call from the
+            // cancellation handler. That closes the socket and the server sees it.
+            coroutineScope {
+                val scope = this
+                suspendCancellableCoroutine { continuation ->
+                    continuation.invokeOnCancellation { call.cancel() }
+                    val reader = scope.launch {
+                        readStream(call, onEvent)
                     }
-                } finally {
-                    call.cancel()
+                    reader.invokeOnCompletion { error ->
+                        if (error == null && continuation.isActive) continuation.resume(Unit)
+                    }
                 }
             }
+        } finally {
+            call.cancel()
         }
     }
 
@@ -150,7 +172,9 @@ class ApiClient(
         try {
             call.execute().use { response ->
                 val raw = if (response.isSuccessful) null else response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw apiStatus(response.code, raw.orEmpty(), json)
+                if (!response.isSuccessful) {
+                    throw apiStatus(response.code, raw.orEmpty(), json, response.header("Retry-After"))
+                }
                 val source = response.body?.source() ?: return
                 val timeout = source.timeout()
                 timeout.clearDeadline()
@@ -323,24 +347,13 @@ class ApiClient(
                 execute(
                     jsonPost(
                         "conversations/$conversationId/messages",
-                        messageBody(content, clientMessageId),
+                        MessageBody(content),
                         access,
                         clientMessageId,
                     ),
                 ),
                 json,
             )
-        }
-    }
-
-    override suspend fun replyToLastUserMessage(conversationId: Int): RemoteMessage {
-        return withAuth { access ->
-            val posted = unwrapData<LastUserReplyBody>(
-                execute(authed("POST", lastUserReplyPath(conversationId), "{}", access)),
-                json,
-            )
-            posted.assistantMessage
-                ?: throw ApiStatusException(0, "Couldn't finish that reply.", null)
         }
     }
 
@@ -556,14 +569,6 @@ class ApiClient(
         return request.newBuilder().header(IDEMPOTENCY_KEY_HEADER, key).build()
     }
 
-    private fun messageBody(content: String, clientMessageId: String?): MessageBody {
-        val key = clientMessageId?.takeIf { it.isNotBlank() }
-        return MessageBody(
-            content = content,
-            metadata = key?.let { MessageMetadata(clientMessageId = it) },
-        )
-    }
-
     private fun authed(method: String, path: String, payload: String?, access: String?): Request {
         val builder = Request.Builder().url(url(path))
         if (access != null) builder.header("Authorization", "Bearer $access")
@@ -580,7 +585,7 @@ class ApiClient(
     private suspend fun execute(client: OkHttpClient, request: Request): String = withContext(Dispatchers.IO) {
         client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw apiStatus(response.code, raw, json)
+            if (!response.isSuccessful) throw apiStatus(response.code, raw, json, response.header("Retry-After"))
             raw
         }
     }
@@ -628,16 +633,7 @@ private data class PasswordBody(val currentPassword: String, val newPassword: St
 private data class ConversationBody(val companionId: Int, val title: String)
 
 @Serializable
-private data class MessageBody(
-    val content: String,
-    val metadata: MessageMetadata? = null,
-)
-
-@Serializable
-private data class MessageMetadata(val clientMessageId: String)
-
-@Serializable
-private data class LastUserReplyBody(val assistantMessage: RemoteMessage? = null)
+private data class MessageBody(val content: String)
 
 @Serializable
 private data class IdPayload(val id: Int)

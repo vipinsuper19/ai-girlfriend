@@ -146,14 +146,7 @@ data class RemoteMessage(
     val audioUrl: String? = null,
     val imageUrl: String? = null,
     val createdAt: String? = null,
-    val metadata: JsonObject? = null,
 )
-
-/** Id this client attached when it sent the line, when the row still carries it. */
-fun RemoteMessage.clientMessageId(): String? {
-    val value = metadata?.get(CLIENT_MESSAGE_ID_FIELD) as? JsonPrimitive ?: return null
-    return value.contentOrNull?.takeIf { it.isNotBlank() }
-}
 
 @Serializable
 data class RemoteMemory(

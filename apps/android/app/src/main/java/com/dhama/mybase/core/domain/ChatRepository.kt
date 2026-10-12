@@ -24,8 +24,8 @@ interface ChatRepository {
     /** Reload, then ask for the missing reply when the thread still ends on the user. */
     suspend fun retryUnfinishedReply(conversationId: Int)
     /**
-     * "Not sent · Retry". Reloads first and reuses [clientMessageId] so a line the
-     * server already kept is not posted again.
+     * "Not sent · Retry". Sends again with the same [clientMessageId], which is the
+     * `Idempotency-Key` the API uses to return the existing user message.
      */
     suspend fun retryUnsent(
         text: String,

@@ -59,6 +59,13 @@ class ChatStreamTest {
     }
 
     @Test
+    fun doneCarriesTheAssistantMessageAndIgnoresSafety() {
+        val raw = "event: done\ndata: {\"type\":\"done\",\"message\":{\"id\":2,\"content\":\"Hi\"},\"safety\":{\"code\":\"content_policy\",\"message\":\"no\"}}\n\n"
+        val (events, _) = consumeSse(raw)
+        assertEquals(listOf(ChatStreamEvent.Done("Hi", serverMessageId = 2)), events)
+    }
+
+    @Test
     fun streamErrorKeepsTheUsageLimitCode() {
         val raw = "event: error\ndata: {\"message\":\"Usage limit exceeded for MESSAGES\",\"code\":\"USAGE_LIMIT_EXCEEDED\"}\n\n"
         val (events, _) = consumeSse(raw)

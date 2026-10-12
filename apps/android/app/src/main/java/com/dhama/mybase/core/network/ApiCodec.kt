@@ -12,6 +12,7 @@ class ApiStatusException(
     val status: Int,
     message: String,
     val code: String?,
+    val retryAfterSeconds: Int? = null,
 ) : Exception(message)
 
 @Serializable
@@ -35,11 +36,24 @@ fun sessionDisplayName(email: String): String {
     return if (local.length >= 2) local.take(100) else "Friend"
 }
 
-fun apiStatus(status: Int, body: String, json: Json = apiJson()): ApiStatusException {
+fun apiStatus(
+    status: Int,
+    body: String,
+    json: Json = apiJson(),
+    retryAfterHeader: String? = null,
+): ApiStatusException {
     val parsed = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()
     val code = (parsed?.get("code") as? JsonPrimitive)?.content
     val message = messageText(parsed?.get("message")) ?: "Request failed"
-    return ApiStatusException(status, message, code)
+    val fromBody = (parsed?.get("retryAfterSeconds") as? JsonPrimitive)?.content?.toIntOrNull()
+    return ApiStatusException(status, message, code, retryAfterSeconds(retryAfterHeader, fromBody))
+}
+
+/** `Retry-After` is a delta in seconds on this API. The body field is the fallback. */
+fun retryAfterSeconds(header: String?, bodySeconds: Int?): Int? {
+    val fromHeader = header?.trim()?.toIntOrNull()
+    val seconds = fromHeader ?: bodySeconds
+    return seconds?.takeIf { it > 0 }
 }
 
 inline fun <reified T> unwrapData(body: String, json: Json = apiJson()): T {

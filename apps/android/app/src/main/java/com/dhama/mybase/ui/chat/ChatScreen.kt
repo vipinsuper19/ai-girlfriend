@@ -129,6 +129,8 @@ fun ChatScreen(
     val loadingOlder by viewModel.loadingOlder.collectAsState()
     val regenerableId by viewModel.regenerableId.collectAsState()
     val regenerateNote by viewModel.regenerateNote.collectAsState()
+    val rateLimitNote by viewModel.rateLimitNote.collectAsState()
+    val replyNote by viewModel.replyNote.collectAsState()
     val allowance = planUsage
     val onServer = companion?.conversationId != null
     val showWall = onServer && showMessageWall(allowance, usageBlocked)
@@ -300,6 +302,28 @@ fun ChatScreen(
                     }
                 },
         )
+        rateLimitNote?.let { note ->
+            Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+        replyNote?.let { note ->
+            Row(
+                Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::dismissReplyNote) { Text("OK") }
+            }
+        }
         if (companion?.conversationId == null) {
             OfflineStrip(Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         }
@@ -430,7 +454,7 @@ fun ChatScreen(
             Composer(
                 value = draft,
                 streaming = streaming,
-                enabled = companion != null && aiDisclosureAcknowledged == true,
+                enabled = companion != null && aiDisclosureAcknowledged == true && rateLimitNote == null,
                 recording = recording,
                 locked = locked,
                 cancelling = cancelling,

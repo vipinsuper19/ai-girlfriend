@@ -19,6 +19,9 @@ import com.dhama.mybase.core.domain.CompanionRepository
 import com.dhama.mybase.core.domain.MemoryRepository
 import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.NetworkSignals
+import com.dhama.mybase.core.network.RemoteSendFailure
+import com.dhama.mybase.core.network.rateLimitNotice
+import com.dhama.mybase.core.network.remoteSendFailure
 import com.dhama.mybase.core.network.regenerableReplyId
 import com.dhama.mybase.core.network.serverRecordId
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -104,6 +107,13 @@ class ChatViewModel @Inject constructor(
 
     val serverWake = networkSignals.status
 
+    private val _rateLimitNote = MutableStateFlow<String?>(null)
+    val rateLimitNote = _rateLimitNote.asStateFlow()
+    private var rateLimitUntilMs = 0L
+
+    private val _replyNote = MutableStateFlow<String?>(null)
+    val replyNote = _replyNote.asStateFlow()
+
     init {
         viewModelScope.launch {
             companionRepository.observe().collect { saved ->
@@ -149,7 +159,7 @@ class ChatViewModel @Inject constructor(
     fun send(prompt: String? = null) {
         val text = (prompt ?: _draft.value).trim()
         val saved = companion.value ?: return
-        if (text.isEmpty() || sendJob?.isActive == true) return
+        if (text.isEmpty() || sendJob?.isActive == true || rateLimitOpen()) return
         if (prompt == null) _draft.value = ""
         sendJob = viewModelScope.launch {
             try {
@@ -159,13 +169,13 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
             }
         }
     }
 
     fun sendVoice(path: String, durationMs: Long) {
-        if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true) return
+        if (!FeatureFlags.build.voice || path.isBlank() || sendJob?.isActive == true || rateLimitOpen()) return
         val conversationId = companion.value?.conversationId
         sendJob = viewModelScope.launch {
             val ticker = if (conversationId != null) {
@@ -187,7 +197,7 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
             } finally {
                 ticker?.cancel()
                 _voiceStage.value = null
@@ -212,7 +222,7 @@ class ChatViewModel @Inject constructor(
     val regenerateNote = _regenerateNote.asStateFlow()
 
     fun regenerate(message: ChatMessageEntity) {
-        if (message.id != regenerableId.value || sendJob?.isActive == true) return
+        if (message.id != regenerableId.value || sendJob?.isActive == true || rateLimitOpen()) return
         _regenerateNote.value = null
         sendJob = viewModelScope.launch {
             try {
@@ -221,8 +231,10 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
-                _regenerateNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't regenerate that."
+                noteApiFailure(error)
+                if (remoteSendFailure(error.status, error.code) == RemoteSendFailure.Other) {
+                    _regenerateNote.value = error.message?.takeIf { it.isNotBlank() } ?: "Couldn't regenerate that."
+                }
             } catch (_: Exception) {
                 _regenerateNote.value = "Couldn't regenerate that. Her first reply is still here."
             }
@@ -281,9 +293,13 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun dismissReplyNote() {
+        _replyNote.value = null
+    }
+
     fun retry(failed: ChatMessageEntity) {
         val saved = companion.value ?: return
-        if (sendJob?.isActive == true) return
+        if (sendJob?.isActive == true || rateLimitOpen()) return
         if (retriesByReload(failed.delivery)) {
             val conversationId = saved.conversationId ?: return
             sendJob = viewModelScope.launch {
@@ -293,7 +309,7 @@ class ChatViewModel @Inject constructor(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: ApiStatusException) {
-                    noteUsageLimit(error)
+                    noteApiFailure(error)
                 } catch (_: Exception) {
                     // The dropped reply stays, so Retry can be tapped again.
                 }
@@ -331,7 +347,36 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ApiStatusException) {
-                noteUsageLimit(error)
+                noteApiFailure(error)
+            }
+        }
+    }
+
+    private fun rateLimitOpen(): Boolean = System.currentTimeMillis() < rateLimitUntilMs
+
+    private suspend fun noteApiFailure(error: ApiStatusException) {
+        when (remoteSendFailure(error.status, error.code)) {
+            RemoteSendFailure.UsageLimit -> noteUsageLimit(error)
+            RemoteSendFailure.RateLimited -> noteRateLimit(error)
+            RemoteSendFailure.Missing -> {
+                _replyNote.value = error.message?.takeIf { it.isNotBlank() }
+                    ?: "That message isn't available."
+            }
+            RemoteSendFailure.NotLatest -> _replyNote.value = null
+            RemoteSendFailure.Other -> noteUsageLimit(error)
+        }
+    }
+
+    private fun noteRateLimit(error: ApiStatusException) {
+        val seconds = (error.retryAfterSeconds ?: 1).coerceAtLeast(1)
+        val until = System.currentTimeMillis() + seconds * 1000L
+        rateLimitUntilMs = until
+        _rateLimitNote.value = rateLimitNotice(seconds)
+        viewModelScope.launch {
+            delay(seconds * 1000L)
+            if (rateLimitUntilMs == until) {
+                rateLimitUntilMs = 0L
+                _rateLimitNote.value = null
             }
         }
     }

@@ -4,10 +4,13 @@ import com.dhama.mybase.core.model.AppearanceRequest
 import com.dhama.mybase.core.model.CreateAvatarRequest
 import com.dhama.mybase.core.model.PersonalityRequest
 import com.dhama.mybase.core.model.VoiceRequest
+import com.dhama.mybase.core.network.RemoteSendFailure
 import com.dhama.mybase.core.network.SessionTokens
 import com.dhama.mybase.core.network.apiJson
 import com.dhama.mybase.core.network.apiOrigin
 import com.dhama.mybase.core.network.apiStatus
+import com.dhama.mybase.core.network.rateLimitNotice
+import com.dhama.mybase.core.network.remoteSendFailure
 import com.dhama.mybase.core.network.sessionDisplayName
 import com.dhama.mybase.core.network.unwrapData
 import kotlinx.serialization.encodeToString
@@ -47,6 +50,24 @@ class ApiCodecTest {
         assertEquals(403, error.status)
         assertEquals("USAGE_LIMIT_EXCEEDED", error.code)
         assertEquals("Usage limit exceeded for MESSAGES", error.message)
+        assertEquals(null, error.retryAfterSeconds)
+    }
+
+    @Test
+    fun rateLimitKeepsRetryAfterFromTheHeader() {
+        val error = apiStatus(
+            429,
+            """{"message":"Too many requests. Try again later.","code":"RATE_LIMITED","retryAfterSeconds":4}""",
+            retryAfterHeader = "12",
+        )
+        assertEquals("RATE_LIMITED", error.code)
+        assertEquals(12, error.retryAfterSeconds)
+        assertEquals(4, apiStatus(429, """{"retryAfterSeconds":4}""").retryAfterSeconds)
+        assertEquals("Too many requests. Try again in 12 seconds.", rateLimitNotice(12))
+        assertEquals(RemoteSendFailure.NotLatest, remoteSendFailure(409, "NOT_LATEST_USER_MESSAGE"))
+        assertEquals(RemoteSendFailure.UsageLimit, remoteSendFailure(403, "USAGE_LIMIT_EXCEEDED"))
+        assertEquals(RemoteSendFailure.Missing, remoteSendFailure(404, null))
+        assertEquals(RemoteSendFailure.RateLimited, remoteSendFailure(429, "RATE_LIMITED"))
     }
 
     @Test
