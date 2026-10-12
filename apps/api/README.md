@@ -60,8 +60,8 @@ clients hide the matching controls, so nothing is faked.
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
 | `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL`, `GEMINI_STT_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_IMAGE_MODEL` | Chat, voice, and images |
 | `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
-| `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
-| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
+| `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's JSON classifier when `OPENAI_API_KEY` is set, otherwise Gemini. `local` is the narrow pre-filter only |
+| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `OPENAI_CHAT_MODEL` or `gpt-5-mini`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
 | `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
 | `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint when that provider is selected |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |

@@ -47,11 +47,12 @@ export interface SafetyLogContext {
     userId?: string | number;
     conversationId?: string | number;
     /**
-     * Earlier user lines in this chat, oldest first. Used only for the
-     * multi-turn minor check. Memory text is not included; it is moderated
-     * on its own before it can enter the prompt.
+     * Earlier user lines in this chat, oldest first. A minor age among them
+     * is recorded on the user and the conversation; it is not a sliding window.
      */
     priorTexts?: readonly string[];
+    /** Set when a minor flag is already stored for this user or conversation. */
+    heldMinor?: boolean;
 }
 
 export interface PersonaDraft {
@@ -142,11 +143,9 @@ export function decideSafety(
     surface: ModerationSurface,
     helplines: Helpline[],
 ): SafetyNotice | null {
-    const unique = enforced(categories);
+    const unique = enforced(categories).filter((category) => category !== 'jailbreak');
     if (unique.length === 0) return null;
-    if (unique.includes('sexual_minors') || unique.includes('minor')) {
-        return firmRefusal();
-    }
+    // Crisis outranks a minor flag. Injection alone is not a category here.
     if (surface === 'input' && unique.includes('self_harm')) {
         return {
             action: 'crisis',
@@ -154,6 +153,9 @@ export function decideSafety(
             message: crisisMessage(helplines),
             helplines,
         };
+    }
+    if (unique.includes('sexual_minors') || unique.includes('minor')) {
+        return firmRefusal();
     }
     if (unique.some((category) => HARD_CATEGORIES.has(category) || category === 'self_harm')) {
         return firmRefusal();
@@ -260,6 +262,14 @@ export function parseAge(value: unknown): number | null {
     return embeddedMinorAge(trimmed);
 }
 
+const MINOR_AGE_WORD_RE = new RegExp(
+    `\\b(?:${Object.entries(AGE_WORDS)
+        .filter(([, age]) => age < 18)
+        .map(([word]) => word)
+        .join('|')})\\b`,
+    'gi',
+);
+
 /** "sweet 16" and similar age-field phrases. An exact adult age never reaches here. */
 function embeddedMinorAge(text: string): number | null {
     let youngest: number | null = null;
@@ -271,8 +281,10 @@ function embeddedMinorAge(text: string): number | null {
     for (const match of text.matchAll(/\b(\d+(?:\.\d+)?)\b/g)) {
         consider(Number(match[1]));
     }
-    for (const [word, age] of Object.entries(AGE_WORDS)) {
-        if (age < 18 && new RegExp(`\\b${word}\\b`, 'i').test(text)) consider(age);
+    MINOR_AGE_WORD_RE.lastIndex = 0;
+    for (const match of text.matchAll(MINOR_AGE_WORD_RE)) {
+        const age = AGE_WORDS[match[0].toLowerCase()];
+        if (age !== undefined) consider(age);
     }
     return youngest;
 }
@@ -336,75 +348,25 @@ const RULES: Rule[] = [
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic)\b/i,
+            /\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|sexy)\b/i,
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic)\b[\s\S]{0,48}\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b/i,
+            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|sexy)\b[\s\S]{0,48}\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b/i,
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck)\b/i,
+            /\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy)\b/i,
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
-        surfaces: INPUT_AND_PERSONA,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:pretend|role-?play|act like)\b[\s\S]{0,80}\b(?:underage|a minor|a child|(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo))\b/i,
-        surfaces: INPUT_AND_PERSONA,
-    },
-    {
-        category: 'minor',
-        pattern: /\b(?:i(?:'m| am)|you(?:'re| are))\s+(?:a\s+)?(?:minor|underage)\b/i,
-        surfaces: INPUT_AND_PERSONA,
-    },
-    {
-        category: 'explicit',
-        pattern:
-            /\b(?:fuck(?:ing)?\s+me|let'?s\s+fuck|blow\s*job|hand\s*job|orgasm|masturbat\w*|horny|porn|nsfw|ejaculat\w*|dildo|pussy|clit(?:oris)?|cocks?|dicks?|boobs|tits|nipples|genitals)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\bhave\s+sex\b|\bsex\s+with\s+(?:you|me)\b|\btalk\s+dirty\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\b(?:naked|nude)\s+body\b|\bdescribe\s+(?:your|her|his)\s+(?:naked|nude)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern:
-            /\b(?:role-?play|roleplay)\b[\s\S]{0,48}\b(?:sex|fuck|orgasm|naked|nude)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern: /\b(?:white\s+power|heil\s+hitler|racial\s+purity|ethnic\s+cleansing)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern:
-            /\b(?:hate|kill|attack|exterminate)\s+all\s+(?:jews|muslims|blacks|whites|asians|gays|women|men|immigrants)\b/i,
+            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
         surfaces: ALL,
     },
     {
@@ -466,174 +428,69 @@ const RULES: Rule[] = [
             /\b(?:how to|ways to|steps to|you should)\b[\s\S]{0,40}\b(?:kill yourself|commit suicide|end your life|cut yourself)\b/i,
         surfaces: OUTPUT_ONLY,
     },
-    {
-        category: 'illegal_harm',
-        pattern:
-            /\b(?:how (?:do i|can i|to)|help me)\s+(?:make|build|assemble|synthesize|cook|produce)\s+(?:a |an )?(?:bomb|explosive|pipe bomb|meth|methamphetamine|fentanyl|napalm)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'illegal_harm',
-        pattern: /\b(?:make|build)\s+(?:a |an )?(?:bomb|pipe bomb|explosive device)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'illegal_harm',
-        pattern:
-            /\bhow to\s+(?:hack into|break into|steal (?:from|a)|commit murder|kill (?:someone|a person|him|her))\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\bignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|your)\s+(?:instructions|rules|guidelines|safety)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\b(?:disregard|bypass|override)\s+(?:your\s+|the\s+)?(?:safety|rules|guidelines|system prompt)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\b(?:developer|dan)\s+mode\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\byou are now\s+(?:dan|unfiltered|jailbroken)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\bdo anything now\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\bjailbreak\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:i(?:'m| am)|you(?:'re| are)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+|actually\s+)?(?:1[0-7]|[1-9]|thirteen|fourteen|fifteen|sixteen|seventeen)\b(?!\s*(?:minutes?|mins?\b|hours?|hrs?\b|days?\b|weeks?\b|months?\b|years?\s+ago|feet|foot|ft\b|inches|cm\b|meters?|metres?|kilos?|kgs?\b|pounds?|lbs?\b|times|percent|%|rupees|rs\b|dollars|bucks|km\b|miles?|o'?clock|am\b|pm\b))/i,
-        surfaces: INPUT_AND_PERSONA,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yrs?\s*old|yo|y\/o)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern: /\bsweet\s+(?:16|sixteen)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern: /\b(?:under-?age|pre-?teens?)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:middle|elementary|primary|high|grade)\s+schools?\b|\b(?:[1-9]|1[0-2])(?:st|nd|rd|th)\s+grades?\b|\bclass\s+(?:[1-9]|1[0-2])\b|\bschool\s*girls?\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:looks?|looking|appears?|age|aged)\s+(?:1[0-7]|[1-9])\b|\bchild-?like\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern: /\b(?:1[0-7]|[1-9])\s+saal\s+(?:ki|ka|ke)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern: /(?:^|[^\d])(?:1[0-7]|[1-9])\s*साल\s*(?:की|का|के)/,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\bsex\s+karo\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /सेक्स|गंदी\s*बात/,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\btake\s+off\s+(?:your|those|the)\s+clothes\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern:
-            /\b(?:describe|tell)\b[\s\S]{0,80}\bin\s+bed\b[\s\S]{0,40}\bgraphically\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'self_harm',
-        pattern:
-            /\b(?:nobody|no one) would notice if i\b|\bdisappeared?\s+forever\b|\bsaving\s+up\s+(?:my\s+)?pills\b|\b(?:don'?t|do not)\s+see the point in anything\b|\bnahi(?:n)?\s+rahung[ai]\b/i,
-        surfaces: INPUT_AND_PERSONA,
-    },
-    {
-        category: 'hate',
-        pattern:
-            /\b(?:help me|write|send|generate)\b[\s\S]{0,80}\bbully\b|\bbully\b[\s\S]{0,40}\b(?:classmate|until)\b|\bthreatening\s+(?:message|letter|text)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern:
-            /\bracist\s+joke\b|\bjoke about\s+(?:dalits?|muslims?|jews?|hindus?|christians?|blacks?|whites?|gays?|women)\b|\bslurs?\s+against\b|\b(?:women|men|girls|boys)\s+are\s+(?:worthless|inferior|subhuman|animals|trash)\b|\b(?:jews|muslims|blacks|whites|dalits|immigrants|hindus)\s+control\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern:
-            /\b(?:saare|sare|sabhi)\s+\S+\s+ko\s+maar\s+do\b|\b(?:musalman\w*|muslim\w*|hindu\w*|dalit\w*|yahudi\w*)\b[\s\S]{0,40}\bmaar\s+do\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\bignore\b(?:\s+\S+){0,6}\s+(?:instructions?|rules?|guidelines?|prompts?)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\b(?:system\s+prompt|these rules override|repeat everything above|instructions were you given|repeat them exactly)\b|<\s*\/?\s*system\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\b(?:without|no)\s+filters?\b|\bno rules\b|\buncensored\b|\bignorez\b|\binstructions?\s+pr[eé]c[eé]dentes\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern:
-            /\bpichl(?:e|a|he)\b[\s\S]{0,48}\b(?:instruction|rule|bhool|bhul)/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /पिछले[\s\S]{0,40}(?:निर्देश|नियम)|भूल\s*जाओ|बिना\s*नियम/,
-        surfaces: ALL,
-    },
 ];
+
+const FIRST_PERSON_AGE =
+    /\b(?:i\s*'m|i\s+am|i\s+m|im)\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
+const ME_AGE =
+    /(?:^|[.!?]\s*|\n\s*)me\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
+const AGE_UNIT = /^(?:\s*(?:years?\s*old|yrs?\s*old|yo|y\/o))\b/i;
+const NOT_AN_AGE =
+    /^(?:\s*(?:out\s+of|drinks?|steps?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?\s+ago|feet|foot|ft|inches|cm|meters?|metres?|kilos?|kgs?|pounds?|lbs?|times|percent|rupees|rs|dollars|bucks|km|miles?|o'?clock|am|pm))\b/i;
+
+const SPELLED_MINOR: Record<string, number> = {
+    one: 1,
+    three: 3,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+};
+
+/**
+ * High-precision present-age check. Only "I'm / Im / I am / i m / me" plus an
+ * age under 18. Digits 2 and 4 count only with an age unit or at the end of
+ * the clause, so "2 tired" and "4 you" stay ordinary words.
+ */
+export function claimsFirstPersonMinor(text: string): boolean {
+    return scanAges(FIRST_PERSON_AGE, text) || scanAges(ME_AGE, text);
+}
+
+function scanAges(pattern: RegExp, text: string): boolean {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+        const token = (match[1] ?? '').toLowerCase();
+        const rest = text.slice((match.index ?? 0) + match[0].length);
+        if (ageTokenIsMinor(token, rest)) return true;
+    }
+    return false;
+}
+
+function ageTokenIsMinor(token: string, rest: string): boolean {
+    let age: number | null = null;
+    if (/^\d+$/.test(token)) age = Number(token);
+    else if (Object.prototype.hasOwnProperty.call(SPELLED_MINOR, token)) {
+        age = SPELLED_MINOR[token] ?? null;
+    } else if (token === 'two' || token === 'four') {
+        age = token === 'two' ? 2 : 4;
+    }
+    if (age === null || age < 0 || age >= 18) return false;
+    if (AGE_UNIT.test(rest)) return true;
+    if (NOT_AN_AGE.test(rest)) return false;
+    if (age === 2 || age === 4) {
+        return /^\s*$/.test(rest) || /^\s*[.!?,]/.test(rest);
+    }
+    return true;
+}
 
 export function assessLocal(
     text: string,
@@ -647,6 +504,13 @@ export function assessLocal(
             if (rule.pattern.test(form) && !found.includes(rule.category)) {
                 found.push(rule.category);
             }
+        }
+        if (
+            INPUT_AND_PERSONA.has(surface) &&
+            claimsFirstPersonMinor(form) &&
+            !found.includes('minor')
+        ) {
+            found.push('minor');
         }
     }
     return found;
@@ -718,62 +582,6 @@ function decodedPayloads(text: string): string[] {
         found.push(decoded);
     }
     return found;
-}
-
-const MINOR_STICKY: ReadonlySet<SafetyCategory> = new Set(['minor', 'sexual_minors']);
-
-/**
- * Lightweight multi-turn check for the current user line.
- * A minor age already stated in the recent window stays in force, and a bare
- * age that finishes "pretend you're" from the previous line counts too.
- * Other categories are not sticky, so a later flirt is not refused because
- * an earlier line was explicit or a jailbreak.
- */
-export function escalationCategories(
-    current: string,
-    priorTexts: readonly string[],
-    surface: ModerationSurface,
-): SafetyCategory[] {
-    if (surface !== 'input') return [];
-    const prior = priorTexts
-        .map((text) => text.trim())
-        .filter((text) => text.length > 0)
-        .slice(-6);
-    if (prior.length === 0) return [];
-    const own = assessLocal(current, 'input');
-    const extra: SafetyCategory[] = [];
-    if (!own.some((category) => MINOR_STICKY.has(category))) {
-        for (const text of prior) {
-            const categories = assessLocal(text, 'input');
-            if (categories.includes('sexual_minors')) {
-                extra.push('sexual_minors');
-                break;
-            }
-            if (categories.includes('minor')) {
-                extra.push('minor');
-                break;
-            }
-        }
-    }
-    const previous = prior[prior.length - 1] ?? '';
-    if (
-        previous &&
-        !extra.some((category) => MINOR_STICKY.has(category)) &&
-        !own.some((category) => MINOR_STICKY.has(category)) &&
-        splitMinorAge(previous, current)
-    ) {
-        extra.push('minor');
-    }
-    return extra;
-}
-
-function splitMinorAge(previous: string, current: string): boolean {
-    const setup =
-        /\b(?:pretend|imagine|role-?play|act like)\b[^.?\n]{0,48}\b(?:you(?:'re| are)|she(?:'s| is)|he(?:'s| is)|i(?:'m| am))\s*$/i;
-    if (!setup.test(previous.trim())) return false;
-    return /^(?:now\s+|actually\s+|just\s+)?(?:1[0-7]|[1-9]|thirteen|fourteen|fifteen|sixteen|seventeen)\b/i.test(
-        current.trim(),
-    );
 }
 
 /** User lines before `current` in an oldest-first transcript. */

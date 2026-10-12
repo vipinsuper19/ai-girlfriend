@@ -17,7 +17,7 @@ export function createContentModerator(
     if (config.provider === 'openai') {
         return new OpenAiContentModerator(
             env.OPENAI_API_KEY?.trim(),
-            config.moderationModel || 'omni-moderation-latest',
+            config.moderationModel || env.OPENAI_CHAT_MODEL?.trim() || 'gpt-5-mini',
         );
     }
     if (config.provider === 'gemini') {

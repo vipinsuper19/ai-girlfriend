@@ -6,8 +6,8 @@ import {
 
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
-    categoriesFromClassifier,
     GEMINI_CLASSIFIER_INSTRUCTION,
+    parseClassifier,
 } from './provider-categories.js';
 
 /**
@@ -89,6 +89,7 @@ export class GeminiContentModerator implements ContentModerator {
         if (!raw) {
             throw new Error('Moderation classifier returned an empty response');
         }
-        return { categories: categoriesFromClassifier(raw) };
+        const parsed = parseClassifier(raw);
+        return { categories: parsed.categories, items: parsed.items };
     }
 }

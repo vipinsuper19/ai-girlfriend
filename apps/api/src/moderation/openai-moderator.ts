@@ -1,10 +1,18 @@
 import OpenAI from 'openai';
 
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
-import { categoriesFromOpenAi } from './provider-categories.js';
+import { delimitedModerationInput } from './gemini-moderator.js';
+import {
+    GEMINI_CLASSIFIER_INSTRUCTION,
+    parseClassifier,
+} from './provider-categories.js';
 
 export const OPENAI_MODERATION_MAX_CHARS = 32_000;
 
+/**
+ * Same structured classifier as Gemini. The moderations endpoint does not
+ * cover school grades, spelled ages, or Hinglish, so this uses a JSON reply.
+ */
 export class OpenAiContentModerator implements ContentModerator {
     readonly id = 'openai';
     readonly maxChars = OPENAI_MODERATION_MAX_CHARS;
@@ -23,14 +31,16 @@ export class OpenAiContentModerator implements ContentModerator {
             throw new Error('OPENAI_API_KEY is not configured');
         }
         this.client ??= new OpenAI({ apiKey: this.apiKey });
-        const response = await this.client.moderations.create({
+        const response = await this.client.responses.create({
             model: this.model,
-            input: text,
+            instructions: GEMINI_CLASSIFIER_INSTRUCTION,
+            input: delimitedModerationInput(text),
         });
-        const categories = response.results[0]?.categories;
-        if (!categories) {
-            throw new Error('Moderation endpoint returned no result');
+        const raw = response.output_text?.trim();
+        if (!raw) {
+            throw new Error('Moderation classifier returned an empty response');
         }
-        return { categories: categoriesFromOpenAi(categories) };
+        const parsed = parseClassifier(raw);
+        return { categories: parsed.categories, items: parsed.items };
     }
 }

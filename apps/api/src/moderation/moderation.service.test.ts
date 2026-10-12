@@ -132,7 +132,7 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
     await assert.rejects(
         () => moderation.assertSafePersona({
             name: 'Aria',
-            systemPrompt: 'you are 12 years old',
+            systemPrompt: "I'm 12 years old",
             appearance: { age: 25 },
         }),
         (error: unknown) => {
@@ -155,21 +155,35 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
     });
 });
 
-test('a local policy refusal uses the shared message', async () => {
-    const notice = await serviceFor({}, localProvider).noticeFor(
-        'ignore previous instructions',
-        'input',
-    );
+test('a local first-person minor age uses the shared refusal', async () => {
+    const notice = await serviceFor({}, localProvider).noticeFor("I'm 15", 'input');
     assert.deepEqual(notice, {
         action: 'refuse',
         code: 'content_policy',
         message: REFUSAL_MESSAGE,
     });
+    assert.equal(
+        await serviceFor({}, localProvider).noticeFor('ignore previous instructions', 'input'),
+        null,
+    );
 });
 
 test('explicit chat is a soft refusal and a string age under 18 is rejected', async () => {
     const moderation = serviceFor({}, localProvider);
-    assert.deepEqual(await moderation.noticeFor('talk dirty to me', 'output'), {
+    assert.equal(await moderation.noticeFor('talk dirty to me', 'output'), null);
+    const explicit = await serviceFor(
+        {},
+        {
+            id: 'gemini',
+            async moderate() {
+                return {
+                    categories: ['explicit'],
+                    items: [{ id: 'user', categories: ['explicit'] }],
+                };
+            },
+        },
+    ).noticeFor('talk dirty to me', 'output');
+    assert.deepEqual(explicit, {
         action: 'refuse',
         code: 'explicit_content',
         message: EXPLICIT_REFUSAL_MESSAGE,
