@@ -8,7 +8,10 @@ import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.PushRegistration
+import com.dhama.mybase.core.data.SignInRoute
+import com.dhama.mybase.core.data.isAccountDeletionPreference
 import com.dhama.mybase.core.data.performAccountDeletion
+import com.dhama.mybase.core.data.routeAfterFailedDeleteRefresh
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
@@ -120,6 +123,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _accountDeleted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val accountDeleted = _accountDeleted.asSharedFlow()
+
+    private val _signInRequired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val signInRequired = _signInRequired.asSharedFlow()
 
     private val _accountDeleting = MutableStateFlow(false)
     val accountDeleting = _accountDeleting.asStateFlow()
@@ -289,6 +295,18 @@ class SettingsViewModel @Inject constructor(
                 )
                 when (result) {
                     AccountDeletionResult.Deleted -> _accountDeleted.emit(Unit)
+                    AccountDeletionResult.SignIn -> {
+                        val route = routeAfterFailedDeleteRefresh(
+                            signOutThenClear = { authRepository.signInAgainAfterDelete() },
+                            clearLoggedInFlag = {
+                                dataStoreRepo.saveBoolean(PreferencesKeys.IS_LOGGED_IN, false)
+                            },
+                        )
+                        when (route) {
+                            SignInRoute.OpenSignIn -> _signInRequired.emit(Unit)
+                            is SignInRoute.Stay -> _accountDeleteError.value = route.message
+                        }
+                    }
                     is AccountDeletionResult.Failed -> _accountDeleteError.value = result.message
                 }
             } finally {
@@ -303,6 +321,8 @@ class SettingsViewModel @Inject constructor(
         dataStoreRepo.saveString(PreferencesKeys.USER_EMAIL, "")
         dataStoreRepo.saveString(PreferencesKeys.SUBSCRIPTION_PLAN, "")
         dataStoreRepo.saveString(PreferencesKeys.USAGE_SUMMARY, "")
+        // PR #8 has not landed. Remove the age-gate and disclosure keys by name anyway.
+        dataStoreRepo.removeMatching(::isAccountDeletionPreference)
         companionRepository.clear()
         chatRepository.clear()
         memoryRepository.clear()

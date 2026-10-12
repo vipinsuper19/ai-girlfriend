@@ -242,4 +242,12 @@ class AuthRepoImpl(
         deleteServerAccount(api.hasSession()) { api.deleteAccount() }
     }
 
+    override suspend fun signInAgainAfterDelete(): Boolean {
+        return signOutThenClearSession(
+            firebaseSignedIn = { auth.currentUser != null },
+            signOutFirebase = { auth.signOut() },
+            clearSessionStore = { api.clear() },
+        )
+    }
+
 }

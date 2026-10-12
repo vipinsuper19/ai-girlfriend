@@ -56,4 +56,13 @@ class DataStoreRepo @Inject constructor(
         }
     }
 
+    suspend fun removeMatching(predicate: (String) -> Boolean) {
+        dataStore.edit { preferences ->
+        preferences.asMap().keys
+            .filter { predicate(it.name) }
+            .toList()
+            .forEach { preferences.remove(it) }
+        }
+    }
+
 }

@@ -2,9 +2,15 @@ package com.dhama.mybase
 
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_ERROR
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
+import com.dhama.mybase.core.data.ACCOUNT_DELETION_PREFERENCE_NAMES
 import com.dhama.mybase.core.data.AccountDeletionResult
+import com.dhama.mybase.core.data.SignInRoute
 import com.dhama.mybase.core.data.deleteServerAccount
+import com.dhama.mybase.core.data.isAccountDeletionPreference
 import com.dhama.mybase.core.data.performAccountDeletion
+import com.dhama.mybase.core.data.routeAfterFailedDeleteRefresh
+import com.dhama.mybase.core.data.signOutThenClearSession
 import com.dhama.mybase.core.network.ApiStatusException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -139,5 +145,120 @@ class AccountDeletionTest {
             assertEquals(500, error.status)
             assertEquals("DELETE_FAILED", error.code)
         }
+    }
+
+    @Test
+    fun deleteUsersMe404CountsAsSuccess() = runBlocking {
+        var signedOut = false
+        var cleared = false
+        val result = performAccountDeletion(
+            deleteRemote = {
+                deleteServerAccount(hasSession = true) {
+                    throw ApiStatusException(404, "User not found", null)
+                }
+            },
+            signOut = { signedOut = true },
+            clearLocal = { cleared = true },
+        )
+        assertEquals(AccountDeletionResult.Deleted, result)
+        assertTrue(signedOut)
+        assertTrue(cleared)
+    }
+
+    @Test
+    fun delete401AfterFailedRefreshIsTheSignInState() = runBlocking {
+        var signedOut = false
+        var cleared = false
+        val result = performAccountDeletion(
+            deleteRemote = {
+                throw ApiStatusException(401, "expired", ACCOUNT_DELETE_SIGN_IN_CODE)
+            },
+            signOut = { signedOut = true },
+            clearLocal = { cleared = true },
+        )
+        assertEquals(AccountDeletionResult.SignIn, result)
+        assertFalse(signedOut)
+        assertFalse(cleared)
+    }
+
+    @Test
+    fun plain401DoesNotRouteToSignIn() = runBlocking {
+        val result = performAccountDeletion(
+            deleteRemote = { throw ApiStatusException(401, "Sign in with email to reach her on the server.", null) },
+            signOut = { fail("signed out") },
+            clearLocal = { fail("cleared") },
+        )
+        assertEquals(
+            AccountDeletionResult.Failed("Sign in with email to reach her on the server."),
+            result,
+        )
+    }
+
+    @Test
+    fun signInRouteClearsTheSessionOnlyAfterFirebaseSignsOut() = runBlocking {
+        var firebase = true
+        val order = mutableListOf<String>()
+        val cleared = signOutThenClearSession(
+            firebaseSignedIn = { firebase },
+            signOutFirebase = {
+                order += "firebase"
+                firebase = false
+            },
+            clearSessionStore = { order += "session" },
+        )
+        assertTrue(cleared)
+        assertEquals(listOf("firebase", "session"), order)
+    }
+
+    @Test
+    fun signInRouteLeavesTheSessionStoreWhenFirebaseStaysSignedIn() = runBlocking {
+        var clearedStore = false
+        val cleared = signOutThenClearSession(
+            firebaseSignedIn = { true },
+            signOutFirebase = {},
+            clearSessionStore = { clearedStore = true },
+        )
+        assertFalse(cleared)
+        assertFalse(clearedStore)
+    }
+
+    @Test
+    fun failedRefreshOpensSignInAfterTheSessionIsCleared() = runBlocking {
+        var flagged = true
+        val route = routeAfterFailedDeleteRefresh(
+            signOutThenClear = { true },
+            clearLoggedInFlag = { flagged = false },
+        )
+        assertEquals(SignInRoute.OpenSignIn, route)
+        assertFalse(flagged)
+    }
+
+    @Test
+    fun failedRefreshStaysPutWhenTheSessionCannotBeCleared() = runBlocking {
+        var flagged = true
+        val route = routeAfterFailedDeleteRefresh(
+            signOutThenClear = { false },
+            clearLoggedInFlag = { flagged = false },
+        )
+        assertEquals(SignInRoute.Stay(ACCOUNT_DELETE_SIGN_IN), route)
+        assertTrue(flagged)
+    }
+
+    @Test
+    fun accountDeletionClearsAgeGateAndDisclosureKeysIncludingPerUidVariants() {
+        val uid = "firebaseUid"
+        assertTrue(isAccountDeletionPreference("age_confirmed_18"))
+        assertTrue(isAccountDeletionPreference("date_of_birth"))
+        assertTrue(isAccountDeletionPreference("ai_disclosure_acknowledged"))
+        assertTrue(isAccountDeletionPreference("age_confirmed_18_$uid"))
+        assertTrue(isAccountDeletionPreference("date_of_birth.$uid"))
+        assertTrue(isAccountDeletionPreference("ai_disclosure_acknowledged:$uid"))
+        assertTrue(isAccountDeletionPreference("age_confirmed_at"))
+        assertTrue(isAccountDeletionPreference("age_subject_$uid"))
+        assertFalse(isAccountDeletionPreference("theme_mode"))
+        assertFalse(isAccountDeletionPreference("user_email"))
+        assertTrue(ACCOUNT_DELETION_PREFERENCE_NAMES.containsAll(
+            setOf("age_confirmed_18", "date_of_birth", "ai_disclosure_acknowledged"),
+        ))
     }
 }

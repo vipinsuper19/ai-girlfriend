@@ -111,6 +111,11 @@ fun AppNavHost(
                         popUpTo(Main) { inclusive = true }
                     }
                 },
+                onSignIn = {
+                    navController.navigate(Login) {
+                        popUpTo(Main) { inclusive = true }
+                    }
+                },
                 onArchived = {
                     navController.navigate(Onboarding) {
                         popUpTo(Main) { inclusive = true }
@@ -123,6 +128,11 @@ fun AppNavHost(
             MainShell(
                 onLoggedOut = {
                     navController.navigate(Welcome) {
+                        popUpTo(Home) { inclusive = true }
+                    }
+                },
+                onSignIn = {
+                    navController.navigate(Login) {
                         popUpTo(Home) { inclusive = true }
                     }
                 },

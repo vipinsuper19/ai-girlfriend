@@ -28,4 +28,10 @@ interface AuthRepository {
     suspend fun logout()
 
     suspend fun deleteRemoteAccount()
+
+    /**
+     * Signs Firebase out, then clears the API session store.
+     * Returns false and leaves the store untouched when Firebase is still signed in.
+     */
+    suspend fun signInAgainAfterDelete(): Boolean
 }

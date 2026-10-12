@@ -1,6 +1,8 @@
 package com.dhama.mybase.core.network
 
 import com.dhama.mybase.core.chat.ChatStreamEvent
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
@@ -222,8 +224,16 @@ class ApiClient(
         withAuth { access -> execute(authed("DELETE", "memories$query", null, access)) }
     }
 
+    /**
+     * DELETE /users/me.
+     * A 404 from this call counts as success in [com.dhama.mybase.core.data.deleteServerAccount].
+     * A 401 after the refresh token is rejected keeps the session store intact and is reported
+     * as [ACCOUNT_DELETE_SIGN_IN_CODE] so the app can sign Firebase out before clearing it.
+     */
     suspend fun deleteAccount() {
-        withAuth { access -> execute(authed("DELETE", "users/me", null, access)) }
+        withAuth(keepSessionOnRefreshFailure = true) { access ->
+            execute(authed("DELETE", "users/me", null, access))
+        }
     }
 
     suspend fun usageSummary(): RemoteUsageSummary {
@@ -387,19 +397,25 @@ class ApiClient(
         )
     }
 
-    private suspend fun <T> withAuth(block: suspend (String) -> T): T {
+    private suspend fun <T> withAuth(
+        keepSessionOnRefreshFailure: Boolean = false,
+        block: suspend (String) -> T,
+    ): T {
         val existing = store.read()?.accessToken
             ?: throw ApiStatusException(401, "Sign in with email to reach her on the server.", null)
         try {
             return block(existing)
         } catch (error: ApiStatusException) {
             if (error.status != 401) throw error
-            val next = refresh(existing) ?: throw error
-            return block(next)
+            val next = refresh(existing, clearOnFailure = !keepSessionOnRefreshFailure)
+            if (next == null && keepSessionOnRefreshFailure) {
+                throw ApiStatusException(401, ACCOUNT_DELETE_SIGN_IN, ACCOUNT_DELETE_SIGN_IN_CODE)
+            }
+            return block(next ?: throw error)
         }
     }
 
-    private suspend fun refresh(failedAccess: String): String? {
+    private suspend fun refresh(failedAccess: String, clearOnFailure: Boolean = true): String? {
         return refreshMutex.withLock {
             val current = store.read()
             if (current != null && current.accessToken != failedAccess) {
@@ -413,7 +429,8 @@ class ApiClient(
                 )
             }
             if (renewed == null) {
-                store.clear()
+                // Account deletion leaves the store until Firebase is signed out.
+                if (clearOnFailure) store.clear()
                 null
             } else {
                 store.write(renewed)
