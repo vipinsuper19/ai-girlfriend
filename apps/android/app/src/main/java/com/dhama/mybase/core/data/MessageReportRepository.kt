@@ -54,8 +54,8 @@ class MessageReportRepository(
             }
         } catch (error: CancellationException) {
             throw error
-        } catch (error: Exception) {
-            ReportResult.Failed(error.message?.takeIf { it.isNotBlank() } ?: REPORT_FAILED)
+        } catch (_: Exception) {
+            ReportResult.Failed(REPORT_FAILED)
         } finally {
             synchronized(lock) { inFlight -= body.messageId }
         }

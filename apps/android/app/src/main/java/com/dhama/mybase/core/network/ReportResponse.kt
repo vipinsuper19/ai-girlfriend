@@ -17,7 +17,7 @@ sealed class ReportHttpOutcome {
 /**
  * Maps the live `POST /reports` contract.
  * 201 `{ id }` is a new report. 200 `{ id }` is a duplicate and is also success.
- * 404 is an error. 429 is a rate limit.
+ * 404 and 429 keep their own messages. Every other failure uses the generic report error.
  */
 fun interpretReportResponse(status: Int, body: String, json: Json = apiJson()): ReportHttpOutcome {
     return when (status) {
@@ -31,12 +31,7 @@ fun interpretReportResponse(status: Int, body: String, json: Json = apiJson()): 
                 ReportHttpOutcome.Rejected(REPORT_FAILED)
             }
         }
-        else -> {
-            val message = runCatching { apiStatus(status, body, json).message }
-                .getOrNull()
-                ?.takeIf { it.isNotBlank() && it != "Request failed" }
-            ReportHttpOutcome.Rejected(message ?: REPORT_FAILED)
-        }
+        else -> ReportHttpOutcome.Rejected(REPORT_FAILED)
     }
 }
 

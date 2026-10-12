@@ -68,6 +68,9 @@ class MessageReportRepositoryTest {
         assertEquals(ReportHttpOutcome.Accepted(4, created = true), created)
         assertEquals(ReportHttpOutcome.Accepted(9, created = false), duplicate)
         assertEquals(ReportHttpOutcome.Rejected(REPORT_FAILED), interpretReportResponse(201, envelope(201, null)))
+        val raw = interpretReportResponse(500, errorEnvelope(500, "connect ECONNREFUSED 10.0.2.2:3001"))
+        assertEquals(ReportHttpOutcome.Rejected(REPORT_FAILED), raw)
+        assertFalse((raw as ReportHttpOutcome.Rejected).message.contains("ECONNREFUSED"))
     }
 
     @Test
@@ -163,7 +166,9 @@ class MessageReportRepositoryTest {
             created(4)
         }
         val body = ReportMessageBody(4, 8, "OTHER", "spam")
-        assertEquals(ReportResult.Failed("offline"), repository.report(body))
+        val failed = repository.report(body)
+        assertEquals(ReportResult.Failed(REPORT_FAILED), failed)
+        assertFalse((failed as ReportResult.Failed).message.contains("offline"))
         assertEquals(ReportResult.Sent, repository.report(body))
         assertEquals(2, attempts)
         assertFalse(repository.alreadySent(9))
