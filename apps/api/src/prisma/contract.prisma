@@ -179,8 +179,8 @@ deletedAt    TimestamptzString?
 memoryPausedAt         TimestamptzString?
 // Set while the user wants push notifications.
 notificationsEnabledAt TimestamptzString?
-// Calendar date of birth, and when the person confirmed they are 18 or older.
-dateOfBirth            DateString?
+// When the person confirmed they are 18 or older. The date of birth is checked
+// and then discarded; it is not stored.
 ageConfirmedAt         TimestamptzString?
 
 accounts     Account[]

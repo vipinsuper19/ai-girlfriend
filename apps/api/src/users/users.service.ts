@@ -62,7 +62,7 @@ export class UsersService {
         return userView(updatedUser);
     }
 
-    /** Stores a date of birth and the time the person confirmed they are 18 or older. */
+    /** Checks the date of birth, then stores only the confirmation time. */
     async confirmAge(userId: string, dto: ConfirmAgeDto) {
         const age = parseAgeAttestation(dto, new Date(), { required: true });
         await this.requireUser(userId);
@@ -116,7 +116,6 @@ export class UsersService {
             exportedAt: new Date().toISOString(),
             user: {
                 ...userView(user),
-                dateOfBirth: user.dateOfBirth ?? null,
                 ageConfirmedAt: user.ageConfirmedAt ?? null,
             },
             companions: exportRows(companions),

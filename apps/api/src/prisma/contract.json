@@ -2917,13 +2917,6 @@
                   "kind": "scalar"
                 }
               },
-              "dateOfBirth": {
-                "nullable": true,
-                "type": {
-                  "codecId": "pg/date-string@1",
-                  "kind": "scalar"
-                }
-              },
               "deletedAt": {
                 "nullable": true,
                 "type": {
@@ -3156,9 +3149,6 @@
                 },
                 "createdAt": {
                   "column": "createdAt"
-                },
-                "dateOfBirth": {
-                  "column": "dateOfBirth"
                 },
                 "deletedAt": {
                   "column": "deletedAt"
@@ -5477,11 +5467,6 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
-                "dateOfBirth": {
-                  "codecId": "pg/date-string@1",
-                  "nativeType": "date",
-                  "nullable": true
-                },
                 "deletedAt": {
                   "codecId": "pg/timestamptz-string@1",
                   "nativeType": "timestamptz",
@@ -5729,7 +5714,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "b2d466fd498bf23df8c6a5775acb1efa702097f27cbf08af501b715921a2d25c",
+    "storageHash": "2f60eca2d5c2b137a0faa4c06ff4b87d94441f8997144c6e8ddc747bc00b06bb",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",

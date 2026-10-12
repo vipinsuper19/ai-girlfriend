@@ -1,6 +1,7 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class ConfirmAgeDto {
+    /** ISO calendar date (YYYY-MM-DD). Checked, then discarded. */
     @IsString()
     @IsNotEmpty()
     @MaxLength(10)

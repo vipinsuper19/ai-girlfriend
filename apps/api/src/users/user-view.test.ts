@@ -27,7 +27,6 @@ test('the profile view does not echo the date of birth', () => {
     const view = userView({
         id: 3,
         email: 'a@b.co',
-        dateOfBirth: '1991-03-17',
         ageConfirmedAt: '2026-10-12T15:04:05.000Z',
     });
     assert.equal('dateOfBirth' in view, false);

@@ -40,13 +40,14 @@ test('pgvector migrations create the extension named vector', () => {
     }
 });
 
-test('the user age migration adds both columns', () => {
+test('the user age migration stores the confirmation time and not the date of birth', () => {
     const sql = opsFiles(migrationsRoot)
+        .filter((file) => file.includes('add_user_age'))
         .flatMap((file) => JSON.parse(readFileSync(file, 'utf8')) as Array<{ execute?: Array<{ sql?: string }> }>)
         .flatMap((op) => op.execute ?? [])
         .map((step) => step.sql ?? '')
         .join('\n');
 
-    assert.match(sql, /ALTER TABLE "public"\."user" ADD COLUMN "dateOfBirth" date/);
     assert.match(sql, /ALTER TABLE "public"\."user" ADD COLUMN "ageConfirmedAt" timestamptz/);
+    assert.equal(sql.includes('dateOfBirth'), false);
 });

@@ -6,7 +6,7 @@ export class GoogleLoginDto {
     @MaxLength(8192)
     idToken!: string;
 
-    /** ISO calendar date (YYYY-MM-DD). Omit both age fields, or send both. */
+    /** ISO calendar date (YYYY-MM-DD). Checked, then discarded. Omit both age fields, or send both. */
     @IsOptional()
     @IsString()
     @MaxLength(10)

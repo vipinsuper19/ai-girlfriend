@@ -27,17 +27,15 @@ function rejection(run: () => void) {
     assert.fail('expected an age rejection');
 }
 
-test('an adult attestation is stored as an ISO date and instant', () => {
-    assert.deepEqual(
-        parseAgeAttestation(
-            { dateOfBirth: '1991-03-17', ageConfirmedAt: confirmedAt },
-            today,
-        ),
-        {
-            dateOfBirth: '1991-03-17',
-            ageConfirmedAt: '2026-10-12T15:04:05.000Z',
-        },
+test('an adult attestation keeps the confirmation time and drops the date of birth', () => {
+    const stored = parseAgeAttestation(
+        { dateOfBirth: '1991-03-17', ageConfirmedAt: confirmedAt },
+        today,
     );
+    assert.deepEqual(stored, {
+        ageConfirmedAt: '2026-10-12T15:04:05.000Z',
+    });
+    assert.equal(stored && 'dateOfBirth' in stored, false);
 });
 
 test('omitting both fields leaves registration alone', () => {
@@ -50,7 +48,8 @@ test('the 18th birthday is allowed and the day before is refused', () => {
         { dateOfBirth: '2008-10-12', ageConfirmedAt: confirmedAt },
         today,
     );
-    assert.equal(allowed?.dateOfBirth, '2008-10-12');
+    assert.equal(allowed?.ageConfirmedAt, '2026-10-12T15:04:05.000Z');
+    assert.equal(allowed && 'dateOfBirth' in allowed, false);
 
     const blocked = rejection(() => {
         parseAgeAttestation(
@@ -76,7 +75,8 @@ test('a Feb 29 birthday is 18 on March 1, not on February 28', () => {
         { dateOfBirth: '2008-02-29', ageConfirmedAt: '2026-03-01T00:30:00Z' },
         anniversary,
     );
-    assert.equal(allowed?.dateOfBirth, '2008-02-29');
+    assert.ok(allowed?.ageConfirmedAt);
+    assert.equal(allowed && 'dateOfBirth' in allowed, false);
 });
 
 test('future, impossible, and non-ISO birth dates are rejected', () => {

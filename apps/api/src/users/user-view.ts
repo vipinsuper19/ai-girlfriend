@@ -6,7 +6,6 @@ export type UserRow = {
     updatedAt?: string | null;
     memoryPausedAt?: string | null;
     notificationsEnabledAt?: string | null;
-    dateOfBirth?: string | null;
     ageConfirmedAt?: string | null;
 };
 

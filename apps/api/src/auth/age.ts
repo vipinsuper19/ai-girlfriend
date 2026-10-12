@@ -19,8 +19,8 @@ export type AgeInput = {
     ageConfirmedAt?: string | null;
 };
 
+/** Confirmation time kept after the date of birth has been checked and dropped. */
 export type StoredAge = {
-    dateOfBirth: string;
     ageConfirmedAt: string;
 };
 
@@ -42,6 +42,8 @@ export class AgeRejectedException extends HttpException {
  * A date of birth under 18, in the future, or not a real ISO calendar date is rejected.
  * The year count matches the Android gate: completed years, with a Feb 29 birthday
  * landing on March 1 in a non-leap year. "Today" is the UTC calendar date of `now`.
+ * The date of birth is used only for that check. The returned value is the
+ * confirmation time, which is the only age field written to the user row.
  */
 export function parseAgeAttestation(
     input: AgeInput,
@@ -105,7 +107,6 @@ export function parseAgeAttestation(
     }
 
     return {
-        dateOfBirth: formatDate(birth),
         ageConfirmedAt: confirmed.toISOString(),
     };
 }
@@ -177,12 +178,6 @@ function compareDate(left: CalendarDate, right: CalendarDate): number {
     if (left.y !== right.y) return left.y - right.y;
     if (left.m !== right.m) return left.m - right.m;
     return left.d - right.d;
-}
-
-function formatDate(date: CalendarDate): string {
-    const month = String(date.m).padStart(2, '0');
-    const day = String(date.d).padStart(2, '0');
-    return `${String(date.y).padStart(4, '0')}-${month}-${day}`;
 }
 
 function instant(value: string): Date | null {
