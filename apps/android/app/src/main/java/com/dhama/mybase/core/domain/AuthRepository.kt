@@ -12,14 +12,31 @@ interface AuthRepository {
 
     fun getCurrentUser(): FirebaseUser?
 
-    suspend fun register(email: String, password: String): Boolean
-    suspend fun login(email: String, password: String) : Boolean
+    suspend fun register(
+        email: String,
+        password: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ): Boolean
+
+    suspend fun login(
+        email: String,
+        password: String,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ): Boolean
+
+    suspend fun submitAge(dateOfBirth: String, ageConfirmedAt: String)
 
     suspend fun changePassword(currentPassword: String, newPassword: String)
 
 
 
-    suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean
+    suspend fun signInWithGoogle(
+        result: GetCredentialResponse,
+        dateOfBirth: String? = null,
+        ageConfirmedAt: String? = null,
+    ): Boolean
 
     suspend fun sendOtp(phoneNumber: String, activity: Activity,
                         callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks)
