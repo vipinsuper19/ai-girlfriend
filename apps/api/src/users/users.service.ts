@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 
 import { parseAgeAttestation } from '../auth/age.js';
+import { deleteDeletionRequestsForEmail } from '../legal/deletion-request.store.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -198,6 +199,8 @@ export class UsersService {
                         id: session.id,
                     }).delete();
                 }
+
+                await deleteDeletionRequestsForEmail(db, user.email);
 
                 await db.orm.public.User.where({
                     id: userId,

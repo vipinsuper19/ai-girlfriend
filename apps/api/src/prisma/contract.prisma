@@ -790,6 +790,22 @@ onDelete: Cascade
 }
 
 // ============================================================
+// WEB ACCOUNT-DELETION REQUEST
+// ============================================================
+
+model DeletionRequest {
+id          Int               @id @default(autoincrement())
+email       String
+note        String            @default("")
+tokenHash   String            @unique
+confirmedAt TimestamptzString?
+createdAt   TimestamptzString @default(now())
+
+@@index([email])
+@@index([createdAt])
+}
+
+// ============================================================
 // MESSAGE REPORTS
 // ============================================================
 

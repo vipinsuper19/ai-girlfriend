@@ -9,11 +9,11 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 
 import helmet from 'helmet';
 //import { ConfigService } from '@nestjs/config';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
 import { StorageService } from './storage/storage.service.js';
-import { API_BASE_PATH } from './common/constants/api.constants.js';
+import { API_BASE_PATH, UNPREFIXED_ROUTES } from './common/constants/api.constants.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
@@ -63,8 +63,9 @@ async function bootstrap(): Promise<void> {
     ]
   });
 
-  // /health stays unprefixed for the Render health check.
-  app.setGlobalPrefix(API_BASE_PATH, { exclude: ['health'] });
+  // /health stays unprefixed for the Render health check. Play Store
+  // pages (/privacy, /account-deletion) stay unprefixed too.
+  app.setGlobalPrefix(API_BASE_PATH, { exclude: [...UNPREFIXED_ROUTES] });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -82,7 +83,7 @@ async function bootstrap(): Promise<void> {
   // );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(
-    new ResponseInterceptor()
+    new ResponseInterceptor(app.get(Reflector)),
   );
 
   const downloads = app.get(StorageService).localDownloadHandler();

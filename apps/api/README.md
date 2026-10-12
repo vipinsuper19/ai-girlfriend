@@ -54,7 +54,9 @@ clients hide the matching controls, so nothing is faked.
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Session tokens |
 | `JWT_RESET_SECRET` | Password reset tokens. Falls back to a value derived from `JWT_ACCESS_SECRET` |
 | `APP_URL` | Web origin used in reset links, e.g. `https://app.example.com` |
-| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL` mail is written to the log, which is for development only |
+| `SMTP_URL`, `MAIL_FROM` | Outgoing mail. Without `SMTP_URL`, development writes the message to the log and production does not send it. A deletion request emails a confirmation link to the account address. After that link is opened, a copy goes to `CONTACT_EMAIL` when that address is set |
+| `CONTACT_EMAIL` | Address on `/privacy` and `/account-deletion`. Until it is set, the pages show `TODO`, and that placeholder is not emailed |
+| `DEVELOPER_NAME` | Developer name on those pages. Until it is set, the pages show `TODO` |
 | `GOOGLE_CLIENT_IDS` | Comma-separated OAuth client ids accepted by `POST /auth/google` (web) |
 | `FIREBASE_PROJECT_ID` | Firebase ID tokens accepted by `POST /auth/google` (Android) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
@@ -120,6 +122,10 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
+
+Play Store pages are outside `/api/v1`: `GET /privacy` and `GET /account-deletion`. The deletion form `POST`s to `/account-deletion` (5 requests per hour per client IP, kept in a capped in-memory map). The request is stored in Postgres (`deletionRequest`) and pruned after 30 days. A confirmation link is emailed to the account address; opening `GET /account-deletion/confirm` marks it confirmed. If that mail cannot be sent, the page says the developer verifies the request from the account's email address. Signed-in deletion in the app is `DELETE /api/v1/users/me`, which also deletes web deletion requests stored for that account email. Message reports belong to the user and are removed with that row (`ON DELETE CASCADE`).
+
+`TRUST_PROXY_HOPS` is how many reverse-proxy hops to trust when reading that client IP. The default is 1. Set it to 0 to use the socket address.
 
 Login, register, and the password-reset routes are rate limited in process memory (per IP and per email or reset token) and answer `429` with `Retry-After`. The free-tier chat cap is stored in Postgres, so it survives a Render restart. Redis is not used: the Render service does not provision it. The cap is checked before the model call and recorded only after a successful reply, so concurrent requests can finish slightly over the limit. That overshoot is accepted for the MVP; the following request is refused.
 
