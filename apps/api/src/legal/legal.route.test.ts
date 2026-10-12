@@ -20,6 +20,7 @@ test('Play Store pages are HTML outside /api/v1 and the form stores a request', 
     delete process.env['DEVELOPER_NAME'];
 
     const store = new MemoryDeletionRequestStore();
+    const sent: Array<{ to: string; text: string }> = [];
     const moduleRef = await Test.createTestingModule({
         controllers: [LegalController],
         providers: [
@@ -28,7 +29,13 @@ test('Play Store pages are HTML outside /api/v1 and the form stores a request', 
             { provide: SlidingWindowLimiter, useValue: new SlidingWindowLimiter(5, 60_000) },
             {
                 provide: MailService,
-                useValue: { send: async () => true, configured: false },
+                useValue: {
+                    send: async (message: { to: string; text: string }) => {
+                        sent.push(message);
+                        return true;
+                    },
+                    configured: false,
+                },
             },
         ],
     }).compile();
@@ -63,9 +70,23 @@ test('Play Store pages are HTML outside /api/v1 and the form stores a request', 
             body: new URLSearchParams({ email: 'ada@example.com', note: 'lost phone' }),
         });
         assert.equal(posted.status, 200);
-        assert.match(await posted.text(), /Request received/);
+        const postedHtml = await posted.text();
+        assert.match(postedHtml, /Check your email/);
+        assert.match(postedHtml, /confirmation link/);
         assert.equal(store.saved[0]?.email, 'ada@example.com');
         assert.equal(store.saved[0]?.note, 'lost phone');
+        assert.equal(store.saved[0]?.confirmedAt, null);
+        assert.equal(sent[0]?.to, 'ada@example.com');
+        const token = decodeURIComponent(sent[0]?.text.match(/token=([^\s]+)/)?.[1] ?? '');
+        assert.ok(token);
+
+        const confirmed = await fetch(`${base}/account-deletion/confirm?token=${encodeURIComponent(token)}`);
+        assert.equal(confirmed.status, 200);
+        assert.match(await confirmed.text(), /Deletion confirmed/);
+        assert.equal(store.saved[0]?.confirmedAt === null, false);
+
+        const prefixedConfirm = await fetch(`${base}/${API_BASE_PATH}/account-deletion/confirm?token=nope`);
+        assert.equal(prefixedConfirm.status, 404);
     } finally {
         await app.close();
         if (previousEmail === undefined) delete process.env['CONTACT_EMAIL'];

@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 
 import { MailModule } from '../mail/mail.module.js';
+import { PrismaModule } from '../prisma/prisma.module.js';
 import {
     DELETION_REQUEST_STORE,
-    FileDeletionRequestStore,
+    PrismaDeletionRequestStore,
 } from './deletion-request.store.js';
 import { DeletionRequestsService } from './deletion-requests.service.js';
 import { LegalController } from './legal.controller.js';
@@ -13,13 +14,13 @@ const HOUR_MS = 60 * 60 * 1000;
 const REQUESTS_PER_HOUR = 5;
 
 @Module({
-    imports: [MailModule],
+    imports: [MailModule, PrismaModule],
     controllers: [LegalController],
     providers: [
         DeletionRequestsService,
         {
             provide: DELETION_REQUEST_STORE,
-            useClass: FileDeletionRequestStore,
+            useClass: PrismaDeletionRequestStore,
         },
         {
             provide: SlidingWindowLimiter,

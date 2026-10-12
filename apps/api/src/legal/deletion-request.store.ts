@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { Injectable } from '@nestjs/common';
 
+import { PrismaService } from '../prisma/prisma.service.js';
 import { DELETION_REQUEST_RETENTION_DAYS } from './contact.js';
 
 export const DELETION_REQUEST_STORE = Symbol('DELETION_REQUEST_STORE');
@@ -8,75 +8,133 @@ export const DELETION_REQUEST_STORE = Symbol('DELETION_REQUEST_STORE');
 export const DELETION_REQUEST_RETENTION_MS =
     DELETION_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
-export type StoredDeletionRequest = {
+export type NewDeletionRequest = {
     email: string;
     note: string;
+    tokenHash: string;
     createdAt: string;
 };
 
+export type ConfirmResult =
+    | { status: 'missing' }
+    | { status: 'already'; email: string }
+    | { status: 'confirmed'; email: string; note: string; createdAt: string };
+
 export interface DeletionRequestStore {
-    save(request: StoredDeletionRequest, now?: Date): Promise<void>;
+    save(request: NewDeletionRequest, now?: Date): Promise<void>;
+    confirm(tokenHash: string, now?: Date): Promise<ConfirmResult>;
+}
+
+type DeletionRow = {
+    id: number;
+    email: string;
+    note: string;
+    tokenHash: string;
+    confirmedAt: string | null;
+    createdAt: string;
+};
+
+type CreatedAtFilter = {
+    lt(value: string): unknown;
+};
+
+type DeletionTable = {
+    create(data: {
+        email: string;
+        note: string;
+        tokenHash: string;
+        confirmedAt: null;
+        createdAt: string;
+    }): Promise<DeletionRow>;
+    where(filter: { tokenHash: string } | { id: number } | ((row: { createdAt: CreatedAtFilter }) => unknown)): {
+        first(): Promise<DeletionRow | null>;
+        update(data: { confirmedAt: string }): Promise<unknown>;
+        deleteAndCount(): Promise<number>;
+    };
+};
+
+export function deletionRequestCutoff(now: Date, retentionMs = DELETION_REQUEST_RETENTION_MS): string {
+    return new Date(now.getTime() - retentionMs).toISOString();
 }
 
 export class MemoryDeletionRequestStore implements DeletionRequestStore {
-    readonly saved: StoredDeletionRequest[] = [];
+    readonly saved: Array<NewDeletionRequest & { confirmedAt: string | null }> = [];
 
-    async save(request: StoredDeletionRequest): Promise<void> {
-        this.saved.push(request);
+    constructor(private readonly retentionMs = DELETION_REQUEST_RETENTION_MS) {}
+
+    async save(request: NewDeletionRequest, now = new Date()): Promise<void> {
+        this.prune(now);
+        this.saved.push({ ...request, confirmedAt: null });
+    }
+
+    async confirm(tokenHash: string, now = new Date()): Promise<ConfirmResult> {
+        this.prune(now);
+        const row = this.saved.find((item) => item.tokenHash === tokenHash);
+        if (!row) return { status: 'missing' };
+        if (row.confirmedAt) return { status: 'already', email: row.email };
+        row.confirmedAt = now.toISOString();
+        return {
+            status: 'confirmed',
+            email: row.email,
+            note: row.note,
+            createdAt: row.createdAt,
+        };
+    }
+
+    prune(now: Date): void {
+        const cutoff = Date.parse(deletionRequestCutoff(now, this.retentionMs));
+        const kept = this.saved.filter((row) => Date.parse(row.createdAt) >= cutoff);
+        this.saved.splice(0, this.saved.length, ...kept);
     }
 }
 
 /**
- * One JSON object per line. Rows older than the retention window are dropped
- * on the next write. The file lives on the API disk, which on Render is ephemeral,
- * so the mailer is the copy that survives a restart when SMTP is configured.
+ * Rows live in Postgres. Each save and confirm runs one delete of rows older
+ * than the retention window, then writes.
  */
-export class FileDeletionRequestStore implements DeletionRequestStore {
-    constructor(
-        private readonly filePath = join(
-            process.cwd(),
-            'data',
-            'account-deletion-requests.jsonl',
-        ),
-        private readonly retentionMs = DELETION_REQUEST_RETENTION_MS,
-    ) {}
+@Injectable()
+export class PrismaDeletionRequestStore implements DeletionRequestStore {
+    constructor(private readonly prisma: PrismaService) {}
 
-    async save(request: StoredDeletionRequest, now = new Date()): Promise<void> {
-        const cutoff = now.getTime() - this.retentionMs;
-        const existing = await this.read();
-        const kept = existing.filter((row) => Date.parse(row.createdAt) >= cutoff);
-        kept.push(request);
-        await mkdir(dirname(this.filePath), { recursive: true });
-        const body = kept.map((row) => JSON.stringify(row)).join('\n') + '\n';
-        await writeFile(this.filePath, body, 'utf8');
+    async save(request: NewDeletionRequest, now = new Date()): Promise<void> {
+        await this.prune(now);
+        await this.table().create({
+            email: request.email,
+            note: request.note,
+            tokenHash: request.tokenHash,
+            confirmedAt: null,
+            createdAt: request.createdAt,
+        });
     }
 
-    async read(): Promise<StoredDeletionRequest[]> {
-        let raw: string;
-        try {
-            raw = await readFile(this.filePath, 'utf8');
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-            throw error;
-        }
-        return raw
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .flatMap((line) => {
-                try {
-                    const row = JSON.parse(line) as StoredDeletionRequest;
-                    if (typeof row.email !== 'string' || typeof row.createdAt !== 'string') {
-                        return [];
-                    }
-                    return [{
-                        email: row.email,
-                        note: typeof row.note === 'string' ? row.note : '',
-                        createdAt: row.createdAt,
-                    }];
-                } catch {
-                    return [];
-                }
-            });
+    async confirm(tokenHash: string, now = new Date()): Promise<ConfirmResult> {
+        await this.prune(now);
+        const row = await this.table().where({ tokenHash }).first();
+        if (!row) return { status: 'missing' };
+        if (row.confirmedAt) return { status: 'already', email: row.email };
+        await this.table().where({ id: row.id }).update({
+            confirmedAt: now.toISOString(),
+        });
+        return {
+            status: 'confirmed',
+            email: row.email,
+            note: row.note,
+            createdAt: row.createdAt,
+        };
+    }
+
+    /** Deletes every deletion request older than the retention window. */
+    async prune(now = new Date()): Promise<number> {
+        const cutoff = deletionRequestCutoff(now);
+        return this.table()
+            .where((row) => row.createdAt.lt(cutoff))
+            .deleteAndCount();
+    }
+
+    private table(): DeletionTable {
+        const client = this.prisma.client as {
+            orm: { public: { DeletionRequest: DeletionTable } };
+        };
+        return client.orm.public.DeletionRequest;
     }
 }
