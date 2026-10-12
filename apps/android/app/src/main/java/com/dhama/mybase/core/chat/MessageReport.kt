@@ -21,8 +21,8 @@ const val REPORT_UNAVAILABLE = "This reply isn't on the server yet, so it can't 
 /**
  * Body for `POST /reports`.
  *
- * `apps/api` has no reports route. This shape is inferred: message id, conversation id,
- * reason, and an optional note. `note` is omitted when blank.
+ * Confirmed contract: message id, conversation id, reason, and an optional note.
+ * `note` is omitted when blank.
  */
 @Serializable
 data class ReportMessageBody(

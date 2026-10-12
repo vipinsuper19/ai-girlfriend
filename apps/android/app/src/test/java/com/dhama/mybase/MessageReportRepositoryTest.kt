@@ -7,6 +7,7 @@ import com.dhama.mybase.core.chat.reportMessageBody
 import com.dhama.mybase.core.chat.reportUnavailableReason
 import com.dhama.mybase.core.data.MessageReportRepository
 import com.dhama.mybase.core.data.ReportResult
+import com.dhama.mybase.core.network.ApiStatusException
 import com.dhama.mybase.core.network.apiJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -75,6 +76,36 @@ class MessageReportRepositoryTest {
         release.complete(Unit)
         assertEquals(ReportResult.Sent, first.await())
         assertEquals(1, posts)
+    }
+
+    @Test
+    fun http409CountsAsTheThanksSuccess() = runBlocking {
+        var posts = 0
+        val repository = MessageReportRepository {
+            posts += 1
+            throw ApiStatusException(409, "Already reported", "DUPLICATE_REPORT")
+        }
+        val body = ReportMessageBody(12, 8, "HARMFUL", null)
+
+        assertEquals(ReportResult.Sent, repository.report(body))
+        assertTrue(repository.alreadySent(12))
+        assertEquals(ReportResult.Duplicate, repository.report(body))
+        assertEquals(1, posts)
+    }
+
+    @Test
+    fun http404IsAnErrorAndDoesNotCountAsSent() = runBlocking {
+        var posts = 0
+        val repository = MessageReportRepository {
+            posts += 1
+            if (posts == 1) throw ApiStatusException(404, "Request failed", null)
+        }
+        val body = ReportMessageBody(12, 8, "HATE", null)
+
+        assertEquals(ReportResult.Failed("That reply couldn't be found."), repository.report(body))
+        assertFalse(repository.alreadySent(12))
+        assertEquals(ReportResult.Sent, repository.report(body))
+        assertEquals(2, posts)
     }
 
     @Test

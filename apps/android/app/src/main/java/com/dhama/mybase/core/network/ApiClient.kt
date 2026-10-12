@@ -305,7 +305,8 @@ class ApiClient(
     }
 
     /**
-     * `POST /reports`. apps/api has no reports route yet; [ReportMessageBody] is the inferred contract.
+     * `POST /reports` with the confirmed [ReportMessageBody] contract.
+     * A 409 is an already-stored report; the repository treats that as success. A 404 is an error.
      */
     suspend fun reportMessage(body: ReportMessageBody) {
         withAuth { access ->
