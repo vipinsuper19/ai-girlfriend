@@ -5,8 +5,8 @@ import type { ObjectStorage } from './object-storage.js';
 import { StorageCleanup } from './storage-cleanup.js';
 
 type Row = {
-    object_key: string;
-    last_error: string;
+    objectKey: string;
+    lastError: string;
     attempts: number;
 };
 
@@ -42,31 +42,30 @@ function memoryCleanup(objects: ObjectStorage) {
     const cleanup = new StorageCleanup(objects);
     cleanup.bindQuery(() => ({
         query: async (text: string, values: readonly unknown[] = []) => {
-            if (text.includes('CREATE TABLE')) return { rows: [] };
-            if (text.includes('INSERT INTO storage_cleanup')) {
+            if (text.includes('INSERT INTO "storageCleanup"')) {
                 const key = String(values[0]);
                 const error = String(values[1]);
                 const existing = rows.get(key);
                 if (existing) {
-                    existing.last_error = error;
+                    existing.lastError = error;
                     existing.attempts += 1;
                 } else {
-                    rows.set(key, { object_key: key, last_error: error, attempts: 1 });
+                    rows.set(key, { objectKey: key, lastError: error, attempts: 1 });
                 }
                 return { rows: [] };
             }
-            if (text.includes('SELECT object_key')) {
+            if (text.includes('SELECT "objectKey"')) {
                 return { rows: [...rows.values()] };
             }
             if (text.startsWith('DELETE')) {
                 rows.delete(String(values[0]));
                 return { rows: [] };
             }
-            if (text.includes('UPDATE storage_cleanup')) {
+            if (text.includes('UPDATE "storageCleanup"')) {
                 const row = rows.get(String(values[0]));
                 if (row) {
                     row.attempts += 1;
-                    row.last_error = String(values[1]);
+                    row.lastError = String(values[1]);
                 }
                 return { rows: [] };
             }
@@ -108,7 +107,7 @@ test('a retry that fails again stays in the cleanup table', async () => {
 
         assert.deepEqual(objects.deleted, []);
         assert.equal(rows.get('companions/4-a.png')?.attempts, 2);
-        assert.equal(rows.get('companions/4-a.png')?.last_error, 'still denied');
+        assert.equal(rows.get('companions/4-a.png')?.lastError, 'still denied');
     } finally {
         cleanup.stop();
     }

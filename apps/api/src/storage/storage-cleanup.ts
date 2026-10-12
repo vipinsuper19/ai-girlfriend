@@ -5,20 +5,11 @@ import { isCleanupKey } from './object-key.js';
 import { OBJECT_STORAGE, type ObjectStorage } from './object-storage.js';
 import type { StorageFailure } from '../users/account-deletion.js';
 
-const DDL = `
-CREATE TABLE IF NOT EXISTS storage_cleanup (
-    object_key text PRIMARY KEY,
-    last_error text NOT NULL,
-    attempts integer NOT NULL DEFAULT 1,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
-)`;
-
 type CleanupQuery = {
     query(
         text: string,
         values?: readonly unknown[],
-    ): Promise<{ rows: { object_key: string }[] }>;
+    ): Promise<{ rows: { objectKey: string }[] }>;
 };
 
 /**
@@ -64,15 +55,14 @@ export class StorageCleanup implements OnModuleInit, OnModuleDestroy {
         if (keys.length === 0) return;
 
         const db = this.connection();
-        await db.query(DDL);
         for (const failure of keys) {
             await db.query(
-                `INSERT INTO storage_cleanup (object_key, last_error)
+                `INSERT INTO "storageCleanup" ("objectKey", "lastError")
                  VALUES ($1, $2)
-                 ON CONFLICT (object_key) DO UPDATE
-                 SET last_error = EXCLUDED.last_error,
-                     attempts = storage_cleanup.attempts + 1,
-                     updated_at = now()`,
+                 ON CONFLICT ("objectKey") DO UPDATE
+                 SET "lastError" = EXCLUDED."lastError",
+                     attempts = "storageCleanup".attempts + 1,
+                     "updatedAt" = now()`,
                 [failure.key, failure.error.slice(0, 500)],
             );
         }
@@ -80,17 +70,15 @@ export class StorageCleanup implements OnModuleInit, OnModuleDestroy {
     }
 
     async pending(): Promise<string[]> {
-        const db = this.connection();
-        await db.query(DDL);
-        const result = await db.query(
-            'SELECT object_key FROM storage_cleanup ORDER BY created_at',
+        const result = await this.connection().query(
+            'SELECT "objectKey" FROM "storageCleanup" ORDER BY "createdAt"',
         );
-        return result.rows.map((row) => row.object_key);
+        return result.rows.map((row) => row.objectKey);
     }
 
     async forget(key: string): Promise<void> {
         await this.connection().query(
-            'DELETE FROM storage_cleanup WHERE object_key = $1',
+            'DELETE FROM "storageCleanup" WHERE "objectKey" = $1',
             [key],
         );
     }
@@ -107,9 +95,9 @@ export class StorageCleanup implements OnModuleInit, OnModuleDestroy {
                 await this.forget(key);
             } catch (error) {
                 await this.connection().query(
-                    `UPDATE storage_cleanup
-                     SET attempts = attempts + 1, last_error = $2, updated_at = now()
-                     WHERE object_key = $1`,
+                    `UPDATE "storageCleanup"
+                     SET attempts = attempts + 1, "lastError" = $2, "updatedAt" = now()
+                     WHERE "objectKey" = $1`,
                     [key, errorText(error).slice(0, 500)],
                 );
             }

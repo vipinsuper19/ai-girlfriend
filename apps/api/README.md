@@ -89,7 +89,7 @@ clients hide the matching controls, so nothing is faked.
 
 Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
 
-The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storage_cleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
