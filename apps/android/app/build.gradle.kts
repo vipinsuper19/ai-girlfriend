@@ -1,4 +1,5 @@
 import com.android.build.api.variant.BuildConfigField
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
@@ -13,6 +14,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.google.gms.google.services)
+    alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.kotlin.serialization)
@@ -68,6 +70,14 @@ val placeholderApiBaseUrl = "https://api.example.invalid/api/v1/"
 fun allowPlaceholderApi(): Boolean =
     (findProperty("allowPlaceholderApi") as? String).normalizeConfig()
         ?.equals("true", ignoreCase = true) == true
+
+// Release uploads the R8 mapping file to Crashlytics. Placeholder CI builds, and any
+// build passed -PdisableMappingUpload=true, skip that upload.
+fun disableMappingUpload(): Boolean {
+    val explicit = (findProperty("disableMappingUpload") as? String).normalizeConfig()
+    if (explicit?.equals("true", ignoreCase = true) == true) return true
+    return allowPlaceholderApi()
+}
 
 fun requireReleaseSigning(): Boolean =
     configuredValue("REQUIRE_RELEASE_SIGNING")?.equals("true", ignoreCase = true) == true
@@ -214,9 +224,13 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
             // R8 is the shrinker AGP runs when minification is enabled.
-            // mapping.txt is the Crashlytics deobfuscation file. This build does not upload it.
+            // Plugin 3 registers this as the firebaseCrashlytics build-type extension.
+            // mapping.txt is uploaded unless disableMappingUpload() is true.
             isMinifyEnabled = true
             isShrinkResources = true
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = !disableMappingUpload()
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -313,7 +327,7 @@ tasks.configureEach {
             if (mapping == null) {
                 throw GradleException(
                     "Crashlytics mapping file was not generated. Looked in ${candidates.joinToString { it.path }}. " +
-                        "R8 writes it when release minification is on. This build does not upload it.",
+                        "R8 writes it when release minification is on.",
                 )
             }
         }
@@ -362,8 +376,6 @@ dependencies {
     testImplementation(libs.room.testing)
 
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter)
     implementation(libs.okhttp)
     implementation(libs.billing.ktx)
 

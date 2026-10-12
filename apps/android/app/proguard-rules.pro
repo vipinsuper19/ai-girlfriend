@@ -1,14 +1,15 @@
 # Release shrinking uses R8 (minify + shrinkResources).
 # These rules sit on top of the consumer rules shipped by the libraries.
-# R8 writes outputs/mapping/release/mapping.txt for Crashlytics. Nothing uploads that file.
+# R8 writes outputs/mapping/release/mapping.txt. The Crashlytics Gradle plugin uploads it
+# unless the build passes -PdisableMappingUpload=true or -PallowPlaceholderApi=true.
 
 # Stack traces stay mappable. SourceFile is renamed so original paths are not baked in.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
--keep public class * extends java.lang.Exception
+-keep public class com.dhama.mybase.** extends java.lang.Exception
 -dontwarn com.google.firebase.crashlytics.**
 
-# Generic signatures and annotations. Retrofit, Gson, and kotlinx.serialization read these.
+# Generic signatures and annotations. kotlinx.serialization reads these.
 -keepattributes Signature,InnerClasses,EnclosingMethod
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 
@@ -56,63 +57,6 @@
 # Type-safe Navigation routes use the serial name as the route.
 -keepnames class com.dhama.mybase.core.navigation.**
 
-# --- Retrofit + Gson ---
-# The app speaks JSON through kotlinx.serialization. Retrofit and converter-gson
-# are on the classpath and reflect on service methods and @SerializedName fields.
-
--keepclassmembers,allowshrinking,allowobfuscation interface * {
-    @retrofit2.http.* <methods>;
-}
--if interface * { @retrofit2.http.* <methods>; }
--keep,allowobfuscation interface <1>
--if interface * { @retrofit2.http.* <methods>; }
--keep,allowobfuscation interface * extends <1>
--if interface * { @retrofit2.http.* public *** *(...); }
--keep,allowoptimization,allowshrinking,allowobfuscation class <3>
--keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
--keep,allowobfuscation,allowshrinking class retrofit2.Response
--dontwarn org.codehaus.mojo.animal_sniffer.**
--dontwarn javax.annotation.**
--dontwarn kotlin.Unit
--dontwarn retrofit2.KotlinExtensions
--dontwarn retrofit2.KotlinExtensions$*
-
--if class com.google.gson.reflect.TypeToken
--keep,allowobfuscation class com.google.gson.reflect.TypeToken
--keep,allowobfuscation class * extends com.google.gson.reflect.TypeToken
--keep,allowobfuscation,allowoptimization @com.google.gson.annotations.JsonAdapter class *
--keepclassmembers,allowobfuscation class * {
-    @com.google.gson.annotations.Expose <fields>;
-    @com.google.gson.annotations.JsonAdapter <fields>;
-    @com.google.gson.annotations.Since <fields>;
-    @com.google.gson.annotations.Until <fields>;
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keepclassmembers class * extends com.google.gson.TypeAdapter {
-    <init>();
-}
--keepclassmembers class * implements com.google.gson.TypeAdapterFactory {
-    <init>();
-}
--keepclassmembers class * implements com.google.gson.JsonSerializer {
-    <init>();
-}
--keepclassmembers class * implements com.google.gson.JsonDeserializer {
-    <init>();
-}
--if class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keepclasseswithmembers,allowobfuscation class <1> {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--if class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keepclassmembers,allowobfuscation,allowoptimization class <1> {
-    <init>();
-}
-
 # --- OkHttp ---
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**
@@ -121,20 +65,12 @@
 -adaptresourcefilenames okhttp3/internal/publicsuffix/PublicSuffixDatabase.gz
 
 # --- Hilt / Dagger ---
-# The Hilt Gradle plugin also injects rules for generated components.
--keep class dagger.hilt.** { *; }
--keep class javax.inject.** { *; }
+# The Hilt Gradle plugin supplies the rules for dagger.hilt and javax.inject.
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
 -keepnames @dagger.hilt.android.lifecycle.HiltViewModel class *
 -keep class * implements dagger.hilt.internal.GeneratedComponent
 -keep class * implements dagger.hilt.internal.GeneratedComponentManager
 -keep class * implements dagger.hilt.internal.GeneratedComponentManagerHolder
--keepclasseswithmembers,allowobfuscation class * {
-    @dagger.Module <methods>;
-    @dagger.Provides <methods>;
-    @javax.inject.Inject <init>(...);
-    @javax.inject.Inject <fields>;
-}
 
 # --- Firebase ---
 -keep class com.google.firebase.components.ComponentDiscovery { *; }
