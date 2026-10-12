@@ -219,28 +219,29 @@ private fun StepHeader(
     val index = step.progressIndex(FeatureFlags.build.voice)
     val total = wizardStepTotal(FeatureFlags.build.voice)
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        val stepLabel = "Step $index of $total"
+        // Text inside this Row never showed up in the accessibility tree, even
+        // with its own test tag. Draw the label over the row instead.
+        Box(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Spacer(Modifier.weight(1f))
+                if (showSkip) {
+                    TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
             }
-            val stepLabel = "Step $index of $total"
-            // weight() on the Text itself dropped it from the accessibility tree.
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    stepLabel,
-                    modifier = Modifier.testId("wizard_step"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (showSkip) {
-                TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
-            } else {
-                Spacer(Modifier.width(48.dp))
-            }
+            Text(
+                stepLabel,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .testId("wizard_step"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(total) { segment ->
