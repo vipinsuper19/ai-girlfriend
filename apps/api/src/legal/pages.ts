@@ -44,7 +44,7 @@ export function privacyHtml(identity: LegalIdentity): string {
 ${contactBlock(identity)}
 
 <h2>Age check</h2>
-<p>Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server can store <code>dateOfBirth</code> and <code>ageConfirmedAt</code> on the account. Both are optional and stay empty. The current app does not send them.</p>
+<p>Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server checks the date of birth and then discards it. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
 
 <h2>Account email and password</h2>
 <p>Creating an account stores your account email. If you sign up with a password, the server stores a password hash, not the password itself. Your display name is stored when you set one.</p>
@@ -112,7 +112,7 @@ ${contactBlock(identity)}
 </form>
 
 <h2>What is deleted</h2>
-<p>Deleting the account removes the user row. The database then removes the linked records: the email, display name, password hash, and any stored date of birth or age-confirmation time; the Google sign-in link; refresh sessions; companions; conversations and chat messages; message reports (the message snapshot, the reason, and the note); memories and embeddings; image records; call records; the subscription rows we stored; usage records; and push device tokens. Web account-deletion requests stored for that account email are removed in the same step. Private portrait, image, and voice files for that account are deleted from storage: portraits whose names start with the companion id, generated images under that account id, and voice files under that account id. The on-device date of birth and 18+ flag are cleared on the phone. Cancel a Play subscription in Google Play. Deleting the account does not cancel it.</p>
+<p>Deleting the account removes the user row. The database then removes the linked records: the email, display name, password hash, and any stored age-confirmation time (<code>ageConfirmedAt</code>); the Google sign-in link; refresh sessions; companions; conversations and chat messages; message reports (the message snapshot, the reason, and the note); memories and embeddings; image records; call records; the subscription rows we stored; usage records; and push device tokens. Web account-deletion requests stored for that account email are removed in the same step. Private portrait, image, and voice files for that account are deleted from storage: portraits whose names start with the companion id, generated images under that account id, and voice files under that account id. The on-device date of birth and 18+ flag are cleared on the phone. Cancel a Play subscription in Google Play. Deleting the account does not cancel it.</p>
 
 <h2>What is kept, and for how long</h2>
 <ul>

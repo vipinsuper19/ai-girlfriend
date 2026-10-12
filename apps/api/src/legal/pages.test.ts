@@ -25,9 +25,9 @@ test('privacy policy describes the data the API processes', () => {
     assert.match(html, /safety notice/);
     assert.match(html, /age_date_of_birth/);
     assert.match(html, /18\+ confirmation flag/);
-    assert.match(html, /dateOfBirth/);
-    assert.match(html, /ageConfirmedAt/);
-    assert.match(html, /does not send them/);
+    assert.match(html, /checks the date of birth and then discards it/);
+    assert.match(html, /The only thing stored on the server is a nullable <code>ageConfirmedAt<\/code>/);
+    assert.doesNotMatch(html, /dateOfBirth/);
     assert.match(html, /Firebase Analytics/);
     assert.match(html, /Firebase Crashlytics/);
     assert.match(html, /crash reports, device information, and app events/);
@@ -67,6 +67,8 @@ test('account deletion page names the app, the steps, and what is kept', () => {
     assert.match(html, /developer verifies the request from the account's email address/);
     assert.match(html, /What is deleted/);
     assert.match(html, /message reports/);
+    assert.match(html, /ageConfirmedAt/);
+    assert.doesNotMatch(html, /stored date of birth/);
     assert.match(html, /deletion requests stored for that account email/);
     assert.match(html, /Cancel a Play subscription in Google Play/);
     assert.match(html, /embeddings/);
