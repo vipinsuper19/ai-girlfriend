@@ -69,7 +69,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-en_US
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-en_US-c4-r4096
 
       - name: Create AVD and generate snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -79,6 +79,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -prop persist.sys.locale=en-US -prop persist.sys.language=en -prop persist.sys.country=US
           disable-animations: false
@@ -121,6 +123,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -prop persist.sys.locale=en-US -prop persist.sys.language=en -prop persist.sys.country=US
           disable-animations: true

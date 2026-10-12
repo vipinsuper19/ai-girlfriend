@@ -14,10 +14,33 @@ mkdir -p "${artifacts}"
 # make the script exit non-zero. Any other failure does.
 log="${DIR}/out/run-all.log"
 
+# A cold API 34 emulator ANRs Pixel Launcher and leaves that dialog over the
+# app, so Maestro never sees welcome_get_started. Tap Wait while it is in front.
+dismiss_anr_dialogs() {
+  while true; do
+    focus="$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus || true)"
+    case "${focus}" in
+      *"Not Responding"*)
+        echo "Dismissing ANR dialog: ${focus}"
+        # Wait is the lower button on a pixel_6 ANR dialog (1080x2400).
+        adb shell input tap 540 1359 || true
+        sleep 2
+        ;;
+    esac
+    sleep 2
+  done
+}
+
+dismiss_anr_dialogs &
+anr_pid=$!
+
 set +e
 "${DIR}/run-all.sh"
 run_status=$?
 set -e
+
+kill "${anr_pid}" 2>/dev/null || true
+wait "${anr_pid}" 2>/dev/null || true
 
 adb logcat -d > "${artifacts}/logcat.txt" || true
 
