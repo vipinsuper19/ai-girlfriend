@@ -155,6 +155,25 @@ AUDIO_CALL_MINUTES   = "AUDIO_CALL_MINUTES"
 VIDEO_CALL_MINUTES   = "VIDEO_CALL_MINUTES"
 }
 
+// Strings the Android report picker sends as `reason`.
+enum MessageReportReason {
+@@type("pg/text@1")
+
+HARMFUL    = "HARMFUL"
+SEXUAL     = "SEXUAL"
+HATE       = "HATE"
+INACCURATE = "INACCURATE"
+OTHER      = "OTHER"
+}
+
+enum MessageReportStatus {
+@@type("pg/text@1")
+
+PENDING   = "PENDING"
+REVIEWED  = "REVIEWED"
+DISMISSED = "DISMISSED"
+}
+
 
 
 
@@ -190,6 +209,7 @@ calls Call[]
 subscriptions Subscription[]
 usageRecords UsageRecord[]
 deviceTokens DeviceToken[]
+messageReports MessageReport[]
 
 @@index([status])
 @@index([createdAt])
@@ -762,5 +782,39 @@ onDelete: Cascade
 @@index([userId, feature])
 @@index([userId, createdAt])
 @@index([feature, createdAt])
+}
+
+// ============================================================
+// MESSAGE REPORTS
+// ============================================================
+
+// One person's flag of one message. `content` is a snapshot taken when the
+// report is filed, so later edits to the message do not change it.
+model MessageReport {
+id             Int                   @id @default(autoincrement())
+
+userId         Int
+messageId      Int
+conversationId Int
+
+reason         MessageReportReason
+note           String?
+content        String?
+
+status         MessageReportStatus   @default(PENDING)
+
+createdAt      TimestamptzString     @default(now())
+updatedAt      temporal.updatedAtString()
+
+user User @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([userId, messageId])
+@@index([status, createdAt])
+@@index([messageId])
+@@index([conversationId])
 }
 

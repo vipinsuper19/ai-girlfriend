@@ -52,6 +52,10 @@
       "model": "Message",
       "namespace": "public"
     },
+    "messageReport": {
+      "model": "MessageReport",
+      "namespace": "public"
+    },
     "session": {
       "model": "Session",
       "namespace": "public"
@@ -277,6 +281,48 @@
               {
                 "name": "FACT",
                 "value": "FACT"
+              }
+            ]
+          },
+          "MessageReportReason": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "HARMFUL",
+                "value": "HARMFUL"
+              },
+              {
+                "name": "SEXUAL",
+                "value": "SEXUAL"
+              },
+              {
+                "name": "HATE",
+                "value": "HATE"
+              },
+              {
+                "name": "INACCURATE",
+                "value": "INACCURATE"
+              },
+              {
+                "name": "OTHER",
+                "value": "OTHER"
+              }
+            ]
+          },
+          "MessageReportStatus": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "PENDING",
+                "value": "PENDING"
+              },
+              {
+                "name": "REVIEWED",
+                "value": "REVIEWED"
+              },
+              {
+                "name": "DISMISSED",
+                "value": "DISMISSED"
               }
             ]
           },
@@ -2565,6 +2611,145 @@
               "table": "message"
             }
           },
+          "MessageReport": {
+            "fields": {
+              "content": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "conversationId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "messageId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "note": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "reason": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "MessageReportReason",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "MessageReportStatus",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "content": {
+                  "column": "content"
+                },
+                "conversationId": {
+                  "column": "conversationId"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "messageId": {
+                  "column": "messageId"
+                },
+                "note": {
+                  "column": "note"
+                },
+                "reason": {
+                  "column": "reason"
+                },
+                "status": {
+                  "column": "status"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "messageReport"
+            }
+          },
           "Session": {
             "fields": {
               "createdAt": {
@@ -3083,6 +3268,21 @@
                 },
                 "to": {
                   "model": "Memory",
+                  "namespace": "public"
+                }
+              },
+              "messageReports": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "MessageReport",
                   "namespace": "public"
                 }
               },
@@ -5058,6 +5258,163 @@
               },
               "uniques": []
             },
+            "messageReport": {
+              "checks": [
+                {
+                  "expression": "\"reason\" IN ('HARMFUL', 'SEXUAL', 'HATE', 'INACCURATE', 'OTHER')",
+                  "name": "messageReport_reason_check_03d00617",
+                  "prefix": "messageReport_reason_check"
+                },
+                {
+                  "expression": "\"status\" IN ('PENDING', 'REVIEWED', 'DISMISSED')",
+                  "name": "messageReport_status_check_70734042",
+                  "prefix": "messageReport_status_check"
+                }
+              ],
+              "columns": {
+                "content": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "conversationId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "messageId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "note": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "reason": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "MessageReportReason",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "PENDING"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "MessageReportStatus",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "messageReport"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "conversationId"
+                  ],
+                  "name": "messageReport_conversationId_idx_669215a6",
+                  "prefix": "messageReport_conversationId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "messageId"
+                  ],
+                  "name": "messageReport_messageId_idx_3cdded8d",
+                  "prefix": "messageReport_messageId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "status",
+                    "createdAt"
+                  ],
+                  "name": "messageReport_status_createdAt_idx_58610442",
+                  "prefix": "messageReport_status_createdAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "messageReport_userId_idx_a489d58a",
+                  "prefix": "messageReport_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "userId",
+                    "messageId"
+                  ]
+                }
+              ]
+            },
             "session": {
               "columns": {
                 "createdAt": {
@@ -5639,6 +5996,24 @@
                 "FACT"
               ]
             },
+            "MessageReportReason": {
+              "kind": "valueSet",
+              "values": [
+                "HARMFUL",
+                "SEXUAL",
+                "HATE",
+                "INACCURATE",
+                "OTHER"
+              ]
+            },
+            "MessageReportStatus": {
+              "kind": "valueSet",
+              "values": [
+                "PENDING",
+                "REVIEWED",
+                "DISMISSED"
+              ]
+            },
             "MessageRole": {
               "kind": "valueSet",
               "values": [
@@ -5699,7 +6074,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "48e16405130b1c3e792d7ac95b9017b46609b3ed29ab580557c4466b62a4b9eb",
+    "storageHash": "0153d0c2549ccfb7f0e418fada57c1c21b71575dc1b3d27de04c82ce5765fd5a",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",
@@ -5712,7 +6087,7 @@
     }
   },
   "execution": {
-    "executionHash": "3548ac1c3efbfff1cbf00a7db55976a4fbc5ab5ac5e1d6492eca74b79489dc58",
+    "executionHash": "7373d8b0c1639fe64c311f9ad25bc4bb248774a7ee637791a274d6165c4d1fc1",
     "mutations": {
       "defaults": [
         {
@@ -5893,6 +6268,21 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "message"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "messageReport"
           }
         },
         {

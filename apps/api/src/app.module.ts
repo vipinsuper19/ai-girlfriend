@@ -16,6 +16,8 @@ import { UsageModule } from "./usage/usage.module.js";
 import { MailModule } from './mail/mail.module.js';
 import { ImagesModule } from './images/images.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+
 @Module({
   imports: [
     CommonModule,
@@ -34,6 +36,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     MailModule,
     ImagesModule,
     NotificationsModule,
+    ReportsModule,
   ],
 })
 export class AppModule { }
