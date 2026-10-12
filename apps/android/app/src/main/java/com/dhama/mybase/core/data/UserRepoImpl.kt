@@ -10,9 +10,7 @@ class UserRepoImpl @Inject constructor(private val userDao: UserDao): UserRepo {
 
 
     override suspend fun getUser(): Flow<User> {
-        val user =  userDao.getUser()
-        return user
-        //return EntityMapper.mapToDomain(user)
+        return userDao.getUser()
     }
 
     override suspend fun insertUser(user: User) {

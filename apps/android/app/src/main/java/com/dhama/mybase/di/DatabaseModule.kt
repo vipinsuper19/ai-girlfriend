@@ -3,12 +3,12 @@ package com.dhama.mybase.di
 import android.content.Context
 import androidx.room.Room
 import com.dhama.mybase.core.db.AppDatabase
+import com.dhama.mybase.core.db.AppMigrations
 import com.dhama.mybase.core.data.ChatRepositoryImpl
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.data.MemoryRepositoryImpl
 import com.dhama.mybase.core.db.dao.ChatMessageDao
 import com.dhama.mybase.core.db.dao.MemoryDao
-import com.dhama.mybase.core.db.dao.NotesDao
 import com.dhama.mybase.core.db.dao.UserDao
 import com.dhama.mybase.core.domain.ChatRepository
 import com.dhama.mybase.core.domain.CompanionRepository
@@ -32,7 +32,8 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(context, AppDatabase::class.java, "my_database")
-            .fallbackToDestructiveMigration(true)
+            .addMigrations(*AppMigrations.ALL)
+            .fallbackToDestructiveMigrationFrom(1, 2, 3)
             .build()
     }
 
@@ -41,10 +42,6 @@ object DatabaseModule {
     fun provideMyDao(database: AppDatabase): UserDao {
         return database.userDao()
     }
-
-    @Provides
-    @Singleton
-    fun provideNotesDao(database: AppDatabase): NotesDao = database.notesDao()
 
     @Provides
     @Singleton

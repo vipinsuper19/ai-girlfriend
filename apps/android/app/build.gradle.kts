@@ -1,4 +1,5 @@
 import com.android.build.api.variant.BuildConfigField
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
@@ -69,6 +70,14 @@ val placeholderApiBaseUrl = "https://api.example.invalid/api/v1/"
 fun allowPlaceholderApi(): Boolean =
     (findProperty("allowPlaceholderApi") as? String).normalizeConfig()
         ?.equals("true", ignoreCase = true) == true
+
+// Release uploads the R8 mapping file to Crashlytics. Placeholder CI builds, and any
+// build passed -PdisableMappingUpload=true, skip that upload.
+fun disableMappingUpload(): Boolean {
+    val explicit = (findProperty("disableMappingUpload") as? String).normalizeConfig()
+    if (explicit?.equals("true", ignoreCase = true) == true) return true
+    return allowPlaceholderApi()
+}
 
 fun requireReleaseSigning(): Boolean =
     configuredValue("REQUIRE_RELEASE_SIGNING")?.equals("true", ignoreCase = true) == true
@@ -198,6 +207,11 @@ android {
         manifestPlaceholders["pushServiceEnabled"] = featurePush.toString()
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
+
     signingConfigs {
         releaseSigning?.let { signing ->
             create("release") {
@@ -214,7 +228,10 @@ android {
             if (releaseSigning != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
+            // R8 is the shrinker AGP runs when minification is enabled.
+            // Mapping upload is set after the Crashlytics plugin is applied below.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -242,6 +259,9 @@ val featureFlagManifest = tasks.register<FeatureFlagManifestTask>("writeFeatureF
 // unless a URL is configured, or -PallowPlaceholderApi=true opts into the placeholder.
 androidComponents {
     onVariants { variant ->
+        if (variant.buildType == "debug") {
+            variant.sources.assets?.addStaticSourceDirectory("schemas")
+        }
         variant.sources.manifests.addGeneratedManifestFile(featureFlagManifest) { task ->
             task.outputManifest
         }
@@ -298,10 +318,34 @@ abstract class FeatureFlagManifestTask : DefaultTask() {
     }
 }
 
+// bundleRelease runs after minify has finished publishing outputs. Checking from inside
+// minifyReleaseWithR8 is too early: AGP copies mapping.txt to outputs after that task's own actions.
+tasks.configureEach {
+    if (name == "bundleRelease") {
+        doLast {
+            val candidates = listOf(
+                layout.buildDirectory.file("outputs/mapping/release/mapping.txt").get().asFile,
+                layout.buildDirectory.file("intermediates/mapping/release/minifyReleaseWithR8/mapping.txt").get().asFile,
+            )
+            val mapping = candidates.firstOrNull { it.isFile && it.length() > 0L }
+            if (mapping == null) {
+                throw GradleException(
+                    "Crashlytics mapping file was not generated. Looked in ${candidates.joinToString { it.path }}. " +
+                        "R8 writes it when release minification is on.",
+                )
+            }
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -340,10 +384,11 @@ dependencies {
     implementation(libs.room.kotlin)
     implementation(libs.room.paging)
     testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.junit)
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.16")
 
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter)
     implementation(libs.okhttp)
     implementation(libs.billing.ktx)
 
@@ -352,6 +397,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation("org.mockito:mockito-core:5.18.0")
+    testImplementation("com.android.tools:r8:9.5.23")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -367,4 +413,15 @@ val googleServicesFile = file("google-services.json")
 if (googleServicesFile.isFile) {
     apply(plugin = "com.google.gms.google-services")
     apply(plugin = "com.google.firebase.crashlytics")
+    // Plugin 3 adds CrashlyticsExtension only once the plugin is applied.
+    // Release uploads mapping.txt unless disableMappingUpload() is true.
+    android {
+        buildTypes {
+            getByName("release") {
+                configure<CrashlyticsExtension> {
+                    mappingFileUploadEnabled = !disableMappingUpload()
+                }
+            }
+        }
+    }
 }

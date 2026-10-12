@@ -9,14 +9,13 @@ lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
 googleGmsGoogleServices = "4.5.0"
+firebaseCrashlyticsGradle = "3.0.8"
 firebaseAi = "17.2.0"
 firebaseBOM = "35.0.0"
-firebaseCrashlyticsGradle = "3.0.8"
 materialIconsExtended = "1.7.8"
 uiTextGoogleFonts = "1.12.1"
 navigation = "2.10.1"
 material = "1.14.0"
-retrofit = "3.0.0"
 hilt = "2.60.1"
 hiltCompose = "1.4.0"
 ksp = "2.3.6"
@@ -56,8 +55,6 @@ androidx-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 navigation-testing = { group = "androidx.navigation", name = "navigation-testing", version.ref = "navigation" }
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-converter = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-android-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 hilt-android-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltCompose" }
