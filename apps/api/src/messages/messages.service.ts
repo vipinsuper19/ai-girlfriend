@@ -11,6 +11,7 @@ import type { ListMessagesDto } from './dto/list-messages.dto.js';
 import { messagePageLimit, orderMessagePage } from './message-page.js';
 import { regenerateProblem } from './regenerate.js';
 import { AiService } from '../ai/ai.service.js';
+import { safetyNoticeOf } from '../moderation/safety-policy.js';
 import { MemoryExtractorService } from '../memories/memory-extractor.service.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { UsageService } from '../usage/usage.service.js';
@@ -79,17 +80,21 @@ export class MessagesService {
                 conversationId,
             );
 
-        void this.memoryExtractorService.extractFromConversation(
-            numericUserId,
-            conversation.companionId,
-            numericConversationId,
-            message.content,
-            assistantMessage.content,
-        );
+        const safety = safetyNoticeOf(assistantMessage);
+        if (!safety) {
+            void this.memoryExtractorService.extractFromConversation(
+                numericUserId,
+                conversation.companionId,
+                numericConversationId,
+                message.content,
+                assistantMessage.content,
+            );
+        }
 
         return {
             userMessage: message,
             assistantMessage,
+            ...(safety ? { safety } : {}),
         };
     }
 
@@ -257,9 +262,12 @@ export class MessagesService {
                     conversation.id,
                 );
 
+            const safety = safetyNoticeOf(assistantMessage);
+
             return {
                 replacedId: numericMessageId,
                 assistantMessage,
+                ...(safety ? { safety } : {}),
             };
         } catch (error) {
             await this.db.orm.public.Message
