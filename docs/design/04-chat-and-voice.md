@@ -159,8 +159,8 @@ for eight seconds reads as a hang.
 The transcript comes back and renders as an outgoing bubble labelled "Transcribed from your voice
 note", so the user can see what she heard. Mis-transcription is common and invisible otherwise.
 
-Playback is Media3 `ExoPlayer`. Audio URLs are relative (`/uploads/voice/...`) and must be resolved
-against the API base URL.
+Playback is Media3 `ExoPlayer`. A local-driver audio URL is a relative `/uploads/voice/...?exp=&sig=`
+path and must be resolved against the API base URL. An S3 URL is already absolute. Both expire.
 
 ### 5.3 Two backend blockers
 

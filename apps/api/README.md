@@ -70,6 +70,10 @@ clients hide the matching controls, so nothing is faked.
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id the subscriptions belong to |
 | `GOOGLE_PLAY_PRODUCTS` | Product to plan map, e.g. `premium_monthly:PREMIUM,plus_monthly:PREMIUM_PLUS` |
 | `CORS_ORIGIN`, `PORT` | HTTP server |
+| `STORAGE_DRIVER` | `local` (default) or `s3` |
+| `STORAGE_SIGNED_URL_TTL_SECONDS` | Lifetime of a download URL. Default 3600, range 60–86400 |
+| `STORAGE_LOCAL_DIR`, `STORAGE_SIGNING_SECRET` | Local driver. The signing secret falls back to `JWT_ACCESS_SECRET` |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | S3-compatible driver. Required together when `STORAGE_DRIVER=s3` |
 | `TRUST_PROXY_HOPS` | Trusted proxy hops for client IP. Default `1` (Render). `0` uses the socket address |
 | `FREE_TIER_LLM_PERIOD` | `day` (default) or `month`. Free-tier chat cap window, UTC |
 | `FREE_TIER_LLM_MESSAGE_LIMIT` | Successful free-tier replies per window. Default `40`. `unlimited` removes it. `0` blocks new replies |
@@ -82,6 +86,10 @@ clients hide the matching controls, so nothing is faked.
 | `RATE_LIMIT_PASSWORD_RESET_USER_MAX`, `RATE_LIMIT_PASSWORD_RESET_USER_WINDOW_SEC` | Same routes per email or reset token. Default 5 / hour |
 | `RATE_LIMIT_MESSAGES_IP_MAX`, `RATE_LIMIT_MESSAGES_IP_WINDOW_SEC` | Message send, stream, and regenerate per IP. Default 60 / minute |
 | `RATE_LIMIT_MESSAGES_USER_MAX`, `RATE_LIMIT_MESSAGES_USER_WINDOW_SEC` | Those routes per account. Default 30 / minute |
+
+Copy `.env.example` to `.env`. The Render service in `render.yaml` sets `STORAGE_DRIVER=s3` and reads the S3 settings from a private Supabase Storage bucket (`https://<project-ref>.storage.supabase.co/storage/v1/s3`). The same variables point at MinIO or Backblaze B2. Leave `S3_FORCE_PATH_STYLE=true` for those, and set it to `false` for AWS S3.
+
+The bucket stays private. The database stores a stable `/uploads/...` key. JSON responses replace `audioUrl`, `imageUrl`, and `avatarUrl` with a short-lived signed URL. The local driver checks that signature before reading the file; the S3 driver returns a presigned GET. Avatar and generated-image uploads are stored only when the bytes are a real JPEG, PNG, or WebP. Deleting an account removes that user's objects before the user row. A delete that fails is written to `storageCleanup` and retried, because the Android client treats a later 404 from `DELETE /users/me` as success.
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
