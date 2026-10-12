@@ -213,6 +213,7 @@ subscriptions Subscription[]
 usageRecords UsageRecord[]
 deviceTokens DeviceToken[]
 messageReports MessageReport[]
+messages Message[]
 
 @@index([status])
 @@index([createdAt])
@@ -485,6 +486,12 @@ metadata       Json?
 audioUrl       String?
 imageUrl       String?
 
+// Copied onto a user line sent with Idempotency-Key. Null on every other
+// row, including assistant replies. The pair is unique so a resend cannot
+// insert a second message for the same person and key.
+userId         Int?
+idempotencyKey String?
+
 createdAt      TimestamptzString   @default(now())
 updatedAt      temporal.updatedAtString()
 deletedAt      TimestamptzString?
@@ -498,6 +505,13 @@ references: [id],
 onDelete: Cascade
 )
 
+user User? @relation(
+fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+@@unique([userId, idempotencyKey])
 @@index([conversationId, createdAt])
 @@index([createdAt])
 }
