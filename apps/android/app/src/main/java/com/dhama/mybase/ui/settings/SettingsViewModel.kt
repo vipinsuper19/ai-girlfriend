@@ -52,7 +52,7 @@ class SettingsViewModel @Inject constructor(
     val notificationNote = _notificationNote.asStateFlow()
 
     init {
-        if (FeatureFlags.push) {
+        if (FeatureFlags.build.push) {
             viewModelScope.launch {
                 _pushAvailable.value = try {
                     pushRegistration.available()
@@ -66,7 +66,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setNotifications(enabled: Boolean) {
-        if (!FeatureFlags.push || _notificationSaving.value) return
+        if (!FeatureFlags.build.push || _notificationSaving.value) return
         viewModelScope.launch {
             _notificationSaving.value = true
             _notificationNote.value = null

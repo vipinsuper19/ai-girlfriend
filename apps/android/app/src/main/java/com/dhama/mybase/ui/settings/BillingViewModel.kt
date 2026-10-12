@@ -25,7 +25,7 @@ class BillingViewModel @Inject constructor(
     val note = _note.asStateFlow()
 
     init {
-        if (FeatureFlags.billing) {
+        if (FeatureFlags.build.billing) {
             viewModelScope.launch { billing.notes.collect { _note.value = it } }
             viewModelScope.launch {
                 try {
@@ -41,7 +41,7 @@ class BillingViewModel @Inject constructor(
     }
 
     fun buy(activity: Activity, offer: PlayOffer) {
-        if (!FeatureFlags.billing) return
+        if (!FeatureFlags.build.billing) return
         _note.value = null
         if (!billing.launch(activity, offer)) {
             _note.value = "Google Play couldn't open the purchase."

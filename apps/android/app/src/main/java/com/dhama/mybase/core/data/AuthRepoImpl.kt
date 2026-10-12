@@ -202,7 +202,7 @@ class AuthRepoImpl(
 
     override suspend fun sendOtp(phoneNumber: String, activity: Activity,
                                  callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks) {
-        if (!FeatureFlags.phoneSignIn) return
+        if (!FeatureFlags.build.phoneSignIn) return
 
         val options = PhoneAuthOptions.newBuilder(auth)
             .setPhoneNumber(phoneNumber)
@@ -215,7 +215,7 @@ class AuthRepoImpl(
     }
 
     override suspend fun signInWithOtp(verificationId: String, otp: String): Flow<AuthState> = flow {
-        if (!FeatureFlags.phoneSignIn) {
+        if (!FeatureFlags.build.phoneSignIn) {
             emit(AuthState.Initial)
             return@flow
         }

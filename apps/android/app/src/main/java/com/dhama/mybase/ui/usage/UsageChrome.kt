@@ -25,7 +25,7 @@ import com.dhama.mybase.ui.theme.companionColors
 @Composable
 fun OfflineStrip(modifier: Modifier = Modifier) {
     Text(
-        if (FeatureFlags.voice) {
+        if (FeatureFlags.build.voice) {
             "You're offline. Chat, memories, and voice notes on this phone still work."
         } else {
             "You're offline. Chat and memories on this phone still work."

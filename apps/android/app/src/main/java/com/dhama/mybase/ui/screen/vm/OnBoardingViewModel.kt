@@ -123,7 +123,7 @@ class OnBoardingViewModel @Inject constructor(
     }
 
     fun sendOtp(phoneNumber: String, activity: Activity) {
-        if (!FeatureFlags.phoneSignIn) return
+        if (!FeatureFlags.build.phoneSignIn) return
         viewModelScope.launch {
             _uiState.value = AuthState.Loading
             authRepository.sendOtp(phoneNumber, activity, callbacks)
@@ -131,7 +131,7 @@ class OnBoardingViewModel @Inject constructor(
     }
 
     fun signInWithOtp(verificationId: String, otp: String) {
-        if (!FeatureFlags.phoneSignIn) return
+        if (!FeatureFlags.build.phoneSignIn) return
         viewModelScope.launch {
             authRepository.signInWithOtp(verificationId, otp)
                 .collect { state -> _uiState.value = state }

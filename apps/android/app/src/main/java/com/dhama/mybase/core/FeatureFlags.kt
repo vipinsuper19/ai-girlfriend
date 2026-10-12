@@ -3,14 +3,24 @@ package com.dhama.mybase.core
 import com.dhama.mybase.BuildConfig
 
 /**
- * Compile-time switches for the first release. Each value comes from a
- * `buildConfigField` in `app/build.gradle.kts`. Flip that field to `true` and
- * rebuild to bring the feature back; the screens and calls stay in the tree.
+ * Compile-time switches for the first release. [build] is what the APK was
+ * compiled with. Tests and Hilt can supply another instance so both states
+ * are reachable without a second build.
  */
-object FeatureFlags {
-    val voice: Boolean = BuildConfig.FEATURE_VOICE
-    val gallery: Boolean = BuildConfig.FEATURE_GALLERY
-    val push: Boolean = BuildConfig.FEATURE_PUSH
-    val billing: Boolean = BuildConfig.FEATURE_BILLING
-    val phoneSignIn: Boolean = BuildConfig.FEATURE_PHONE_SIGN_IN
+data class FeatureFlags(
+    val voice: Boolean,
+    val gallery: Boolean,
+    val push: Boolean,
+    val billing: Boolean,
+    val phoneSignIn: Boolean,
+) {
+    companion object {
+        val build: FeatureFlags = FeatureFlags(
+            voice = BuildConfig.FEATURE_VOICE,
+            gallery = BuildConfig.FEATURE_GALLERY,
+            push = BuildConfig.FEATURE_PUSH,
+            billing = BuildConfig.FEATURE_BILLING,
+            phoneSignIn = BuildConfig.FEATURE_PHONE_SIGN_IN,
+        )
+    }
 }

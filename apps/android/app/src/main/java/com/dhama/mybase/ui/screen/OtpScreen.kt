@@ -46,7 +46,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun OtpScreen(onNavigateToHome:()->Unit,onNavigateToLogin: () -> Unit) {
-    if (!FeatureFlags.phoneSignIn) return
+    if (!FeatureFlags.build.phoneSignIn) return
     var counter by  remember {
         mutableIntStateOf(30)
     }

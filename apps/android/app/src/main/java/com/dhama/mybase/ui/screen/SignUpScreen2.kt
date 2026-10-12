@@ -232,7 +232,7 @@ fun SignUpContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (FeatureFlags.phoneSignIn && mobileSignUp) {
+            if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
                 TextField(
                     value = mobile,
                     onValueChange = { mobile = it },
@@ -438,7 +438,7 @@ fun SignUpContent(
                 textLoading = "Signing up..."
             ) {
                 when {
-                    !FeatureFlags.phoneSignIn -> if (canSubmit) onSignUp(email.trim(), password)
+                    !FeatureFlags.build.phoneSignIn -> if (canSubmit) onSignUp(email.trim(), password)
                     mobileSignUp -> onSignUp(email, password)
                     else -> onSignUp(mobile, password)
                 }
@@ -481,12 +481,12 @@ fun SignUpContent(
                     /* Handle Google Sign Up */
                     googleSignIn()
                 }
-                if (FeatureFlags.phoneSignIn && mobileSignUp) {
+                if (FeatureFlags.build.phoneSignIn && mobileSignUp) {
                     SocialLoginButton(iconRes = R.drawable.outline_mail_24, "Sign up with email") {
                         /* Handle Facebook Sign Up */
                         updateMobileSignUp(false)
                     }
-                } else if (FeatureFlags.phoneSignIn) {
+                } else if (FeatureFlags.build.phoneSignIn) {
                     SocialLoginButton(
                         iconRes = R.drawable.baseline_phone_24,
                         "Sign up with mobile"

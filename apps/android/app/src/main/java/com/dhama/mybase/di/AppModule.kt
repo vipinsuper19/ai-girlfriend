@@ -1,5 +1,6 @@
 package com.dhama.mybase.di
 
+import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.data.NotesRepositoryImpl
 import com.dhama.mybase.core.data.UserRepoImpl
 import com.dhama.mybase.core.db.dao.NotesDao
@@ -15,6 +16,10 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 @Module
 object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideFeatureFlags(): FeatureFlags = FeatureFlags.build
 
     @Provides
     @Singleton

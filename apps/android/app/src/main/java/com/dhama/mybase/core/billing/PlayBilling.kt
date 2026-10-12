@@ -49,23 +49,26 @@ class PlayBilling @Inject constructor(
     @ApplicationContext context: Context,
     private val api: ApiClient,
     private val accountSync: AccountSync,
+    private val features: FeatureFlags,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _notes = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val notes: SharedFlow<String> = _notes.asSharedFlow()
     private var accountId: String? = null
 
-    private val client = BillingClient.newBuilder(context)
-        .setListener { result, purchases ->
-            when (result.responseCode) {
-                BillingClient.BillingResponseCode.OK -> scope.launch { verifyAll(purchases.orEmpty()) }
-                BillingClient.BillingResponseCode.USER_CANCELED -> Unit
-                else -> _notes.tryEmit("Google Play couldn't finish that purchase.")
+    private val client by lazy {
+        BillingClient.newBuilder(context)
+            .setListener { result, purchases ->
+                when (result.responseCode) {
+                    BillingClient.BillingResponseCode.OK -> scope.launch { verifyAll(purchases.orEmpty()) }
+                    BillingClient.BillingResponseCode.USER_CANCELED -> Unit
+                    else -> _notes.tryEmit("Google Play couldn't finish that purchase.")
+                }
             }
-        }
-        .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
-        .enableAutoServiceReconnection()
-        .build()
+            .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+            .enableAutoServiceReconnection()
+            .build()
+    }
 
     private suspend fun connect(): Boolean {
         if (client.isReady) return true
@@ -87,7 +90,7 @@ class PlayBilling @Inject constructor(
 
     /** Empty unless the server sells plans through Play and Play returns the products. */
     suspend fun offers(): List<PlayOffer> {
-        if (!FeatureFlags.billing || !api.hasSession()) return emptyList()
+        if (!features.billing || !api.hasSession()) return emptyList()
         val config = api.googlePlayConfig()
         if (!config.configured || config.accountId.isNullOrBlank() || config.products.isEmpty()) return emptyList()
         if (!connect()) return emptyList()
@@ -114,7 +117,7 @@ class PlayBilling @Inject constructor(
     }
 
     fun launch(activity: Activity, offer: PlayOffer): Boolean {
-        if (!FeatureFlags.billing) return false
+        if (!features.billing) return false
         val account = accountId ?: return false
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
@@ -132,7 +135,7 @@ class PlayBilling @Inject constructor(
 
     /** Re-sends owned subscriptions so renewals and purchases made while offline reach the server. */
     suspend fun syncOwned() {
-        if (!FeatureFlags.billing || !api.hasSession() || !connect()) return
+        if (!features.billing || !api.hasSession() || !connect()) return
         val owned = client.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build(),
         )

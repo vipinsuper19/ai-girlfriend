@@ -117,7 +117,7 @@ fun CompanionWizardScreen(
             when (state.step) {
                 WizardStep.Appearance -> AppearanceStep(state.draft, viewModel::update, viewModel::next)
                 WizardStep.Personality -> PersonalityStep(state.draft, viewModel::update, viewModel::next)
-                WizardStep.Voice -> if (FeatureFlags.voice) {
+                WizardStep.Voice -> if (FeatureFlags.build.voice) {
                     VoiceStep(state.draft, viewModel::update, viewModel::next)
                 }
                 WizardStep.Finalize -> FinalizeStep(
@@ -214,8 +214,8 @@ private fun StepHeader(
     onBack: () -> Unit,
     onSkip: () -> Unit,
 ) {
-    val index = step.progressIndex()
-    val total = wizardStepTotal()
+    val index = step.progressIndex(FeatureFlags.build.voice)
+    val total = wizardStepTotal(FeatureFlags.build.voice)
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -467,7 +467,7 @@ private fun FinalizeStep(
             Spacer(Modifier.height(12.dp))
             Text(draft.traits.joinToString(" · ").ifBlank { "Your choices" }, style = MaterialTheme.typography.bodyMedium)
             Text(
-                if (FeatureFlags.voice) "${draft.voiceLabel} voice · ${draft.relationship}" else draft.relationship,
+                if (FeatureFlags.build.voice) "${draft.voiceLabel} voice · ${draft.relationship}" else draft.relationship,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

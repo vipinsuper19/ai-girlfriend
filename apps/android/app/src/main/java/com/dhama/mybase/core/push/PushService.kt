@@ -33,13 +33,13 @@ class PushService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
-        if (!FeatureFlags.push) return
+        if (!FeatureFlags.build.push) return
         scope.launch { runCatching { registration.onNewToken(token) } }
     }
 
     /** FCM shows notification messages itself while the app is in the background; this covers the foreground. */
     override fun onMessageReceived(message: RemoteMessage) {
-        if (!FeatureFlags.push) return
+        if (!FeatureFlags.build.push) return
         val notice = message.notification ?: return
         val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==

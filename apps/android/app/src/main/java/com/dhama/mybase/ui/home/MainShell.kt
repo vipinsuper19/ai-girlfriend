@@ -118,8 +118,8 @@ fun MainShell(
     var tab by rememberSaveable { mutableIntStateOf(MainTab.Home.ordinal) }
     var screen by rememberSaveable { mutableStateOf("tabs") }
     val visibleScreen = when {
-        screen == "gallery" && !FeatureFlags.gallery -> "tabs"
-        screen == "plans" && !FeatureFlags.billing -> "tabs"
+        screen == "gallery" && !FeatureFlags.build.gallery -> "tabs"
+        screen == "plans" && !FeatureFlags.build.billing -> "tabs"
         else -> screen
     }
     var memoryId by rememberSaveable { mutableStateOf("") }
@@ -172,8 +172,8 @@ fun MainShell(
                 "privacy" -> MemoryPrivacyScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
                 "profile" -> CompanionProfileScreen(onBack = { screen = "tabs" }, onEdit = { screen = "edit" })
                 "edit" -> EditCompanionScreen(onBack = { screen = "profile" })
-                "plans" -> if (FeatureFlags.billing) SubscriptionScreen(onBack = { screen = "tabs" })
-                "gallery" -> if (FeatureFlags.gallery) GalleryScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
+                "plans" -> if (FeatureFlags.build.billing) SubscriptionScreen(onBack = { screen = "tabs" })
+                "gallery" -> if (FeatureFlags.build.gallery) GalleryScreen(companion?.name.orEmpty(), onBack = { screen = "tabs" })
                 "history" -> ConversationHistoryScreen(
                     onBack = { screen = "tabs" },
                     onOpened = {
@@ -201,7 +201,7 @@ fun MainShell(
                         onPhotos = { screen = "gallery" },
                     )
                     MainTab.Chat -> ChatScreen(
-                        onSeePlans = if (FeatureFlags.billing) {
+                        onSeePlans = if (FeatureFlags.build.billing) {
                             { screen = "plans" }
                         } else {
                             null
@@ -219,10 +219,10 @@ fun MainShell(
                     MainTab.You -> YouSettingsScreen(
                         onProfile = { screen = "profile" },
                         onPrivacy = { screen = "privacy" },
-                        onPlans = if (FeatureFlags.billing) {
+                        onPlans = if (FeatureFlags.build.billing) {
                             { screen = "plans" }
                         } else {
-                            {}
+                            null
                         },
                         onLogout = viewModel::logout,
                     )
@@ -348,7 +348,7 @@ private fun HomeTab(
             QuickAction("Talk", onTalk, Modifier.weight(1f))
             QuickAction("Memories", onMemories, Modifier.weight(1f))
             QuickAction("Profile", onProfile, Modifier.weight(1f))
-            if (FeatureFlags.gallery && companion.conversationId != null) {
+            if (FeatureFlags.build.gallery && companion.conversationId != null) {
                 QuickAction("Photos", onPhotos, Modifier.weight(1f))
             }
         }
