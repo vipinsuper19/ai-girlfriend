@@ -23,6 +23,17 @@ test('turning a flag on keeps the first time and off clears it', () => {
     assert.equal(flagColumn(undefined, null, now), undefined);
 });
 
+test('the profile view does not echo the date of birth', () => {
+    const view = userView({
+        id: 3,
+        email: 'a@b.co',
+        dateOfBirth: '1991-03-17',
+        ageConfirmedAt: '2026-10-12T15:04:05.000Z',
+    });
+    assert.equal('dateOfBirth' in view, false);
+    assert.equal('ageConfirmedAt' in view, false);
+});
+
 test('export leaves out credentials, tokens, and vectors', () => {
     const rows = exportRows([
         { id: 1, email: 'a@b.co', passwordHash: 'x', token: 't', embedding: [1], content: 'tea' },

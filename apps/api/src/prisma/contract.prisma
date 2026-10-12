@@ -179,6 +179,9 @@ deletedAt    TimestamptzString?
 memoryPausedAt         TimestamptzString?
 // Set while the user wants push notifications.
 notificationsEnabledAt TimestamptzString?
+// Calendar date of birth, and when the person confirmed they are 18 or older.
+dateOfBirth            DateString?
+ageConfirmedAt         TimestamptzString?
 
 accounts     Account[]
 sessions     Session[]

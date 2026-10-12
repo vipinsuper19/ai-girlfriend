@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, HttpStatus, type ArgumentsHost } from '@nestjs/common';
 
+import { AGE_UNDER_18, AgeRejectedException } from '../../auth/age.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
 import { UsageLimitExceededException } from '../../usage/usage.exceptions.js';
 
@@ -40,6 +41,20 @@ test('forwards the usage limit code', () => {
     assert.equal(body.statusCode, 403);
     assert.equal(body.code, 'USAGE_LIMIT_EXCEEDED');
     assert.equal(body.message, 'Usage limit exceeded for MESSAGES');
+});
+
+test('forwards the under-18 code', () => {
+    const body = capture(
+        new AgeRejectedException(
+            AGE_UNDER_18,
+            'You must be 18 or older.',
+            HttpStatus.FORBIDDEN,
+        ),
+    );
+
+    assert.equal(body.statusCode, 403);
+    assert.equal(body.code, 'UNDER_18');
+    assert.equal(body.message, 'You must be 18 or older.');
 });
 
 test('leaves validation errors without a code', () => {

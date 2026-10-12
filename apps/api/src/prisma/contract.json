@@ -2896,6 +2896,13 @@
           },
           "User": {
             "fields": {
+              "ageConfirmedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
               "avatarUrl": {
                 "nullable": true,
                 "type": {
@@ -2907,6 +2914,13 @@
                 "nullable": false,
                 "type": {
                   "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "dateOfBirth": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/date-string@1",
                   "kind": "scalar"
                 }
               },
@@ -3134,11 +3148,17 @@
             },
             "storage": {
               "fields": {
+                "ageConfirmedAt": {
+                  "column": "ageConfirmedAt"
+                },
                 "avatarUrl": {
                   "column": "avatarUrl"
                 },
                 "createdAt": {
                   "column": "createdAt"
+                },
+                "dateOfBirth": {
+                  "column": "dateOfBirth"
                 },
                 "deletedAt": {
                   "column": "deletedAt"
@@ -5438,6 +5458,11 @@
                 }
               ],
               "columns": {
+                "ageConfirmedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
                 "avatarUrl": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -5451,6 +5476,11 @@
                   },
                   "nativeType": "timestamptz",
                   "nullable": false
+                },
+                "dateOfBirth": {
+                  "codecId": "pg/date-string@1",
+                  "nativeType": "date",
+                  "nullable": true
                 },
                 "deletedAt": {
                   "codecId": "pg/timestamptz-string@1",
@@ -5699,7 +5729,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "48e16405130b1c3e792d7ac95b9017b46609b3ed29ab580557c4466b62a4b9eb",
+    "storageHash": "b2d466fd498bf23df8c6a5775acb1efa702097f27cbf08af501b715921a2d25c",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",
