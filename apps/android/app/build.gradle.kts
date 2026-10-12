@@ -213,7 +213,10 @@ android {
             if (releaseSigning != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
+            // R8 is the shrinker AGP runs when minification is enabled.
+            // mapping.txt is the Crashlytics deobfuscation file. This build does not upload it.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -297,6 +300,22 @@ abstract class FeatureFlagManifestTask : DefaultTask() {
     }
 }
 
+// bundleRelease already depends on minify. Fail that build if R8 did not write the mapping
+// file Crashlytics would upload. No upload task is registered.
+tasks.configureEach {
+    if (name == "minifyReleaseWithR8" || name == "bundleRelease") {
+        doLast {
+            val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt").get().asFile
+            if (!mapping.isFile || mapping.length() == 0L) {
+                throw GradleException(
+                    "Crashlytics mapping file was not generated at ${mapping.path}. " +
+                        "R8 writes it when release minification is on. This build does not upload it.",
+                )
+            }
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -348,6 +367,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation("org.mockito:mockito-core:5.18.0")
+    testImplementation("com.android.tools:r8:9.5.23")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
