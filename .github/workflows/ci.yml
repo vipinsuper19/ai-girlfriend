@@ -30,7 +30,7 @@ jobs:
       - run: pnpm run test
 
   android:
-    name: Android (unit tests, assembleRelease)
+    name: Android (unit tests, bundleRelease)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,17 +50,27 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "REQUIRE_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
           else
             echo "::notice::No KEYSTORE_BASE64 secret, so the release build will be unsigned."
           fi
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest
-      - name: assembleRelease
+      - name: bundleRelease
         env:
+          API_BASE_URL_RELEASE: ${{ vars.API_BASE_URL_RELEASE }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: |
+          if [ -z "$API_BASE_URL_RELEASE" ]; then
+            echo "::notice::Repo variable API_BASE_URL_RELEASE is unset; building with -PallowPlaceholderApi=true."
+            ./gradlew bundleRelease -PallowPlaceholderApi=true
+          else
+            ./gradlew bundleRelease
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: apps/android/app/build/outputs/apk/release/*.apk
+          name: app-release-aab
+          path: apps/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7
+          if-no-files-found: error
