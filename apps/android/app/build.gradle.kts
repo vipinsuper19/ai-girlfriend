@@ -300,15 +300,19 @@ abstract class FeatureFlagManifestTask : DefaultTask() {
     }
 }
 
-// bundleRelease already depends on minify. Fail that build if R8 did not write the mapping
-// file Crashlytics would upload. No upload task is registered.
+// bundleRelease runs after minify has finished publishing outputs. Checking from inside
+// minifyReleaseWithR8 is too early: AGP copies mapping.txt to outputs after that task's own actions.
 tasks.configureEach {
-    if (name == "minifyReleaseWithR8" || name == "bundleRelease") {
+    if (name == "bundleRelease") {
         doLast {
-            val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt").get().asFile
-            if (!mapping.isFile || mapping.length() == 0L) {
+            val candidates = listOf(
+                layout.buildDirectory.file("outputs/mapping/release/mapping.txt").get().asFile,
+                layout.buildDirectory.file("intermediates/mapping/release/minifyReleaseWithR8/mapping.txt").get().asFile,
+            )
+            val mapping = candidates.firstOrNull { it.isFile && it.length() > 0L }
+            if (mapping == null) {
                 throw GradleException(
-                    "Crashlytics mapping file was not generated at ${mapping.path}. " +
+                    "Crashlytics mapping file was not generated. Looked in ${candidates.joinToString { it.path }}. " +
                         "R8 writes it when release minification is on. This build does not upload it.",
                 )
             }
