@@ -32,7 +32,8 @@ env:
     timeout: 15000
 - tapOn:
     id: signup_adult
-- hideKeyboard
+# Do not hideKeyboard here. The checkbox tap already dismisses the IME, and
+# with animator scale 0 a second hideKeyboard sends Back and leaves this screen.
 - scrollUntilVisible:
     element:
       id: signup_submit
