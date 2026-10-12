@@ -18,6 +18,8 @@ import { ImagesModule } from './images/images.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { LegalModule } from './legal/legal.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+
 @Module({
   imports: [
     CommonModule,
@@ -38,6 +40,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     NotificationsModule,
     HealthModule,
     LegalModule,
+    ReportsModule,
   ],
 })
 export class AppModule { }
