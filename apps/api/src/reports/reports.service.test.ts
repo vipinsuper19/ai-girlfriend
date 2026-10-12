@@ -10,6 +10,7 @@ import { isUniqueViolation } from './unique-violation.js';
 type MessageRow = {
     id: number;
     conversationId: number;
+    role: string;
     content: string | null;
     deletedAt: string | null;
 };
@@ -38,10 +39,11 @@ function matches(row: object, filter: Record<string, unknown>) {
 
 function fakeDb(options?: { failNextCreate?: boolean }) {
     const messages: MessageRow[] = [
-        { id: 12, conversationId: 8, content: 'hello there', deletedAt: null },
-        { id: 13, conversationId: 8, content: null, deletedAt: null },
-        { id: 14, conversationId: 9, content: 'other chat', deletedAt: null },
-        { id: 15, conversationId: 8, content: 'gone', deletedAt: '2026-10-01T00:00:00.000Z' },
+        { id: 12, conversationId: 8, role: 'ASSISTANT', content: 'hello there', deletedAt: null },
+        { id: 13, conversationId: 8, role: 'ASSISTANT', content: null, deletedAt: null },
+        { id: 14, conversationId: 9, role: 'ASSISTANT', content: 'other chat', deletedAt: null },
+        { id: 15, conversationId: 8, role: 'ASSISTANT', content: 'gone', deletedAt: '2026-10-01T00:00:00.000Z' },
+        { id: 16, conversationId: 8, role: 'USER', content: 'my own line', deletedAt: null },
     ];
     const conversations: ConversationRow[] = [
         { id: 8, userId: 3, deletedAt: null },
@@ -149,6 +151,15 @@ test('someone else cannot report a message they do not own', async () => {
     const db = fakeDb();
     await assert.rejects(
         () => serviceFor(db).create(4, body),
+        NotFoundException,
+    );
+    assert.equal(db.reports.length, 0);
+});
+
+test('a user line cannot be reported', async () => {
+    const db = fakeDb();
+    await assert.rejects(
+        () => serviceFor(db).create(3, { ...body, messageId: 16 }),
         NotFoundException,
     );
     assert.equal(db.reports.length, 0);

@@ -1,8 +1,8 @@
 #!/usr/bin/env -S node
-import type { Contract as End } from '../../snapshots/0153d0c2549ccfb7f0e418fada57c1c21b71575dc1b3d27de04c82ce5765fd5a/contract';
-import endContract from '../../snapshots/0153d0c2549ccfb7f0e418fada57c1c21b71575dc1b3d27de04c82ce5765fd5a/contract.json' with { type: 'json' };
 import type { Contract as Start } from '../../snapshots/48e16405130b1c3e792d7ac95b9017b46609b3ed29ab580557c4466b62a4b9eb/contract';
 import startContract from '../../snapshots/48e16405130b1c3e792d7ac95b9017b46609b3ed29ab580557c4466b62a4b9eb/contract.json' with { type: 'json' };
+import type { Contract as End } from '../../snapshots/9085182e7f306f15150da7c8e49789e2e9f0e696a3ca77538204a78e196e30d6/contract';
+import endContract from '../../snapshots/9085182e7f306f15150da7c8e49789e2e9f0e696a3ca77538204a78e196e30d6/contract.json' with { type: 'json' };
 import {
   Migration,
   MigrationCLI,
@@ -94,6 +94,26 @@ export default class M extends Migration<Start, End> {
           name: 'messageReport_userId_fkey',
           columns: ['userId'],
           references: { schema: 'public', table: 'user', columns: ['id'] },
+          onDelete: 'cascade',
+        },
+      }),
+      this.addForeignKey({
+        schema: 'public',
+        table: 'messageReport',
+        foreignKey: {
+          name: 'messageReport_messageId_fkey',
+          columns: ['messageId'],
+          references: { schema: 'public', table: 'message', columns: ['id'] },
+          onDelete: 'cascade',
+        },
+      }),
+      this.addForeignKey({
+        schema: 'public',
+        table: 'messageReport',
+        foreignKey: {
+          name: 'messageReport_conversationId_fkey',
+          columns: ['conversationId'],
+          references: { schema: 'public', table: 'conversation', columns: ['id'] },
           onDelete: 'cascade',
         },
       }),

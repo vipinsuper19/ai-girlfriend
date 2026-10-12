@@ -87,6 +87,7 @@ All under `/api/v1`, wrapped as `{ data }`.
 | `PATCH /users/me` | Also takes `memoryPaused` and `notificationsEnabled` |
 | `POST /memories` | Add a memory by hand |
 | `POST /messages/:id/regenerate` | Replace her newest reply |
+| `POST /reports` | Flag an assistant reply. `201` with `{ id }` the first time, `200` with the same id if this person already reported that message. Ten reports per minute per user |
 | `POST /images`, `GET /images`, `GET /images/:id`, `DELETE /images/:id` | Generated photo gallery |
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |

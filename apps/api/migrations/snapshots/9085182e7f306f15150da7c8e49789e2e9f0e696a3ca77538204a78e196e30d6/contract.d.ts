@@ -38,7 +38,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'0153d0c2549ccfb7f0e418fada57c1c21b71575dc1b3d27de04c82ce5765fd5a'>;
+  StorageHashBase<'9085182e7f306f15150da7c8e49789e2e9f0e696a3ca77538204a78e196e30d6'>;
 export type ExecutionHash =
   ExecutionHashBase<'7373d8b0c1639fe64c311f9ad25bc4bb248774a7ee637791a274d6165c4d1fc1'>;
 export type ProfileHash =
@@ -2708,6 +2708,30 @@ type ContractBase = Omit<
                     readonly columns: readonly ['id'];
                   };
                 },
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'messageReport';
+                    readonly columns: readonly ['messageId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'message';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'messageReport';
+                    readonly columns: readonly ['conversationId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'conversation';
+                    readonly columns: readonly ['id'];
+                  };
+                },
               ];
             };
             readonly session: {
@@ -3962,6 +3986,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['conversationId'];
                 };
               };
+              readonly messageReports: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'MessageReport';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['conversationId'];
+                };
+              };
               readonly messages: {
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
@@ -4517,6 +4552,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['messageId'];
                 };
               };
+              readonly messageReports: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'MessageReport';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['messageId'];
+                };
+              };
             };
             readonly storage: {
               readonly table: 'message';
@@ -4586,6 +4632,28 @@ type ContractBase = Omit<
               };
             };
             readonly relations: {
+              readonly conversation: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Conversation';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['conversationId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+              readonly message: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Message';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['messageId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
               readonly user: {
                 readonly to: { readonly namespace: 'public' & NamespaceId; readonly model: 'User' };
                 readonly cardinality: 'N:1';

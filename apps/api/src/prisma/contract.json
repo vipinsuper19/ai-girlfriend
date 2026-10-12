@@ -1638,6 +1638,21 @@
                   "namespace": "public"
                 }
               },
+              "messageReports": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "conversationId"
+                  ]
+                },
+                "to": {
+                  "model": "MessageReport",
+                  "namespace": "public"
+                }
+              },
               "messages": {
                 "cardinality": "1:N",
                 "on": {
@@ -2569,6 +2584,21 @@
                   "model": "ImageGeneration",
                   "namespace": "public"
                 }
+              },
+              "messageReports": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "messageId"
+                  ]
+                },
+                "to": {
+                  "model": "MessageReport",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
@@ -2697,6 +2727,36 @@
               }
             },
             "relations": {
+              "conversation": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "conversationId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Conversation",
+                  "namespace": "public"
+                }
+              },
+              "message": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "messageId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Message",
+                  "namespace": "public"
+                }
+              },
               "user": {
                 "cardinality": "N:1",
                 "on": {
@@ -5364,6 +5424,40 @@
                     "namespaceId": "public",
                     "tableName": "user"
                   }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "messageId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "messageReport"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "message"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "conversationId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "messageReport"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "conversation"
+                  }
                 }
               ],
               "indexes": [
@@ -6074,7 +6168,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "0153d0c2549ccfb7f0e418fada57c1c21b71575dc1b3d27de04c82ce5765fd5a",
+    "storageHash": "9085182e7f306f15150da7c8e49789e2e9f0e696a3ca77538204a78e196e30d6",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",

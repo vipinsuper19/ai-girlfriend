@@ -74,4 +74,6 @@ test('the migration snapshots the report table and one report per person and mes
     assert.match(sql, /'HARMFUL', 'SEXUAL', 'HATE', 'INACCURATE', 'OTHER'/);
     assert.match(sql, /"content" text/);
     assert.match(sql, /'PENDING', 'REVIEWED', 'DISMISSED'/);
+    assert.match(sql, /FOREIGN KEY \("messageId"\)\s+REFERENCES "public"\."message"/);
+    assert.match(sql, /FOREIGN KEY \("conversationId"\)\s+REFERENCES "public"\."conversation"/);
 });

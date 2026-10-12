@@ -277,5 +277,89 @@
         ]
       }
     ]
+  },
+  {
+    "id": "foreignKey.messageReport.messageReport_messageId_fkey",
+    "label": "Add foreign key \"messageReport_messageId_fkey\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "messageReport_messageId_fkey",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"messageReport_messageId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_messageId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"messageReport_messageId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\"\nADD CONSTRAINT \"messageReport_messageId_fkey\"\nFOREIGN KEY (\"messageId\")\nREFERENCES \"public\".\"message\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"messageReport_messageId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_messageId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.messageReport.messageReport_conversationId_fkey",
+    "label": "Add foreign key \"messageReport_conversationId_fkey\" on \"messageReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "messageReport_conversationId_fkey",
+        "table": "messageReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"messageReport_conversationId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_conversationId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"messageReport_conversationId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"messageReport\"\nADD CONSTRAINT \"messageReport_conversationId_fkey\"\nFOREIGN KEY (\"conversationId\")\nREFERENCES \"public\".\"conversation\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"messageReport_conversationId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "messageReport_conversationId_fkey",
+          "public",
+          "\"public\".\"messageReport\""
+        ]
+      }
+    ]
   }
 ]

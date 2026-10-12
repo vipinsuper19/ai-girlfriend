@@ -21,9 +21,10 @@ export class ReportsService {
     }
 
     /**
-     * Files a report for a message the caller owns.
+     * Files a report for an assistant reply the caller owns.
      * A second report of the same message by the same person returns the
      * existing row (`created: false`) instead of inserting another.
+     * User and system messages are not found: this route flags AI replies.
      */
     async create(userId: number, dto: CreateReportDto): Promise<StoredReport> {
         if (!Number.isInteger(userId) || userId <= 0) {
@@ -34,7 +35,11 @@ export class ReportsService {
             .where({ id: dto.messageId, deletedAt: null })
             .first();
 
-        if (!message || message.conversationId !== dto.conversationId) {
+        if (
+            !message ||
+            message.role !== 'ASSISTANT' ||
+            message.conversationId !== dto.conversationId
+        ) {
             throw new NotFoundException('Message not found');
         }
 

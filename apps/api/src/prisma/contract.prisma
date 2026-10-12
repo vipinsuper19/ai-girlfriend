@@ -455,6 +455,7 @@ messages Message[]
 memories Memory[]
 imageGenerations ImageGeneration[]
 calls Call[]
+messageReports MessageReport[]
 
 @@index([userId])
 @@index([companionId])
@@ -486,6 +487,7 @@ updatedAt      temporal.updatedAtString()
 deletedAt      TimestamptzString?
 
 imageGeneration ImageGeneration?
+messageReports MessageReport[]
 
 conversation Conversation @relation(
 fields: [conversationId],
@@ -788,8 +790,9 @@ onDelete: Cascade
 // MESSAGE REPORTS
 // ============================================================
 
-// One person's flag of one message. `content` is a snapshot taken when the
-// report is filed, so later edits to the message do not change it.
+// One person's flag of one assistant reply. `content` is a snapshot taken
+// when the report is filed, so later edits do not change it. Soft-deletes
+// keep the row. Hard-deleting the message or conversation removes it.
 model MessageReport {
 id             Int                   @id @default(autoincrement())
 
@@ -808,6 +811,18 @@ updatedAt      temporal.updatedAtString()
 
 user User @relation(
 fields: [userId],
+references: [id],
+onDelete: Cascade
+)
+
+message Message @relation(
+fields: [messageId],
+references: [id],
+onDelete: Cascade
+)
+
+conversation Conversation @relation(
+fields: [conversationId],
 references: [id],
 onDelete: Cascade
 )
