@@ -5,6 +5,7 @@ import {
 import { GoogleGenAI } from '@google/genai';
 
 import { isAbortError } from '../abort-error.js';
+import { generationRateLimit } from '../generation-rate-limit.js';
 import type {
     AiChatMessage,
     ChatProvider,
@@ -69,6 +70,13 @@ export class GeminiChatProvider implements ChatProvider {
                 throw error;
             }
 
+            const limited = generationRateLimit(error, {
+                provider: 'gemini',
+                model: this.model,
+                mode: 'generate',
+            });
+            if (limited) throw limited;
+
             console.error(
                 'Gemini chat generation failed',
                 error,
@@ -113,6 +121,13 @@ export class GeminiChatProvider implements ChatProvider {
             if (options.signal?.aborted || isAbortError(error)) {
                 throw error;
             }
+
+            const limited = generationRateLimit(error, {
+                provider: 'gemini',
+                model: this.model,
+                mode: 'stream',
+            });
+            if (limited) throw limited;
 
             console.error(
                 'Gemini streaming generation failed',
