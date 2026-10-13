@@ -133,7 +133,7 @@ Expected: the failed send shows `chat_retry` with "Not sent · Retry" and does n
 
 Preconditions: chat composer focused, AI disclosure already accepted (the flow does that).
 
-Steps: paste 7100 `a` characters into `chat_composer` (`setClipboard` + `pasteText`). Maestro may deliver that paste as a long text input, so this step can take several minutes.
+Steps: type 7100 `a` characters into `chat_composer` as fifteen 500-character inputs. One Maestro `inputText` of the whole draft is killed after 120 seconds, so the flow does not use `pasteText`.
 
 Expected: either the field keeps 7000 characters, or it keeps a different length and `chat_draft_limit` shows a counter matching `[0-9]+ / 7000` (today that is `7100 / 7000. Shorten it to send.`). The flow does not send the draft.
 

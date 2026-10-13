@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -636,6 +637,7 @@ private fun ReportMessageDialog(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
+                                    .clickable(enabled = !state.submitting) { onSelect(reason) }
                                     .testId("report_reason_${reason.code}"),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
