@@ -27,7 +27,11 @@ fi
 
 pnpm exec prisma db migrate --no-interactive
 
-setsid pnpm exec tsx src/main.ts >"${log}" 2>&1 < /dev/null &
+# nest build emits decorator metadata. tsx does not, and Nest then sees
+# constructor parameter types as undefined.
+pnpm run build
+
+setsid node dist/main.js >"${log}" 2>&1 < /dev/null &
 pid=$!
 echo "${pid}" > "${pid_file}"
 
