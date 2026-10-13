@@ -13,6 +13,8 @@ export interface ProviderModeration {
  */
 export interface ContentModerator {
     readonly id: string;
+    /** Model id sent to the provider. Logged on failure. Never a secret. */
+    readonly model?: string;
     /** When set, the service chunks to this size. A non-positive value flags the text. */
     readonly maxChars?: number;
     moderate(text: string): Promise<ProviderModeration>;

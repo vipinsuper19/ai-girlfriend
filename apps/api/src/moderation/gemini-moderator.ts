@@ -12,12 +12,14 @@ import {
 } from './provider-categories.js';
 
 /**
- * Stable Gemini 3.6 Flash.
- * https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
- * Sampling parameters are omitted: Gemini 3.6 ignores them, and later models reject them.
+ * Stable Gemini 3.5 Flash-Lite.
+ * https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
+ * Sampling parameters are omitted: Gemini 3.x models ignore or reject them.
  */
-export const GEMINI_MODERATION_MODEL = 'gemini-3.6-flash';
+export const GEMINI_MODERATION_MODEL = 'gemini-3.5-flash-lite';
 export const GEMINI_MODERATION_MAX_CHARS = 8_000;
+/** Client abort only. Do not send this as httpOptions.timeout: the SDK copies that into X-Server-Timeout seconds, and Gemini rejects a server deadline under 10s with 400. */
+export const GEMINI_MODERATION_TIMEOUT_MS = 12_000;
 
 const UNTRUSTED_START = '<<<UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_TEXT>>>';
@@ -80,10 +82,14 @@ export class GeminiContentModerator implements ContentModerator {
     readonly maxChars = GEMINI_MODERATION_MAX_CHARS;
     private client: GoogleGenAI | null = null;
 
+    readonly model: string;
+
     constructor(
         private readonly apiKey: string | undefined,
-        private readonly model: string,
-    ) {}
+        model: string,
+    ) {
+        this.model = model;
+    }
 
     async moderate(text: string): Promise<ProviderModeration> {
         if (text.length > this.maxChars) {
@@ -94,18 +100,24 @@ export class GeminiContentModerator implements ContentModerator {
         }
         this.client ??= new GoogleGenAI({ apiKey: this.apiKey });
         const request = geminiModerationRequest(this.model, text);
-        const response = await this.client.models.generateContent({
-            ...request,
-            config: {
-                ...request.config,
-                abortSignal: AbortSignal.timeout(classifierTimeoutMs()),
-            },
-        });
-        const raw = response.text?.trim();
-        if (!raw) {
-            throw new Error('Moderation classifier returned an empty response');
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), classifierTimeoutMs());
+        try {
+            const response = await this.client.models.generateContent({
+                ...request,
+                config: {
+                    ...request.config,
+                    abortSignal: controller.signal,
+                },
+            });
+            const raw = response.text?.trim();
+            if (!raw) {
+                throw new Error('Moderation classifier returned an empty response');
+            }
+            const parsed = parseClassifier(raw);
+            return { categories: parsed.categories, items: parsed.items };
+        } finally {
+            clearTimeout(timer);
         }
-        const parsed = parseClassifier(raw);
-        return { categories: parsed.categories, items: parsed.items };
     }
 }

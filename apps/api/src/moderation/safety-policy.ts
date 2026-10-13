@@ -332,7 +332,16 @@ type Rule = {
 
 const ALL: ReadonlySet<ModerationSurface> = new Set(['input', 'output', 'persona']);
 const INPUT_AND_PERSONA: ReadonlySet<ModerationSurface> = new Set(['input', 'persona']);
+const PERSONA_ONLY: ReadonlySet<ModerationSurface> = new Set(['persona']);
 const OUTPUT_ONLY: ReadonlySet<ModerationSurface> = new Set(['output']);
+
+/** Spelled-out ages under 18. Longer words come first so a shorter prefix cannot win. */
+const UNDER_18_AGE_WORDS =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven|ten|nine|eight|seven|six|five|four|three|two|one|zero';
+/** Teen ages written without a unit. Short words like "one" or "ten" need a unit so "she is one" stays allowed. */
+const SPELLED_TEEN_AGES =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven';
+const MINOR_AGE_UNIT = String.raw`(?:years?[\s-]*old|y\/o|yo)`;
 
 const RULES: Rule[] = [
     {
@@ -368,6 +377,69 @@ const RULES: Rule[] = [
         pattern:
             /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
         surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:pretend|role-?play|act like)\b[\s\S]{0,80}\b(?:underage|a minor|a child|(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo))\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:i(?:'m| am)|you(?:'re| are))\s+(?:a\s+)?(?:minor|underage)\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(String.raw`\b(?:1[0-7]|[1-9])[\s-]*${MINOR_AGE_UNIT}\b`, 'i'),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:${SPELLED_TEEN_AGES})\b`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:pre[\s-]?teens?|teenagers?|teens?)\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bhigh[\s-]*schools?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bschool[\s-]*girls?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th)[\s-]+grades?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bsophomores?\b/i,
+        surfaces: PERSONA_ONLY,
     },
     {
         category: 'explicit',
@@ -453,32 +525,21 @@ const RULES: Rule[] = [
     },
     {
         category: 'minor',
-        // School stage, not the word "school" on its own ("starts school tomorrow").
+        // "class 9" / "10vi class". Grade words and "high school" stay persona-only above.
         pattern:
-            /\b(?:high|middle|elementary|primary)\s*school\b|\bjunior\s+high\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern:
-            /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class\b|\bclass\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?\b|\b(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grade\b|\bgrade\s*(?:1[0-2]|[1-9])\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'minor',
-        pattern: /\b(?:school\s*girls?|school\s*boys?|schoolgirls?|schoolboys?)\b/i,
-        surfaces: ALL,
+            /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class\b|\bclass\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?\b/i,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
         category: 'minor',
         pattern: /\bunder-?age\b/i,
-        surfaces: ALL,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
         category: 'minor',
         pattern:
-            /\b(?:pretend|role-?play|roleplay)\s+(?:that\s+)?you(?:'re| are)\s+(?:younger|under-?age|a\s+teen)\b|\b(?:act|be)\s+(?:like\s+)?you(?:'re| are)\s+(?:younger|under-?age)\b|\byou(?:'re| are)\s+(?:a\s+)?teen\b/i,
-        surfaces: ALL,
+            /\b(?:pretend|role-?play|roleplay)\s+(?:that\s+)?you(?:'re| are)\s+younger\b|\byou(?:'re| are)\s+(?:a\s+)?teen\b/i,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
         category: 'minor',

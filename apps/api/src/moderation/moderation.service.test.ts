@@ -105,6 +105,9 @@ test('a provider outage falls back to the local verdict and logs no text', async
     assert.match(logs[0] ?? '', /fallbacks=1/);
     assert.equal(logs.some((line) => line.includes('CANARY-220')), false);
     assert.equal(logs.some((line) => line.includes('upstream echoed')), false);
+    const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
+    assert.match(line, /provider=gemini status=http code=unknown/);
+    assert.equal(line.includes('message='), false);
 });
 
 test('fail open keeps a locally allowed message when the provider errors', async () => {

@@ -18,6 +18,7 @@ import {
     decideSafety,
     personaMinorAge,
     personaText,
+    unavailableNotice,
     type ModerationSurface,
     type PersonaDraft,
     type SafetyCategory,
@@ -95,6 +96,7 @@ export class ModerationService {
                 return notice;
             }
             for (const chunk of chunks) {
+                const started = Date.now();
                 try {
                     const remote = await this.provider.moderate(chunk);
                     categories = merge(categories, remote.categories);
@@ -114,10 +116,19 @@ export class ModerationService {
                             break;
                         }
                         this.noteDegraded(error, surface, ctx, trimmed.length);
+                        this.noteProviderError(error, surface, ctx, trimmed.length, chunk, started);
                         categories = merge(categories, ['illegal_harm']);
                         break;
                     }
+                    if (surface === 'persona') {
+                        this.noteProviderError(error, surface, ctx, trimmed.length, chunk, started);
+                        if (!this.config.failClosed) return null;
+                        const notice = unavailableNotice();
+                        this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
+                        return notice;
+                    }
                     this.noteDegraded(error, surface, ctx, trimmed.length);
+                    this.noteProviderError(error, surface, ctx, trimmed.length, chunk, started);
                     break;
                 }
             }
@@ -357,6 +368,41 @@ export class ModerationService {
         return { categories, cache: true };
     }
 
+    private noteProviderError(
+        error: unknown,
+        surface: ModerationSurface,
+        ctx: SafetyLogContext,
+        chars: number,
+        text: string,
+        started: number,
+    ): void {
+        const failure = describeProviderFailure(error, text);
+        const name = error instanceof Error ? error.name : 'Error';
+        this.logger.warn(
+            [
+                'moderation.provider_error',
+                `provider=${this.provider.id === 'openai' ? 'openai' : 'gemini'}`,
+                `status=${failure.status}`,
+                `code=${failure.code}`,
+                `model=${this.provider.model ?? '-'}`,
+                `latencyMs=${Date.now() - started}`,
+                ...(failure.message ? [`message=${failure.message}`] : []),
+            ].join(' '),
+        );
+        this.logger.warn(
+            [
+                'safety',
+                `provider=${this.provider.id}`,
+                'failed',
+                `name=${name}`,
+                `surface=${surface}`,
+                `chars=${chars}`,
+                `userId=${ctx.userId ?? '-'}`,
+                `conversationId=${ctx.conversationId ?? '-'}`,
+            ].join(' '),
+        );
+    }
+
     private noteDegraded(
         error: unknown,
         surface: ModerationSurface,
@@ -433,4 +479,70 @@ function holdsMinor(categories: SafetyCategory[]): boolean {
 
 function cacheKey(text: string): string {
     return text.trim();
+}
+
+type ProviderFailureStatus = 'http' | 'timeout' | 'parse';
+
+interface ProviderFailure {
+    status: ProviderFailureStatus;
+    code: string;
+    message: string;
+}
+
+/** Shape of a provider failure for the structured log. Never includes user text or keys. */
+export function describeProviderFailure(error: unknown, userText: string): ProviderFailure {
+    if (isProviderTimeout(error)) {
+        const code = error instanceof Error && error.name ? error.name : 'timeout';
+        return { status: 'timeout', code, message: '' };
+    }
+    if (isParseError(error)) {
+        return { status: 'parse', code: 'parse', message: '' };
+    }
+    const status = httpStatus(error);
+    const message = error instanceof Error && error.name === 'ApiError'
+        ? redactProviderMessage(error.message, userText)
+        : '';
+    return {
+        status: 'http',
+        code: status === undefined ? 'unknown' : String(status),
+        message,
+    };
+}
+
+export function redactProviderMessage(message: string, userText: string): string {
+    let text = message.replace(/\s+/g, ' ').trim();
+    if (userText) text = text.split(userText).join('[redacted]');
+    text = text
+        .replace(/AIza[0-9A-Za-z_-]{8,}/g, '[redacted]')
+        .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, '[redacted]')
+        .replace(
+            /((?:api[_-]?key|key|token|authorization|bearer)\s*[=:]\s*)[^\s&,"']+/gi,
+            '$1[redacted]',
+        );
+    if (text.length > 300) text = `${text.slice(0, 300)}...`;
+    return text;
+}
+
+function httpStatus(error: unknown): number | undefined {
+    if (!error || typeof error !== 'object') return undefined;
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === 'number' && status >= 100 && status <= 599) return status;
+    return undefined;
+}
+
+function isProviderTimeout(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const record = error as { name?: unknown; code?: unknown; status?: unknown };
+    if (record.name === 'ApiError' && typeof record.status === 'number') return false;
+    if (record.name === 'TimeoutError' || record.name === 'AbortError') return true;
+    if (record.code === 'ETIMEDOUT' || record.code === 'ABORT_ERR' || record.code === 23) {
+        return true;
+    }
+    const message = error instanceof Error ? error.message : '';
+    return /timeout|timed out|\baborted\b/i.test(message);
+}
+
+function isParseError(error: unknown): boolean {
+    if (!(error instanceof Error) || error.name === 'ApiError') return false;
+    return /no JSON|invalid JSON|empty response|returned no result/i.test(error.message);
 }

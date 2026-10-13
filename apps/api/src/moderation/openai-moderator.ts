@@ -27,7 +27,7 @@ export class OpenAiContentModerator implements ContentModerator {
 
     constructor(
         private readonly apiKey: string | undefined,
-        private readonly model: string,
+        readonly model: string,
     ) {}
 
     async moderate(text: string): Promise<ProviderModeration> {
