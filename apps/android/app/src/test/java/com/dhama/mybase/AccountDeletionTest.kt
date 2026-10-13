@@ -6,8 +6,12 @@ import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
 import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AgeLocalStore
 import com.dhama.mybase.core.data.DataStoreRepo
+import com.dhama.mybase.core.data.LinkedSignIn
+import com.dhama.mybase.core.data.RecentLoginNeedsCredential
 import com.dhama.mybase.core.data.SignInRoute
 import com.dhama.mybase.core.data.deleteServerAccount
+import com.dhama.mybase.core.data.deletionProvider
+import com.dhama.mybase.core.data.firebaseAuthUserDeletedByAdmin
 import com.dhama.mybase.core.data.performAccountDeletion
 import com.dhama.mybase.core.data.routeAfterFailedDeleteRefresh
 import com.dhama.mybase.core.data.signOutThenClearSession
@@ -29,8 +33,8 @@ import org.junit.Test
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * SettingsViewModel.deleteAccount and AuthRepoImpl.deleteRemoteAccount both go through
- * these steps: call DELETE users/me, then sign out (tokens) and wipe local data.
+ * SettingsViewModel.deleteAccount goes through DELETE /users/me, then FirebaseUser.delete(),
+ * then sign-out and the local wipe. A failure before the Firebase user is gone does not wipe.
  */
 class AccountDeletionTest {
 
@@ -38,12 +42,13 @@ class AccountDeletionTest {
     fun settingsDeletionSignsOutOnlyAfterTheServerDeletesTheAccount() = runBlocking {
         val order = mutableListOf<String>()
         val result = performAccountDeletion(
-            deleteRemote = { order += "delete" },
+            deleteRemote = { order += "delete"; false },
+            deleteFirebaseUser = { order += "firebase" },
             signOut = { order += "signOut" },
             clearLocal = { order += "clear" },
         )
         assertEquals(AccountDeletionResult.Deleted, result)
-        assertEquals(listOf("delete", "signOut", "clear"), order)
+        assertEquals(listOf("delete", "firebase", "signOut", "clear"), order)
     }
 
     @Test
@@ -52,6 +57,7 @@ class AccountDeletionTest {
         var cleared = false
         val result = performAccountDeletion(
             deleteRemote = { throw ApiStatusException(503, "Server unavailable", null) },
+            deleteFirebaseUser = { fail("firebase") },
             signOut = { signedOut = true },
             clearLocal = { cleared = true },
         )
@@ -64,6 +70,7 @@ class AccountDeletionTest {
     fun settingsDeletionUsesAFallbackMessageWhenTheFailureHasNoText() = runBlocking {
         val result = performAccountDeletion(
             deleteRemote = { throw Exception("   ") },
+            deleteFirebaseUser = { fail("firebase") },
             signOut = { fail("signed out") },
             clearLocal = { fail("cleared") },
         )
@@ -74,7 +81,8 @@ class AccountDeletionTest {
     fun settingsDeletionStillWipesThePhoneWhenSignOutFailsAfterTheServerDelete() = runBlocking {
         var cleared = false
         val result = performAccountDeletion(
-            deleteRemote = {},
+            deleteRemote = { false },
+            deleteFirebaseUser = { _ -> },
             signOut = { throw IllegalStateException("token store") },
             clearLocal = { cleared = true },
         )
@@ -86,7 +94,8 @@ class AccountDeletionTest {
     fun settingsDeletionReportsALocalWipeFailureAfterTheServerDelete() = runBlocking {
         var signedOut = false
         val result = performAccountDeletion(
-            deleteRemote = {},
+            deleteRemote = { false },
+            deleteFirebaseUser = { _ -> },
             signOut = { signedOut = true },
             clearLocal = { throw IllegalStateException("database locked") },
         )
@@ -100,6 +109,7 @@ class AccountDeletionTest {
             runBlocking {
                 performAccountDeletion(
                     deleteRemote = { throw CancellationException("left settings") },
+                    deleteFirebaseUser = { fail("firebase") },
                     signOut = { fail("signed out") },
                     clearLocal = { fail("cleared") },
                 )
@@ -113,7 +123,7 @@ class AccountDeletionTest {
     @Test
     fun repositoryDeleteCallsTheEndpointWhenASessionExists() = runBlocking {
         var called = false
-        deleteServerAccount(hasSession = true) { called = true }
+        deleteServerAccount(hasSession = true) { called = true; false }
         assertTrue(called)
     }
 
@@ -121,7 +131,7 @@ class AccountDeletionTest {
     fun repositoryDeleteDoesNotCallTheEndpointWithoutASession() {
         try {
             runBlocking {
-                deleteServerAccount(hasSession = false) { fail("called delete") }
+                deleteServerAccount(hasSession = false) { fail("called delete"); false }
             }
             fail("expected missing session")
         } catch (error: ApiStatusException) {
@@ -159,16 +169,19 @@ class AccountDeletionTest {
     fun deleteUsersMe404CountsAsSuccess() = runBlocking {
         var signedOut = false
         var cleared = false
+        var firebaseFlag: Boolean? = null
         val result = performAccountDeletion(
             deleteRemote = {
                 deleteServerAccount(hasSession = true) {
                     throw ApiStatusException(404, "User not found", null)
                 }
             },
+            deleteFirebaseUser = { firebaseFlag = it },
             signOut = { signedOut = true },
             clearLocal = { cleared = true },
         )
         assertEquals(AccountDeletionResult.Deleted, result)
+        assertEquals(false, firebaseFlag)
         assertTrue(signedOut)
         assertTrue(cleared)
     }
@@ -181,6 +194,7 @@ class AccountDeletionTest {
             deleteRemote = {
                 throw ApiStatusException(401, "expired", ACCOUNT_DELETE_SIGN_IN_CODE)
             },
+            deleteFirebaseUser = { fail("firebase") },
             signOut = { signedOut = true },
             clearLocal = { cleared = true },
         )
@@ -193,6 +207,7 @@ class AccountDeletionTest {
     fun plain401DoesNotRouteToSignIn() = runBlocking {
         val result = performAccountDeletion(
             deleteRemote = { throw ApiStatusException(401, "Sign in with email to reach her on the server.", null) },
+            deleteFirebaseUser = { fail("firebase") },
             signOut = { fail("signed out") },
             clearLocal = { fail("cleared") },
         )
@@ -258,6 +273,7 @@ class AccountDeletionTest {
         var signedOut = false
         val result = performAccountDeletion(
             deleteRemote = { throw ApiStatusException(503, "Server unavailable", null) },
+            deleteFirebaseUser = { fail("firebase") },
             signOut = { signedOut = true },
             clearLocal = { ageCleared = true },
         )
@@ -277,7 +293,8 @@ class AccountDeletionTest {
 
         var signedOut = false
         val result = performAccountDeletion(
-            deleteRemote = {},
+            deleteRemote = { false },
+            deleteFirebaseUser = { _ -> },
             signOut = { signedOut = true },
             clearLocal = {
                 age.clear()
@@ -291,6 +308,78 @@ class AccountDeletionTest {
         assertEquals("", preferences.value(PreferencesKeys.DATE_OF_BIRTH_SEALED))
         assertEquals(false, preferences.state.value[PreferencesKeys.AGE_CONFIRMED] ?: false)
         assertEquals(false, preferences.state.value[PreferencesKeys.AI_DISCLOSURE_ACKNOWLEDGED] ?: false)
+    }
+
+    @Test
+    fun firebaseFailureLeavesLocalDataInPlace() = runBlocking {
+        var signedOut = false
+        var cleared = false
+        val result = performAccountDeletion(
+            deleteRemote = { false },
+            deleteFirebaseUser = { throw IllegalStateException("firebase unavailable") },
+            signOut = { signedOut = true },
+            clearLocal = { cleared = true },
+        )
+        assertEquals(AccountDeletionResult.Failed("firebase unavailable"), result)
+        assertFalse(signedOut)
+        assertFalse(cleared)
+    }
+
+    @Test
+    fun recentLoginAsksForTheProviderAndDoesNotWipe() = runBlocking {
+        var signedOut = false
+        var cleared = false
+        var retried = false
+        val result = performAccountDeletion(
+            deleteRemote = { false },
+            deleteFirebaseUser = { _ ->
+                if (!retried) {
+                    retried = true
+                    throw RecentLoginNeedsCredential(LinkedSignIn.Email)
+                }
+            },
+            signOut = { signedOut = true },
+            clearLocal = { cleared = true },
+        )
+        assertEquals(AccountDeletionResult.NeedsRecentLogin(LinkedSignIn.Email), result)
+        assertFalse(signedOut)
+        assertFalse(cleared)
+    }
+
+    @Test
+    fun passesTheAdminSdkFlagIntoTheFirebaseDelete() = runBlocking {
+        var seen: Boolean? = null
+        val result = performAccountDeletion(
+            deleteRemote = { true },
+            deleteFirebaseUser = { seen = it },
+            signOut = {},
+            clearLocal = {},
+        )
+        assertEquals(AccountDeletionResult.Deleted, result)
+        assertEquals(true, seen)
+    }
+
+    @Test
+    fun currentDeleteResponseDoesNotClaimTheFirebaseUserWasRemoved() {
+        val body = """{"success":true,"data":{"message":"Account deleted successfully"}}"""
+        assertFalse(firebaseAuthUserDeletedByAdmin(body))
+    }
+
+    @Test
+    fun adminSdkFlagComesFromTheDeleteResponse() {
+        val body = """{"success":true,"data":{"message":"Account deleted successfully","firebaseUserDeleted":true}}"""
+        assertTrue(firebaseAuthUserDeletedByAdmin(body))
+        assertFalse(firebaseAuthUserDeletedByAdmin("""{"success":true,"data":{"firebaseUserDeleted":false}}"""))
+    }
+
+    @Test
+    fun deletionProviderMatchesTheSignInMethodsThisAppUses() {
+        assertEquals(LinkedSignIn.Email, deletionProvider(listOf("password"), phoneSignIn = false))
+        assertEquals(LinkedSignIn.Google, deletionProvider(listOf("google.com"), phoneSignIn = false))
+        assertEquals(LinkedSignIn.Email, deletionProvider(listOf("google.com", "password"), phoneSignIn = false))
+        assertEquals(LinkedSignIn.Unsupported, deletionProvider(listOf("phone"), phoneSignIn = false))
+        assertEquals(LinkedSignIn.Phone, deletionProvider(listOf("phone"), phoneSignIn = true))
+        assertEquals(LinkedSignIn.Unsupported, deletionProvider(emptyList(), phoneSignIn = true))
     }
 
     private class MemoryPreferences : DataStore<Preferences> {

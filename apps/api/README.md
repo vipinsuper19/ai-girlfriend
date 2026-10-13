@@ -70,7 +70,7 @@ clients hide the matching controls, so nothing is faked.
 | `AGE_GATE_ENFORCED` | `false` (default). `true` returns `403` `AGE_REQUIRED` on chat and `POST /avatars` until `PATCH /users/me/age` with `{ "ageConfirmed": true }` sets `ageConfirmedAt`. Left off so current clients that never call that route keep working |
 | `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
-| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
+| `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `gemini-3.5-flash-lite` and does not inherit `GEMINI_CHAT_MODEL` |
 | `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
 | `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint. Also used once as a fallback when Gemini moderation is rate-limited, returns 503, or times out |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
@@ -166,7 +166,7 @@ Path ids are positive 32-bit integers (`1` through `2147483647`). Anything else,
 | `GET /notifications/status`, `POST /notifications/devices`, `DELETE /notifications/devices/:token`, `POST /notifications/test` | Push devices |
 | `GET /subscriptions/google-play`, `POST /subscriptions/google-play` | Play Billing config and purchase verification |
 
-Play Store pages are outside `/api/v1`: `GET /privacy` and `GET /account-deletion`. The deletion form `POST`s to `/account-deletion` (5 requests per hour per client IP, kept in a capped in-memory map). The request is stored in Postgres (`deletionRequest`) and pruned after 30 days. A confirmation link is emailed to the account address; opening `GET /account-deletion/confirm` marks it confirmed. If that mail cannot be sent, the page says the developer verifies the request from the account's email address. Signed-in deletion in the app is `DELETE /api/v1/users/me`, which also deletes web deletion requests stored for that account email. Message reports belong to the user and are removed with that row (`ON DELETE CASCADE`).
+Play Store pages are outside `/api/v1`: `GET /privacy`, `GET /terms`, and `GET /account-deletion`. The deletion form `POST`s to `/account-deletion` (5 requests per hour per client IP, kept in a capped in-memory map). The request is stored in Postgres (`deletionRequest`) and pruned after 30 days. A confirmation link is emailed to the account address; opening `GET /account-deletion/confirm` marks it confirmed. If that mail cannot be sent, the page says the developer verifies the request from the account's email address. Signed-in deletion in the app is `DELETE /api/v1/users/me`, which also deletes web deletion requests stored for that account email. Message reports belong to the user and are removed with that row (`ON DELETE CASCADE`).
 
 `TRUST_PROXY_HOPS` is how many reverse-proxy hops to trust when reading that client IP. The default is 1. Set it to 0 to use the socket address.
 

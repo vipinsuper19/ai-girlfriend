@@ -15,16 +15,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,12 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.age.AgeGateCopy
-import com.dhama.mybase.core.age.MINIMUM_SIGNUP_AGE
-import com.dhama.mybase.core.age.dateOfBirthFromUtcMillis
 import com.dhama.mybase.core.age.evaluateAgeGate
 import com.dhama.mybase.core.age.formatDateOfBirth
 import com.dhama.mybase.core.age.parseDateOfBirth
-import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.AgeConfirmViewModel
 import java.time.LocalDate
@@ -72,7 +65,6 @@ fun AgeConfirmScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgeConfirmContent(
     storedDateOfBirth: String,
@@ -193,28 +185,13 @@ fun AgeConfirmContent(
     }
 
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = dateOfBirth?.let(::utcMillisFromDateOfBirth),
-            initialDisplayedMonthMillis = utcMillisFromDateOfBirth(
-                dateOfBirth ?: LocalDate.now().minusYears(MINIMUM_SIGNUP_AGE.toLong()),
-            ),
-            yearRange = 1900..LocalDate.now().year,
+        DobDatePickerDialog(
+            initialDate = dateOfBirth,
+            onDismiss = { showDatePicker = false },
+            onDateCommitted = { iso ->
+                dateOfBirthIso = iso
+                showDatePicker = false
+            },
         )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { millis ->
-                        dateOfBirthIso = dateOfBirthFromUtcMillis(millis).toString()
-                    }
-                    showDatePicker = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-            },
-        ) {
-            DatePicker(state = pickerState)
-        }
     }
 }

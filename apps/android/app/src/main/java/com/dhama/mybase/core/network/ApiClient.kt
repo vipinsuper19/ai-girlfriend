@@ -9,6 +9,7 @@ import com.dhama.mybase.core.chat.ChatStreamEvent
 import com.dhama.mybase.core.chat.ReportMessageBody
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN_CODE
+import com.dhama.mybase.core.data.firebaseAuthUserDeletedByAdmin
 import com.dhama.mybase.core.chat.consumeSse
 import com.dhama.mybase.core.chat.messageListQuery
 import com.dhama.mybase.core.model.CreateAvatarRequest
@@ -312,10 +313,15 @@ class ApiClient(
      * A 401 after the refresh token is rejected keeps the session store intact and is reported
      * as [ACCOUNT_DELETE_SIGN_IN_CODE] so the app can sign Firebase out before clearing it.
      */
-    suspend fun deleteAccount() {
-        withAuth(keepSessionOnRefreshFailure = true) { access ->
+    /**
+     * DELETE /users/me. True when `data.firebaseUserDeleted` says the Admin SDK already removed
+     * the Firebase Auth user. The current API does not set that field.
+     */
+    suspend fun deleteAccount(): Boolean {
+        val raw = withAuth(keepSessionOnRefreshFailure = true) { access ->
             execute(authed("DELETE", "users/me", null, access))
         }
+        return firebaseAuthUserDeletedByAdmin(raw)
     }
 
     suspend fun usageSummary(): RemoteUsageSummary {

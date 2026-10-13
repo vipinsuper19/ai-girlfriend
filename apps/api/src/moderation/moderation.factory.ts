@@ -37,9 +37,7 @@ export function createContentModerator(
     if (config.provider === 'gemini') {
         return new GeminiContentModerator(
             env.GEMINI_API_KEY?.trim(),
-            config.moderationModel ||
-                env.GEMINI_CHAT_MODEL?.trim() ||
-                GEMINI_MODERATION_MODEL,
+            config.moderationModel || GEMINI_MODERATION_MODEL,
         );
     }
     return LOCAL_MODERATOR;
