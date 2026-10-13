@@ -127,7 +127,7 @@ Preconditions: same signed-in chat as flow 4, still online through `offline/05a-
 
 Steps: with the network off, send `This send should fail offline`. After "Not sent · Retry" is visible, restore the network and tap that control.
 
-Expected: the failed send shows `chat_retry` with "Not sent · Retry" and does not show `chat_assistant_reply`. After Retry, `chat_assistant_reply` appears (again, any non-empty assistant text). The retry control can take up to about three minutes to show, because a down connection still waits out the 90 second connect budget and then the blocking fallback. Do not run this file trio by hand without the wrapper, or the device will not change network between them.
+Expected: the failed send shows `chat_retry`, then the child caption "Not sent · Retry", and does not show `chat_assistant_reply`. The id and the caption are separate nodes, so the flow waits for the id and then asserts the caption. After Retry, `chat_assistant_reply` appears (again, any non-empty assistant text). The retry control can take up to about three minutes to show, because a down connection still waits out the 90 second connect budget and then the blocking fallback. Do not run this file trio by hand without the wrapper, or the device will not change network between them.
 
 ### 6. Composer 7000-character cap
 
