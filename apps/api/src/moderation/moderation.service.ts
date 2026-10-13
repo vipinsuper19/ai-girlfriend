@@ -92,6 +92,17 @@ export class ModerationService {
                             `conversationId=${ctx.conversationId ?? '-'}`,
                         ].join(' '),
                     );
+                    const rateLimited = failure.status === '429';
+                    const outputTimedOut = surface === 'output' && failure.status === 'timeout';
+                    // Input degrades only on 429. Output also degrades on timeout or abort.
+                    // Other 4xx, auth errors, and parse failures stay fail-closed. Persona does too.
+                    if ((surface === 'input' || surface === 'output') && (rateLimited || outputTimedOut)) {
+                        const reason = rateLimited ? 'rate_limited' : 'timeout';
+                        this.logger.warn(
+                            `moderation.degraded fallback=local reason=${reason}`,
+                        );
+                        break;
+                    }
                     if (!this.config.failClosed) return null;
                     const notice = unavailableNotice();
                     this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
@@ -141,7 +152,7 @@ function merge(left: SafetyCategory[], right: SafetyCategory[]): SafetyCategory[
     return [...new Set([...left, ...right])];
 }
 
-type ProviderFailureStatus = 'http' | 'timeout' | 'parse';
+type ProviderFailureStatus = 'http' | 'timeout' | 'parse' | '429';
 
 interface ProviderFailure {
     status: ProviderFailureStatus;
@@ -151,6 +162,12 @@ interface ProviderFailure {
 
 /** Shape of a provider failure for the structured log. Never includes user text or keys. */
 export function describeProviderFailure(error: unknown, userText: string): ProviderFailure {
+    if (isRateLimited(error)) {
+        const message = error instanceof Error && error.name === 'ApiError'
+            ? redactProviderMessage(error.message, userText)
+            : '';
+        return { status: '429', code: rateLimitCode(), message };
+    }
     if (isProviderTimeout(error)) {
         const code = error instanceof Error && error.name ? error.name : 'timeout';
         return { status: 'timeout', code, message: '' };
@@ -181,6 +198,21 @@ export function redactProviderMessage(message: string, userText: string): string
         );
     if (text.length > 300) text = `${text.slice(0, 300)}...`;
     return text;
+}
+
+function providerCode(error: unknown): string {
+    if (!error || typeof error !== 'object') return '';
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code.trim() : '';
+}
+
+/** HTTP 429 or a provider code of RESOURCE_EXHAUSTED. Message text is not consulted. */
+function isRateLimited(error: unknown): boolean {
+    return httpStatus(error) === 429 || providerCode(error) === 'RESOURCE_EXHAUSTED';
+}
+
+function rateLimitCode(): string {
+    return 'RESOURCE_EXHAUSTED';
 }
 
 function httpStatus(error: unknown): number | undefined {

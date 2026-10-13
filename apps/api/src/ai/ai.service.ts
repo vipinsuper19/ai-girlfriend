@@ -397,6 +397,10 @@ export class AiService {
             content: string;
         }
         | {
+            type: 'replace';
+            content: string;
+        }
+        | {
             type: 'done';
             message: unknown;
             safety?: SafetyNotice;
@@ -570,8 +574,9 @@ export class AiService {
          * ------------------------------------------------------
          *
          * Score sentence-sized windows so a safe sentence can
-         * leave before the rest of the reply is known. A flagged
-         * window is replaced by the refusal and the rest is dropped.
+         * leave before the rest of the reply is known. A real block
+         * sends one replace event and the rest is dropped. A provider
+         * error keeps text the local pre-filter already passed.
          *
          * The reply is persisted only when that loop finishes and
          * the client is still connected. Stop / disconnect aborts
@@ -613,7 +618,7 @@ export class AiService {
                     if (notice) {
                         outputNotice = notice;
                         yield {
-                            type: 'delta',
+                            type: 'replace',
                             content: notice.message,
                         };
                         break;
@@ -642,7 +647,7 @@ export class AiService {
             if (notice) {
                 outputNotice = notice;
                 yield {
-                    type: 'delta',
+                    type: 'replace',
                     content: notice.message,
                 };
             } else {
@@ -657,9 +662,7 @@ export class AiService {
         if (signal?.aborted) return;
 
         const streamedContent = outputNotice
-            ? [safeText.trim(), outputNotice.message]
-                .filter((part) => part.length > 0)
-                .join('\n')
+            ? outputNotice.message
             : safeText.trim();
 
         if (!streamedContent) {
