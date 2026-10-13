@@ -143,9 +143,9 @@ export function decideSafety(
     surface: ModerationSurface,
     helplines: Helpline[],
 ): SafetyNotice | null {
-    const unique = enforced(categories).filter((category) => category !== 'jailbreak');
+    const unique = enforced(categories);
     if (unique.length === 0) return null;
-    // Crisis outranks a minor flag. Injection alone is not a category here.
+    // Crisis outranks a minor flag and a prompt-injection refusal.
     if (surface === 'input' && unique.includes('self_harm')) {
         return {
             action: 'crisis',
@@ -371,9 +371,9 @@ const RULES: Rule[] = [
     },
     {
         category: 'explicit',
-        // Narrow on purpose. Romance ("kiss", "make love", "in my bed", "sexy") stays off this list.
+        // Narrow on purpose. Romance ("kiss", "make love", "in my bed", "sexy", "make out") stays off this list.
         pattern:
-            /\b(?:fuck me|let's fuck|lets fuck|talk dirty|have sex with (?:you|me)|naked body|nude body|roleplay(?:\s+\w+){0,3}\s+sex)\b/i,
+            /\b(?:fuck me|let's fuck|lets fuck|talk dirty|have sex with (?:you|me)|naked body|nude body|roleplay(?:\s+\w+){0,3}\s+sex|blow\s*job|hand\s*job|deepthroat|creampie|send\s+(?:me\s+)?nudes|(?:suck|lick)\s+(?:my|your)\s+(?:dick|cock|pussy))\b/i,
         surfaces: ALL,
     },
     {
@@ -443,6 +443,69 @@ const RULES: Rule[] = [
         pattern:
             /\b(?:how to|ways to|steps to|you should)\b[\s\S]{0,40}\b(?:kill yourself|commit suicide|end your life|cut yourself)\b/i,
         surfaces: OUTPUT_ONLY,
+    },
+    {
+        category: 'self_harm',
+        // Indirect crisis phrasing. "killing me" and "dying of laughter" stay above, unmatched.
+        pattern:
+            /\b(?:can(?:not|'t)|cant)\s+(?:do this|go on|take (?:this|it))\s+anymore\b|\b(?:do not|don't|dont)\s+want to be here anymore\b|\btired of (?:living|being alive)\b|\bbetter off without me\b|\bno point (?:in )?going on\b|\b(?:i'm|im|i am)\s+done with (?:life|living)\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        // School stage, not the word "school" on its own ("starts school tomorrow").
+        pattern:
+            /\b(?:high|middle|elementary|primary)\s*school\b|\bjunior\s+high\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class\b|\bclass\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?\b|\b(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grade\b|\bgrade\s*(?:1[0-2]|[1-9])\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:school\s*girls?|school\s*boys?|schoolgirls?|schoolboys?)\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        pattern: /\bunder-?age\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:pretend|role-?play|roleplay)\s+(?:that\s+)?you(?:'re| are)\s+(?:younger|under-?age|a\s+teen)\b|\b(?:act|be)\s+(?:like\s+)?you(?:'re| are)\s+(?:younger|under-?age)\b|\byou(?:'re| are)\s+(?:a\s+)?teen\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'minor',
+        // "15yo" / "15 y/o" / "turning 16" / "under 18". "15 years old" about someone else stays put.
+        pattern:
+            /\b(?:1[0-7]|[1-9])\s*(?:yo|y\/o)\b|\bturning\s+(?:1[0-7]|[1-9]|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b|\bunder\s*-?\s*(?:18|eighteen)\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        // Spelled teen ages. "fifteen minutes" and "fifteen years of experience" stay ordinary.
+        pattern:
+            /\b(?:eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:nabalig|naabalig|na[- ]balig)\b|\bschool\s*wal[ai]\b|\b(?:main|mai)\s+(?:1[0-7]|[1-9])\s+saal\b|\b(?:pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\b|नाबालिग|स्कूल\s*वाली/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'jailbreak',
+        // An instruction aimed at the model's rules. "ignore the traffic" and "no rules tonight" do not match.
+        pattern:
+            /\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:your\s+|the\s+|these\s+|my\s+)?(?:previous\s+|prior\s+|above\s+|system\s+)?(?:safety\s+|content\s+)?(?:instructions|rules|prompts?|guidelines|restrictions|policies)\b|\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b|\b(?:reveal|print|show|dump)\s+(?:me\s+)?(?:your\s+)?(?:hidden\s+|system\s+)?(?:prompt|instructions|rules)\b/i,
+        surfaces: ALL,
     },
 ];
 

@@ -71,7 +71,7 @@ clients hide the matching controls, so nothing is faked.
 | `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's JSON classifier when `OPENAI_API_KEY` is set, otherwise Gemini. `local` is the narrow pre-filter only |
 | `MODERATION_MODEL` | Optional model override. OpenAI defaults to `OPENAI_CHAT_MODEL` or `gpt-5-mini`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
 | `MODERATION_FAIL_CLOSED` | Kept for compatibility. A classifier timeout, 429, 503, or other outage falls back to the local pre-filter (minors, CSAM, an existing minor hold, crisis, and a narrow explicit list). The reply is not replaced with an unavailable message |
-| `OPENAI_API_KEY` | Key for the OpenAI JSON classifier when that provider is selected. Each call is one attempt with a 4 second timeout |
+| `OPENAI_API_KEY` | Key for the OpenAI JSON classifier when that provider is selected. Each call is one attempt with a 12 second client abort (`MODERATION_TIMEOUT_MS`, minimum 10000). Gemini is not sent a server deadline |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
 | `CRISIS_HELPLINE_INTL_NAME`, `CRISIS_HELPLINE_INTL_CONTACT`, `CRISIS_HELPLINE_INTL_DETAIL` | International pointer. Defaults to the IASP suicidal-thoughts page |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Android Publisher API access for verifying purchases. Raw JSON or base64 |

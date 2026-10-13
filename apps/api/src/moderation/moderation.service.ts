@@ -6,7 +6,11 @@ import {
     isOverLimitError,
     type ClassifierBlock,
 } from './classifier-batch.js';
-import { degradedReason, type DegradedReason } from './classifier-attempt.js';
+import {
+    degradedReason,
+    isEmptyClassifierResponse,
+    type DegradedReason,
+} from './classifier-attempt.js';
 import type { ContentModerator } from './content-moderator.js';
 import type { SafetyConfig } from './safety.config.js';
 import {
@@ -100,6 +104,19 @@ export class ModerationService {
                         categories = merge(categories, ['illegal_harm']);
                         break;
                     }
+                    if (isEmptyClassifierResponse(error)) {
+                        if (
+                            holdsMinor(categories) ||
+                            ctx.heldMinor === true ||
+                            holdsMinor(assessLocal(chunk, surface))
+                        ) {
+                            categories = merge(categories, ['minor']);
+                            break;
+                        }
+                        this.noteDegraded(error, surface, ctx, trimmed.length);
+                        categories = merge(categories, ['illegal_harm']);
+                        break;
+                    }
                     this.noteDegraded(error, surface, ctx, trimmed.length);
                     break;
                 }
@@ -173,9 +190,9 @@ export class ModerationService {
                 const scored = await this.scoreBlocks(pending, ctx, text.length);
                 if (scored) {
                     for (const block of pending) {
-                        if (!scored.has(block.id)) continue;
-                        const remote = scored.get(block.id) ?? [];
-                        this.remember(block.text, remote);
+                        if (!scored.categories.has(block.id)) continue;
+                        const remote = scored.categories.get(block.id) ?? [];
+                        if (scored.cache) this.remember(block.text, remote);
                         scoredIds.add(block.id);
                         if (block.id === 'user') userCategories = merge(userCategories, remote);
                         else {
@@ -224,12 +241,13 @@ export class ModerationService {
      * One classifier attempt, kept under the provider limit. `null` means the
      * call failed and the caller must keep the local verdict without caching
      * the miss. An over-limit body is chunked or refused, not treated as an outage.
+     * An empty classifier body is a block, never a cached allow.
      */
     private async scoreBlocks(
         blocks: readonly ClassifierBlock[],
         ctx: SafetyLogContext,
         chars: number,
-    ): Promise<Map<string, SafetyCategory[]> | null> {
+    ): Promise<BlockScore | null> {
         const maxChars = this.provider.maxChars;
         if (maxChars != null && maxChars < 1) {
             return this.overLimitVerdict(blocks);
@@ -249,9 +267,9 @@ export class ModerationService {
         maxChars: number,
         ctx: SafetyLogContext,
         chars: number,
-    ): Promise<Map<string, SafetyCategory[]> | null> {
+    ): Promise<BlockScore | null> {
         const user = blocks.find((block) => block.id === 'user');
-        if (!user) return new Map();
+        if (!user) return { categories: new Map(), cache: true };
         const chunks = textChunks(user.text, maxChars);
         if (chunks.length === 0) return this.overLimitVerdict(blocks);
         const categories: SafetyCategory[] = [];
@@ -261,19 +279,18 @@ export class ModerationService {
                 categories.push(...remote.categories);
             } catch (error) {
                 if (isOverLimitError(error)) return this.overLimitVerdict(blocks);
-                this.noteDegraded(error, 'input', ctx, chars);
-                return null;
+                return this.classifierFailure(error, blocks, ctx, chars);
             }
         }
-        return new Map([[user.id, merge([], categories)]]);
+        return { categories: new Map([[user.id, merge([], categories)]]), cache: true };
     }
 
     private async scoreBody(
         blocks: readonly ClassifierBlock[],
         ctx: SafetyLogContext,
         chars: number,
-    ): Promise<Map<string, SafetyCategory[]> | null> {
-        if (blocks.length === 0) return new Map();
+    ): Promise<BlockScore | null> {
+        if (blocks.length === 0) return { categories: new Map(), cache: true };
         const body = classifierBatchBody(blocks);
         const maxChars = this.provider.maxChars;
         if (maxChars != null && maxChars > 0 && body.length > maxChars) {
@@ -281,34 +298,63 @@ export class ModerationService {
         }
         try {
             const remote = await this.provider.moderate(body);
-            const scored = new Map<string, SafetyCategory[]>();
+            const categories = new Map<string, SafetyCategory[]>();
             if (remote.items && remote.items.length > 0) {
-                for (const item of remote.items) scored.set(item.id, [...item.categories]);
+                for (const item of remote.items) categories.set(item.id, [...item.categories]);
             } else if (blocks.length === 1 && blocks[0]) {
-                scored.set(blocks[0].id, [...remote.categories]);
+                categories.set(blocks[0].id, [...remote.categories]);
             } else {
                 const user = blocks.find((block) => block.id === 'user');
-                if (user) scored.set(user.id, [...remote.categories]);
+                if (user) categories.set(user.id, [...remote.categories]);
             }
             for (const block of blocks) {
-                if (!scored.has(block.id)) scored.set(block.id, []);
+                if (!categories.has(block.id)) categories.set(block.id, []);
             }
-            return scored;
+            return { categories, cache: true };
         } catch (error) {
             if (isOverLimitError(error)) return this.overLimitVerdict(blocks);
-            this.noteDegraded(error, 'input', ctx, chars);
-            return null;
+            return this.classifierFailure(error, blocks, ctx, chars);
         }
     }
 
-    private overLimitVerdict(
+    /**
+     * An empty classifier response blocks. A minor signal uses the local
+     * verdict and is not counted as degraded. Anything else is a degraded
+     * refusal and is not cached as an allow.
+     */
+    private classifierFailure(
+        error: unknown,
         blocks: readonly ClassifierBlock[],
-    ): Map<string, SafetyCategory[]> {
-        const scored = new Map<string, SafetyCategory[]>();
-        for (const block of blocks) {
-            if (block.id === 'user') scored.set(block.id, ['illegal_harm']);
+        ctx: SafetyLogContext,
+        chars: number,
+    ): BlockScore | null {
+        if (!isEmptyClassifierResponse(error)) {
+            this.noteDegraded(error, 'input', ctx, chars);
+            return null;
         }
-        return scored;
+        if (this.hasMinorSignal(blocks, ctx)) return null;
+        this.noteDegraded(error, 'input', ctx, chars);
+        const categories = new Map<string, SafetyCategory[]>();
+        for (const block of blocks) {
+            if (block.id === 'user') categories.set(block.id, ['illegal_harm']);
+        }
+        return { categories, cache: false };
+    }
+
+    private hasMinorSignal(
+        blocks: readonly ClassifierBlock[],
+        ctx: SafetyLogContext,
+    ): boolean {
+        if (ctx.heldMinor) return true;
+        return blocks.some((block) => holdsMinor(assessLocal(block.text, 'input')));
+    }
+
+    private overLimitVerdict(blocks: readonly ClassifierBlock[]): BlockScore {
+        const categories = new Map<string, SafetyCategory[]>();
+        for (const block of blocks) {
+            if (block.id === 'user') categories.set(block.id, ['illegal_harm']);
+        }
+        return { categories, cache: true };
     }
 
     private noteDegraded(
@@ -321,10 +367,10 @@ export class ModerationService {
         this.degradedCount += 1;
         this.logger.warn(
             [
-                'safety',
-                'degraded',
+                'moderation.degraded',
                 `provider=${this.provider.id}`,
                 `reason=${reason}`,
+                `fallbacks=${this.degradedCount}`,
                 `surface=${surface}`,
                 `chars=${chars}`,
                 `userId=${ctx.userId ?? '-'}`,
@@ -369,6 +415,12 @@ export class ModerationService {
             ].join(' '),
         );
     }
+}
+
+interface BlockScore {
+    categories: Map<string, SafetyCategory[]>;
+    /** False for an empty classifier body, so a later real score can replace it. */
+    cache: boolean;
 }
 
 function merge(left: SafetyCategory[], right: SafetyCategory[]): SafetyCategory[] {

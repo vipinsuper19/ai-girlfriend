@@ -4,7 +4,7 @@ import {
     HarmCategory,
 } from '@google/genai';
 
-import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
+import { classifierTimeoutMs } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
     GEMINI_CLASSIFIER_INSTRUCTION,
@@ -23,13 +23,20 @@ const UNTRUSTED_START = '<<<UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END_ESCAPED = '<<<END UNTRUSTED TEXT>>>';
 
+/**
+ * The four thresholds the Gemini Developer API safety guide lets callers set.
+ * `HARM_CATEGORY_JAILBREAK` is in the SDK enum but the Developer API rejects it
+ * with 400 INVALID_ARGUMENT (`safety_settings[5].category`).
+ * `HARM_CATEGORY_CIVIC_INTEGRITY` is deprecated (the election filter is gone).
+ * Either one makes generateContent throw ApiError before it scores the text.
+ * No `httpOptions.timeout`: the SDK sends that as `X-Server-Timeout`, and
+ * Gemini rejects a deadline under 10s. The client abort lives on the call.
+ */
 const SAFETY_OFF = [
     HarmCategory.HARM_CATEGORY_HARASSMENT,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-    HarmCategory.HARM_CATEGORY_JAILBREAK,
 ];
 
 /** Wrap model input so text inside the markers is data, not a new instruction. */
@@ -53,7 +60,6 @@ export function geminiModerationRequest(model: string, text: string) {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
             httpOptions: {
-                timeout: CLASSIFIER_TIMEOUT_MS,
                 retryOptions: { attempts: 1 },
             },
             safetySettings: SAFETY_OFF.map((category) => ({
@@ -92,7 +98,7 @@ export class GeminiContentModerator implements ContentModerator {
             ...request,
             config: {
                 ...request.config,
-                abortSignal: AbortSignal.timeout(CLASSIFIER_TIMEOUT_MS),
+                abortSignal: AbortSignal.timeout(classifierTimeoutMs()),
             },
         });
         const raw = response.text?.trim();

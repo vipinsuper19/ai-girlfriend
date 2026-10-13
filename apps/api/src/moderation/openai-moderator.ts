@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
+import { CLASSIFIER_TIMEOUT_MS, classifierTimeoutMs } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import { delimitedModerationInput } from './gemini-moderator.js';
 import {
@@ -37,9 +37,11 @@ export class OpenAiContentModerator implements ContentModerator {
         if (!this.apiKey) {
             throw new Error('OPENAI_API_KEY is not configured');
         }
+        const timeout = classifierTimeoutMs();
         this.client ??= new OpenAI({
             apiKey: this.apiKey,
-            ...OPENAI_MODERATION_REQUEST,
+            timeout,
+            maxRetries: OPENAI_MODERATION_REQUEST.maxRetries,
         });
         const response = await this.client.responses.create(
             {
@@ -47,7 +49,7 @@ export class OpenAiContentModerator implements ContentModerator {
                 instructions: GEMINI_CLASSIFIER_INSTRUCTION,
                 input: delimitedModerationInput(text),
             },
-            OPENAI_MODERATION_REQUEST,
+            { timeout, maxRetries: OPENAI_MODERATION_REQUEST.maxRetries },
         );
         const raw = response.output_text?.trim();
         if (!raw) {

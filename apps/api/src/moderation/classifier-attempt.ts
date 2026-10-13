@@ -1,10 +1,33 @@
-/** One classifier attempt. Outages fall back instead of waiting through retries. */
-export const CLASSIFIER_TIMEOUT_MS = 4_000;
+/**
+ * One classifier attempt. Outages fall back instead of waiting through retries.
+ * Gemini rejects a server deadline under 10s, so this is a client abort only.
+ */
+export const CLASSIFIER_TIMEOUT_MIN_MS = 10_000;
+export const CLASSIFIER_TIMEOUT_MS = 12_000;
 
-export type DegradedReason = 'timeout' | '429' | '503' | 'unavailable';
+/**
+ * Client abort budget. `MODERATION_TIMEOUT_MS` may raise it.
+ * Values under 10s clamp up, so nothing sends a shorter deadline.
+ */
+export function classifierTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+    const raw = env.MODERATION_TIMEOUT_MS?.trim();
+    if (!raw) return CLASSIFIER_TIMEOUT_MS;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return CLASSIFIER_TIMEOUT_MS;
+    return Math.max(CLASSIFIER_TIMEOUT_MIN_MS, Math.floor(parsed));
+}
+
+export type DegradedReason = 'timeout' | '429' | '503' | 'unavailable' | 'empty';
+
+/** Gemini's own filter sometimes returns no text. That is not a scored allow. */
+export function isEmptyClassifierResponse(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : '';
+    return /empty response/i.test(message);
+}
 
 /** Why a classifier call could not be used. Never includes the user text. */
 export function degradedReason(error: unknown): DegradedReason {
+    if (isEmptyClassifierResponse(error)) return 'empty';
     const status = httpStatus(error);
     if (status === 429) return '429';
     if (status === 503) return '503';
