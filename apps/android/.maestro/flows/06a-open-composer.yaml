@@ -1,0 +1,14 @@
+appId: com.dhama.mybase
+name: Open composer for the 7000 cap
+tags:
+  - chat
+env:
+  SHOT: 06-composer-limit
+---
+# Leaves the signed-in chat on screen. run-composer-cap.sh then puts 7100
+# characters in the draft. Maestro inputText cannot finish that before its
+# 120 second driver deadline, even in 500-character pieces.
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- runFlow:
+    file: ../subflows/open-chat.yaml

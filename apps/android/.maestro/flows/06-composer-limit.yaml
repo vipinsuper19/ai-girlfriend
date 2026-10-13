@@ -5,41 +5,17 @@ tags:
 env:
   SHOT: 06-composer-limit
 ---
-# Types 7100 characters in 500-character pieces. One Maestro inputText of the
-# whole draft exceeds the driver's 120 second deadline. Passes when the field
-# keeps 7000, or when it keeps more and the counter/error is shown.
-- runFlow:
-    file: ../subflows/reach-home.yaml
-- runFlow:
-    file: ../subflows/open-chat.yaml
-- runScript:
-    file: ../scripts/long-draft.js
-- tapOn:
-    id: chat_composer
-- inputText: ${output.part0}
-- inputText: ${output.part1}
-- inputText: ${output.part2}
-- inputText: ${output.part3}
-- inputText: ${output.part4}
-- inputText: ${output.part5}
-- inputText: ${output.part6}
-- inputText: ${output.part7}
-- inputText: ${output.part8}
-- inputText: ${output.part9}
-- inputText: ${output.part10}
-- inputText: ${output.part11}
-- inputText: ${output.part12}
-- inputText: ${output.part13}
-- inputText: ${output.part14}
-- hideKeyboard
-- copyTextFrom:
-    id: chat_composer
-- evalScript: ${output.kept = maestro.copiedText.length}
-- runFlow:
-    when:
-      true: ${output.kept != 7000}
-    commands:
-      - assertVisible:
-          id: chat_draft_limit
-          text: "[0-9]+ / 7000.*"
+# Run only from run-composer-cap.sh, after the 7100-character draft is applied.
+# Does not clear app state. The chat from 06a must still be open.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: chat_composer
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: chat_draft_limit
+      text: "[0-9]+ / 7000.*"
+    timeout: 20000
 - takeScreenshot: ${SHOT}-cap

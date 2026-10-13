@@ -123,7 +123,7 @@ Expected: the user bubble shows that text (`chat_user_message`). A non-empty ass
 
 ### 5. Offline / retry
 
-Preconditions: same signed-in chat as flow 4, still online through `offline/05a-reach-chat.yaml`. Then `run-offline.sh` enables airplane mode before `05b`, and restores it before `05c`.
+Preconditions: same signed-in chat as flow 4, still online through `offline/05a-reach-chat.yaml`. Then `run-offline.sh` enables airplane mode before `05b`, and restores it before `05c`. Restore waits until airplane mode is off and the emulator can reach the API host, or Android reports a validated network. A ping of 8.8.8.8 is not used, because that ICMP packet is dropped even when the API is reachable.
 
 Steps: with the network off, send `This send should fail offline`. After "Not sent · Retry" is visible, restore the network and tap that control.
 
@@ -133,7 +133,7 @@ Expected: the failed send shows `chat_retry` with "Not sent · Retry" and does n
 
 Preconditions: chat composer focused, AI disclosure already accepted (the flow does that).
 
-Steps: type 7100 `a` characters into `chat_composer` as fifteen 500-character inputs. One Maestro `inputText` of the whole draft is killed after 120 seconds, so the flow does not use `pasteText`.
+Steps: `run-composer-cap.sh` opens the chat, writes 7100 `a` characters into the debug app, and the debug receiver applies that draft in one step. Maestro `inputText` is killed after 120 seconds, and 500 characters already miss that deadline, so the flow does not type the draft. Release builds do not include the receiver.
 
 Expected: either the field keeps 7000 characters, or it keeps a different length and `chat_draft_limit` shows a counter matching `[0-9]+ / 7000` (today that is `7100 / 7000. Shorten it to send.`). The flow does not send the draft.
 

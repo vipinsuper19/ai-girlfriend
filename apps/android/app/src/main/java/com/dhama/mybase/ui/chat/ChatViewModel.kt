@@ -3,6 +3,7 @@ package com.dhama.mybase.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.FeatureFlags
+import com.dhama.mybase.debug.DebugDraft
 import com.dhama.mybase.core.chat.MESSAGE_PAGE
 import com.dhama.mybase.core.chat.chatDraftOverLimit
 import com.dhama.mybase.core.chat.REPORT_NOTE_MAX
@@ -125,6 +126,7 @@ class ChatViewModel @Inject constructor(
     val replyNote = _replyNote.asStateFlow()
 
     init {
+        DebugDraft.install(::updateDraft)
         viewModelScope.launch {
             companionRepository.observe().collect { saved ->
                 if (saved != null) chatRepository.ensureGreeting(saved.greeting)
@@ -471,6 +473,11 @@ class ChatViewModel @Inject constructor(
         } catch (_: Exception) {
             // The last saved allowance stays on screen.
         }
+    }
+
+    override fun onCleared() {
+        DebugDraft.clear()
+        super.onCleared()
     }
 
     private suspend fun noteUsageLimit(error: ApiStatusException) {

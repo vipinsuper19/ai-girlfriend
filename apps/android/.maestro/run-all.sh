@@ -81,7 +81,7 @@ run_shot "02 sign up, log out, log in" 02-signup-logout-login maestro_test "${DI
 run_shot "03 companion wizard" 03-companion-wizard maestro_test "${DIR}/flows/03-companion-wizard.yaml"
 run_shot "04 chat stream" 04-chat-stream maestro_test "${DIR}/flows/04-chat-stream.yaml"
 run_named "05 offline/retry" "${DIR}/run-offline.sh"
-run_shot "06 composer cap" 06-composer-limit maestro_test "${DIR}/flows/06-composer-limit.yaml"
+run_shot "06 composer cap" 06-composer-limit "${DIR}/run-composer-cap.sh"
 run_shot "07 report message" 07-report-message maestro_test "${DIR}/flows/07-report-message.yaml"
 
 echo "======== 08 privacy and terms (known failure) ========"
