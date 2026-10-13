@@ -53,6 +53,8 @@ export interface SafetyLogContext {
     priorTexts?: readonly string[];
     /** Set when a minor flag is already stored for this user or conversation. */
     heldMinor?: boolean;
+    /** The companion persona text. Read only when the classifier withholds a verdict. */
+    personaText?: string;
 }
 
 export interface PersonaDraft {
@@ -350,7 +352,12 @@ const RELATIVE_NOUN = String.raw`sisters?|brothers?|daughters?|sons?|nephews?|ni
  */
 const JAILBREAK_PATTERN = new RegExp(
     [
-        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|rules|prompts?|guidelines|restrictions|policies)\b`,
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|prompts?|guidelines|restrictions|policies|programming|directives)\b`,
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system|safety|content|original|default)\s+(?:\w+\s+)?rules\b`,
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?your\s+rules\b`,
+        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before|previous|prior|you\s+were\s+told)\b`,
+        String.raw`\b(?:act|behave)\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:an?\s+)?(?:unfiltered|unrestricted|uncensored|jailbroken)\b`,
+        String.raw`\[\s*(?:system|developer|admin)\s*\]|\bnew\s+system\s+(?:prompt|instructions|message)\b|\bsystem\s+override\b|\b(?:admin|developer|sudo)\s+(?:mode|override|command)\b`,
         String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
         String.raw`\b(?:in|into)\s+developer\s+mode\b`,
         String.raw`\bdeveloper\s+mode\s+(?:on|enabled)\b`,
@@ -410,7 +417,7 @@ const RULES: Rule[] = [
     {
         category: 'minor',
         pattern:
-            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
+            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:an?\s+)?(?:1[0-7]|[1-9])[\s-]*(?:years?[\s-]*old|yo|y\/o)\b/i,
         surfaces: INPUT_AND_PERSONA,
     },
     {
@@ -584,7 +591,7 @@ const RULES: Rule[] = [
         // Spelled teen ages. A following year-old unit is persona-only, so a
         // relative ("sixteen-year-old nephew") is not a chat block on its own.
         pattern: new RegExp(
-            String.raw`\b(?:${SPELLED_TEEN_AGES})\b(?![\s-]*${MINOR_AGE_UNIT})(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))`,
+            String.raw`(?<!\b(?:at|by|around|till|until|before|after|past|to|from|since|about)\s+)\b(?:${SPELLED_TEEN_AGES})\b(?![\s-]*${MINOR_AGE_UNIT})(?!\s*(?:-|:|o'?clock|thirty|fifteen|forty|baje|tonight|today|tomorrow|am\b|pm\b|a\.m|p\.m|in\s+the\s+(?:morning|evening|night)|at\s+night|roses?|kisses|reasons?|things|ways|dates?|songs?|stars?|hugs?))(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))`,
             'i',
         ),
         surfaces: INPUT_AND_PERSONA,
@@ -592,7 +599,7 @@ const RULES: Rule[] = [
     {
         category: 'minor',
         pattern:
-            /\b(?:nabalig|naabalig|na[- ]balig)\b|\bschool\s*wal[ai]\b|\b(?:main|mai)\s+(?:1[0-7]|[1-9])\s+saal\b|\b(?:pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\b|नाबालिग|स्कूल\s*वाली/i,
+            /\b(?:nabalig|naabalig|na[- ]balig)\b|\bschool\s*wal[ai]\b|\b(?:main|mai)\s+(?:1[0-7]|[1-9])\s+saal\b|\b(?:pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\s*(?:saal|sal|baras|varsh)\b|नाबालिग|स्कूल\s*वाली/i,
         surfaces: INPUT_AND_PERSONA,
     },
     {
@@ -681,6 +688,42 @@ function ageTokenIsMinor(token: string, rest: string): boolean {
         return /^\s*$/.test(rest) || /^\s*[.!?,]/.test(rest);
     }
     return true;
+}
+
+/**
+ * Any age or child cue, for the filtered classifier path only. Gemini withheld
+ * a verdict, so this leans to a hard block: it reads persona-only rules too,
+ * plus child, school, and Hindi or Hinglish words that are too broad for
+ * ordinary chat. Do not use it to block text the classifier scored.
+ */
+const MINOR_CUE = new RegExp(
+    [
+        String.raw`\b(?:child|children|childlike|kid|kids|kiddo|toddler|infant|tween|tweens|teen|teens|teenage[dr]?|teenagers?|adolescen(?:t|ts|ce)|pre-?teens?|puberty|pubescent|underage|under-age|minors?|juvenile|jailbait|barely\s+legal|not\s+(?:yet\s+)?(?:18|eighteen|legal)|loli|shota)\b`,
+        String.raw`\b(?:little|young|younger|small)\s+(?:girl|boy|sister|brother|cousin|one|thing)s?\b|\b(?:girl|boy)\s+next\s+door\b`,
+        String.raw`\b(?:school|schoolgirl|schoolboy|schoolkid|schooler|schoolmate|classmates?|homework|recess|playground|school\s+uniform|tuition|freshman|sophomore|junior\s+high|middle\s+school|high\s+school|elementary|primary\s+school|kindergarten|grade\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+(?:grade|grader|standard|std)|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|boards?\s+exams?)\b`,
+        String.raw`\b(?:daughter|son|niece|nephew|stepdaughter|stepson|step-?daughter|step-?son|step-?sister|step-?brother|granddaughter|grandson|babysit(?:ter|ting)?|daddy'?s\s+little|bachp[ae]n)\b`,
+        String.raw`\b(?:1[0-7]|[1-9])\s*(?:-|\s)?\s*(?:years?|yrs?|yr|y\/?o|yo|saal|sal|baras)\b|\b(?:age[ds]?|aged|umar|umr|umra)\s*(?:is\s*|of\s*|:|-)?\s*(?:1[0-7]|[1-9])\b|\bunder\s*-?\s*(?:18|eighteen)\b|\b(?:turning|turned|just\s+turned)\s+(?:1[0-7]|[1-9])\b`,
+        String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*(?:years?|yrs?|saal)\b|(?<!\b(?:at|by|around|till|until|before|after|past)\s+)\b(?:${SPELLED_TEEN_AGES})\b(?!\s*(?:o'?clock|tonight|today|tomorrow|pm\b|am\b|baje|thirty|forty|:|roses?|kisses|reasons?))`,
+        String.raw`\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:grade|grader|graders|standard|std|class)\b|\b(?:(?:1[0-7]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth)\s+(?:birthday|bday)\b`,
+        String.raw`\b(?:bachcha|bachcho|bachche|bacche|bachchi|bachi|bacchi|baccha|chhot[ia]|chot[ia]\s+(?:bachi|ladki|ladka|behen|bhai)|kishor[ie]?|nabalig|naabalig|na[- ]balig|ladkiya?\s+school|school\s*wal[ai]|school\s+(?:jaati|jata|jati|jaata)|padhti|padhta|kaksha|beti|bitiya|munni|munna|guddi|pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\b`,
+        String.raw`(?:pretend|act|roleplay|role-?play|imagine|be)\b[\s\S]{0,40}\b(?:younger|little\s+(?:girl|boy)|small|young|a\s+(?:girl|boy)\b(?!friend)|virgin\s+(?:girl|boy))\b`,
+    ].join('|'),
+    'i',
+);
+const MINOR_CUE_DEVANAGARI = /बच्च|बच्ची|बच्चा|नाबालिग|किशोर|स्कूल|कक्षा|छोटी|बेटी|बेटा|साल\s*(?:की|का)|उम्र/;
+
+export function hasMinorCue(...texts: ReadonlyArray<string | null | undefined>): boolean {
+    for (const text of texts) {
+        if (!text || !text.trim()) continue;
+        for (const form of safetyForms(text)) {
+            MINOR_CUE.lastIndex = 0;
+            if (MINOR_CUE.test(form) || MINOR_CUE_DEVANAGARI.test(form)) return true;
+        }
+        const categories = [...assessLocal(text, 'persona'), ...assessLocal(text, 'input')];
+        if (categories.includes('minor') || categories.includes('sexual_minors')) return true;
+        if (claimsFirstPersonMinor(text)) return true;
+    }
+    return false;
 }
 
 export function assessLocal(
@@ -807,9 +850,27 @@ function decodedPayloads(text: string): string[] {
     return found;
 }
 
-/** User lines before `current` in an oldest-first transcript. */
+const CANNED_SAFETY_TEXTS = new Set(
+    [REFUSAL_MESSAGE, EXPLICIT_REFUSAL_MESSAGE, UNAVAILABLE_MESSAGE, PERSONA_REJECTION_MESSAGE].map(
+        (text) => text.trim(),
+    ),
+);
+
+/** A refusal, unavailable, or crisis reply the app wrote, not the user. */
+export function isCannedSafetyText(text: string): boolean {
+    const trimmed = text.trim();
+    if (CANNED_SAFETY_TEXTS.has(trimmed)) return true;
+    return trimmed.startsWith("I'm really glad you told me. You matter, and you don't have to handle this alone.");
+}
+
+/**
+ * User lines before `current` in an oldest-first transcript. A turn the app
+ * refused or answered with a crisis notice, and any canned safety text, stay
+ * out: a refused prompt injection must not poison later turns. A minor flag
+ * from a refused turn is already stored as minorHeldAt.
+ */
 export function priorUserTexts(
-    messages: readonly { role?: unknown; content?: unknown }[],
+    messages: readonly { role?: unknown; content?: unknown; metadata?: unknown }[],
     current?: unknown,
 ): string[] {
     const texts: string[] = [];
@@ -818,7 +879,9 @@ export function priorUserTexts(
         if (
             message?.role === 'USER' &&
             typeof message.content === 'string' &&
-            message.content.trim()
+            message.content.trim() &&
+            safetyNoticeOf(message as { metadata?: unknown }) === null &&
+            !isCannedSafetyText(message.content)
         ) {
             texts.push(message.content);
         }

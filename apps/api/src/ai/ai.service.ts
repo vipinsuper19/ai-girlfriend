@@ -12,6 +12,7 @@ import {
     assessLocal,
     companionSafetyRules,
     hiddenFromModel,
+    personaText,
     priorUserTexts,
     type SafetyNotice,
 } from '../moderation/safety-policy.js';
@@ -160,6 +161,7 @@ export class AiService {
             numericConversationId,
             currentUserMessage,
             chronologicalMessages,
+            companionPersonaText(companion, personality),
         );
 
         if (guarded.notice) {
@@ -498,6 +500,7 @@ export class AiService {
             numericConversationId,
             currentUserMessage,
             chronologicalMessages,
+            companionPersonaText(companion, personality),
         );
 
         if (guarded.notice) {
@@ -690,7 +693,8 @@ export class AiService {
         userId: number,
         conversationId: number,
         current: { id?: unknown; content?: unknown; metadata?: unknown } | undefined,
-        chronologicalMessages: readonly { role?: unknown; content?: unknown }[],
+        chronologicalMessages: readonly { role?: unknown; content?: unknown; metadata?: unknown }[],
+        persona = '',
     ): Promise<{ notice: SafetyNotice | null; memoryContext: string }> {
         const text = typeof current?.content === 'string' ? current.content : '';
         const heldMinor = await this.minorHoldActive(conversation, userId);
@@ -710,6 +714,7 @@ export class AiService {
                 conversationId,
                 priorTexts,
                 heldMinor,
+                ...(persona ? { personaText: persona } : {}),
             },
         });
         if (turn.holdMinor) await this.persistMinorHold(conversation, userId);
@@ -795,4 +800,24 @@ export class AiService {
 
         return assistantMessage;
     }
+}
+
+/** Persona text for the filtered-classifier minor check. Missing fields are skipped. */
+function companionPersonaText(companion: any, personality: any): string {
+    return personaText({
+        name: companion?.name,
+        systemPrompt: personality?.systemPrompt ?? companion?.systemPrompt,
+        greeting: personality?.greeting ?? companion?.greeting,
+        personality: {
+            traits: personality?.traits,
+            interests: personality?.interests,
+            likes: personality?.likes,
+            dislikes: personality?.dislikes,
+            communicationStyle: personality?.communicationStyle,
+        },
+        appearance: {
+            age: companion?.age ?? personality?.age,
+            imagePrompt: companion?.imagePrompt ?? personality?.imagePrompt,
+        },
+    });
 }

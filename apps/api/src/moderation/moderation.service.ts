@@ -16,6 +16,7 @@ import type { SafetyConfig } from './safety.config.js';
 import {
     assessLocal,
     decideSafety,
+    hasMinorCue,
     personaMinorAge,
     personaText,
     unavailableNotice,
@@ -112,8 +113,7 @@ export class ModerationService {
                         // or a moderation-unavailable reply.
                         const minor =
                             holdsMinor(categories) ||
-                            ctx.heldMinor === true ||
-                            holdsMinor(assessLocal(chunk, surface));
+                            filteredMinorSignal([trimmed, chunk], ctx);
                         categories = merge(categories, [minor ? 'minor' : 'explicit']);
                         break;
                     }
@@ -148,7 +148,8 @@ export class ModerationService {
         ctx: SafetyLogContext = {},
     ): Promise<void> {
         const extra: SafetyCategory[] = personaMinorAge(draft) ? ['minor'] : [];
-        const notice = await this.noticeFor(personaText(draft), 'persona', ctx, extra);
+        const text = personaText(draft);
+        const notice = await this.noticeFor(text, 'persona', { ...ctx, personaText: text }, extra);
         if (notice) throw new UnsafePersonaException();
     }
 
@@ -361,8 +362,7 @@ export class ModerationService {
         blocks: readonly ClassifierBlock[],
         ctx: SafetyLogContext,
     ): boolean {
-        if (ctx.heldMinor) return true;
-        return blocks.some((block) => holdsMinor(assessLocal(block.text, 'input')));
+        return filteredMinorSignal(blocks.map((block) => block.text), ctx);
     }
 
     private overLimitVerdict(blocks: readonly ClassifierBlock[]): BlockScore {
@@ -476,6 +476,16 @@ interface BlockScore {
 
 function merge(left: SafetyCategory[], right: SafetyCategory[]): SafetyCategory[] {
     return [...new Set([...left, ...right])];
+}
+
+/**
+ * Gemini withheld a verdict. Re-run the full minor detector over the input,
+ * the earlier allowed user turns, and the persona. Any age or child cue is a
+ * hard block plus the minor hold, never the soft explicit refusal.
+ */
+function filteredMinorSignal(texts: readonly string[], ctx: SafetyLogContext): boolean {
+    if (ctx.heldMinor) return true;
+    return hasMinorCue(...texts, ...(ctx.priorTexts ?? []), ctx.personaText);
 }
 
 function holdsMinor(categories: SafetyCategory[]): boolean {

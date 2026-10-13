@@ -17,6 +17,7 @@ import {
     personaText,
     type PersonaDraft,
     type SafetyCategory,
+    type SafetyLogContext,
     type SafetyCode,
 } from '../src/moderation/safety-policy.js';
 import { UnsafePersonaException } from '../src/moderation/unsafe-persona.exception.js';
@@ -51,8 +52,9 @@ async function verdictFor(
     text: string,
     surface: 'input' | 'persona',
     extra: SafetyCategory[] = [],
+    ctx: SafetyLogContext = {},
 ): Promise<{ got: Verdict; message: string }> {
-    const notice = await moderation.noticeFor(text, surface, {}, extra);
+    const notice = await moderation.noticeFor(text, surface, ctx, extra);
     return { got: notice?.code ?? 'allow', message: notice?.message ?? '' };
 }
 
@@ -93,10 +95,15 @@ async function evaluate(
         }
         return problems;
     }
+    const allowedPrior: string[] = [];
     for (let index = 0; index < users.length; index += 1) {
         const turn = users[index];
         if (!turn) continue;
-        const verdict = await verdictFor(moderation, turn.text, 'input');
+        // Like chat: earlier allowed user turns are context, refused ones are not.
+        const verdict = await verdictFor(moderation, turn.text, 'input', [], {
+            priorTexts: [...allowedPrior],
+        });
+        if (verdict.got === 'allow') allowedPrior.push(turn.text);
         const last = index === users.length - 1;
         if (!last) {
             if (verdict.got !== 'allow') problems.push(`earlier turn expected allow got ${verdict.got}`);
