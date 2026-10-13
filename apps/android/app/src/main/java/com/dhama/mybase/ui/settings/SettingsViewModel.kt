@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dhama.mybase.core.FeatureFlags
 import com.dhama.mybase.core.chat.personalityUpdatedLine
+import com.dhama.mybase.core.data.ACCOUNT_DELETE_SIGN_IN
 import com.dhama.mybase.core.data.AccountDeletionResult
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.AgeLocalStore
 import com.dhama.mybase.core.data.DataStoreRepo
+import com.dhama.mybase.core.data.LinkedSignIn
 import com.dhama.mybase.core.data.PushRegistration
 import com.dhama.mybase.core.data.SignInRoute
 import com.dhama.mybase.core.data.performAccountDeletion
@@ -133,6 +135,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _accountDeleteError = MutableStateFlow<String?>(null)
     val accountDeleteError = _accountDeleteError.asStateFlow()
+
+    private val _deleteReauth = MutableStateFlow(LinkedSignIn.None)
+    val deleteReauth = _deleteReauth.asStateFlow()
+
+    private val _confirmWithGoogle = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val confirmWithGoogle = _confirmWithGoogle.asSharedFlow()
 
     private val _archiveFailed = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val archiveFailed = _archiveFailed.asSharedFlow()
@@ -278,9 +286,16 @@ class SettingsViewModel @Inject constructor(
     fun clearAccountDeleteError() {
         if (_accountDeleting.value) return
         _accountDeleteError.value = null
+        _deleteReauth.value = LinkedSignIn.None
     }
 
-    fun deleteAccount() {
+    fun googleReauthUnavailable() {
+        if (_accountDeleting.value) return
+        _deleteReauth.value = LinkedSignIn.Google
+        _accountDeleteError.value = "Confirm with Google to delete this account."
+    }
+
+    fun deleteAccount(emailPassword: String? = null, googleIdToken: String? = null) {
         if (_accountDeleting.value) return
         _accountDeleting.value = true
         _accountDeleteError.value = null
@@ -291,11 +306,21 @@ class SettingsViewModel @Inject constructor(
                         pushRegistration.forgetDevice()
                         authRepository.deleteRemoteAccount()
                     },
+                    deleteFirebaseUser = { serverDeletedFirebaseUser ->
+                        authRepository.deleteFirebaseAuthUser(
+                            serverDeletedFirebaseUser,
+                            emailPassword,
+                            googleIdToken,
+                        )
+                    },
                     signOut = { authRepository.logout() },
                     clearLocal = { clearLocalAccount() },
                 )
                 when (result) {
-                    AccountDeletionResult.Deleted -> _accountDeleted.emit(Unit)
+                    AccountDeletionResult.Deleted -> {
+                        _deleteReauth.value = LinkedSignIn.None
+                        _accountDeleted.emit(Unit)
+                    }
                     AccountDeletionResult.SignIn -> {
                         val route = routeAfterFailedDeleteRefresh(
                             signOutThenClear = { authRepository.signInAgainAfterDelete() },
@@ -308,12 +333,24 @@ class SettingsViewModel @Inject constructor(
                             is SignInRoute.Stay -> _accountDeleteError.value = route.message
                         }
                     }
+                    is AccountDeletionResult.NeedsRecentLogin -> {
+                        _deleteReauth.value = result.provider
+                        _accountDeleteError.value = recentLoginMessage(result.provider)
+                        if (result.provider == LinkedSignIn.Google) _confirmWithGoogle.emit(Unit)
+                    }
                     is AccountDeletionResult.Failed -> _accountDeleteError.value = result.message
                 }
             } finally {
                 _accountDeleting.value = false
             }
         }
+    }
+
+    private fun recentLoginMessage(provider: LinkedSignIn): String = when (provider) {
+        LinkedSignIn.Email -> "Enter your password to confirm it's you, then try again."
+        LinkedSignIn.Google -> "Confirm with Google to delete this account."
+        LinkedSignIn.Phone -> "Verify your phone number, then try deleting the account again."
+        LinkedSignIn.None, LinkedSignIn.Unsupported -> ACCOUNT_DELETE_SIGN_IN
     }
 
     private suspend fun clearLocalAccount() {

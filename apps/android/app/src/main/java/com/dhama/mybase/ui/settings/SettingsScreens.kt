@@ -5,6 +5,8 @@ package com.dhama.mybase.ui.settings
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import android.Manifest
@@ -97,11 +99,20 @@ import com.dhama.mybase.core.usage.phonePlanUsage
 import com.dhama.mybase.core.usage.planCaption
 import com.dhama.mybase.core.usage.monthUsage
 import com.dhama.mybase.core.usage.resetLabel
+import com.dhama.mybase.BuildConfig
+import com.dhama.mybase.core.auth.googleIdToken
+import com.dhama.mybase.core.auth.googleWebClientId
+import com.dhama.mybase.core.data.LinkedSignIn
+import com.dhama.mybase.core.legal.openLegalPage
+import com.dhama.mybase.core.legal.privacyPolicyUrl
+import com.dhama.mybase.core.legal.termsUrl
 import com.dhama.mybase.ui.preview.sampleCompanion
 import com.dhama.mybase.ui.preview.sampleMemories
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.usage.PaywallCard
 import com.dhama.mybase.ui.usage.UsageMeter
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import kotlin.coroutines.cancellation.CancellationException
 
 private val traitOptions = listOf(
     "Caring", "Playful", "Curious", "Calm", "Confident", "Witty", "Ambitious", "Creative",
@@ -119,6 +130,7 @@ fun YouSettingsScreen(
     val plan by viewModel.planLabel.collectAsState()
     val accountDeleting by viewModel.accountDeleting.collectAsState()
     val accountDeleteError by viewModel.accountDeleteError.collectAsState()
+    val deleteReauth by viewModel.deleteReauth.collectAsState()
     val nameMessage by viewModel.nameMessage.collectAsState()
     val email by viewModel.email.collectAsState()
     val passwordNote by viewModel.passwordNote.collectAsState()
@@ -136,6 +148,34 @@ fun YouSettingsScreen(
         if (granted) viewModel.setNotifications(true) else viewModel.notificationsBlocked()
     }
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.confirmWithGoogle.collect {
+            val webClientId = googleWebClientId(context)
+            if (webClientId.isBlank()) {
+                viewModel.googleReauthUnavailable()
+                return@collect
+            }
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(
+                    GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(webClientId)
+                        .setAutoSelectEnabled(false)
+                        .build(),
+                )
+                .build()
+            val token = try {
+                val response = CredentialManager.create(context).getCredential(request = request, context = context)
+                googleIdToken(response)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            if (token.isNullOrBlank()) viewModel.googleReauthUnavailable()
+            else viewModel.deleteAccount(googleIdToken = token)
+        }
+    }
     YouSettingsContent(
         displayName = displayName,
         plan = plan,
@@ -156,7 +196,8 @@ fun YouSettingsScreen(
         onChangePassword = viewModel::changePassword,
         onScreenPrivacy = viewModel::setScreenPrivacy,
         onTheme = viewModel::setThemeMode,
-        onDeleteAccount = viewModel::deleteAccount,
+        onDeleteAccount = { password -> viewModel.deleteAccount(emailPassword = password) },
+        deleteNeedsPassword = deleteReauth == LinkedSignIn.Email,
         accountDeleting = accountDeleting,
         accountDeleteError = accountDeleteError,
         onDismissDeleteError = viewModel::clearAccountDeleteError,
@@ -208,7 +249,8 @@ private fun YouSettingsContent(
     onChangePassword: (String, String) -> Unit,
     onScreenPrivacy: (Boolean) -> Unit,
     onTheme: (String) -> Unit,
-    onDeleteAccount: () -> Unit,
+    onDeleteAccount: (String?) -> Unit,
+    deleteNeedsPassword: Boolean = false,
     notifications: NotificationRowState = NotificationRowState(),
     onNotifications: (Boolean) -> Unit = {},
     accountDeleting: Boolean = false,
@@ -317,6 +359,14 @@ private fun YouSettingsContent(
             }
         }
         Spacer(Modifier.height(8.dp))
+        SectionLabel("Legal")
+        val context = LocalContext.current
+        SettingsRow("Terms", "View") {
+            openLegalPage(context, termsUrl(BuildConfig.API_BASE_URL))
+        }
+        SettingsRow("Privacy Policy", "View") {
+            openLegalPage(context, privacyPolicyUrl(BuildConfig.API_BASE_URL))
+        }
         SectionLabel("Account")
         Row(
             Modifier
@@ -351,6 +401,7 @@ private fun YouSettingsContent(
         DeleteAccountDialog(
             deleting = accountDeleting,
             error = accountDeleteError,
+            askPassword = deleteNeedsPassword,
             onDismiss = {
                 if (!accountDeleting) {
                     confirmDelete = false
@@ -832,10 +883,12 @@ private fun PlanCard(
 private fun DeleteAccountDialog(
     deleting: Boolean,
     error: String?,
+    askPassword: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: (String?) -> Unit,
 ) {
     var typed by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = { if (!deleting) onDismiss() },
         title = { Text("Delete account") },
@@ -851,6 +904,19 @@ private fun DeleteAccountDialog(
                     label = { Text("Type DELETE") },
                     singleLine = true,
                 )
+                if (askPassword) {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !deleting,
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    )
+                }
                 if (deleting) {
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -867,7 +933,10 @@ private fun DeleteAccountDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = typed == "DELETE" && !deleting) {
+            TextButton(
+                onClick = { onConfirm(password.takeIf { askPassword && it.isNotEmpty() }) },
+                enabled = typed == "DELETE" && !deleting && (!askPassword || password.isNotEmpty()),
+            ) {
                 Text(if (deleting) "Deleting…" else "Delete account", color = MaterialTheme.colorScheme.error)
             }
         },
@@ -1094,7 +1163,7 @@ private fun YouSettingsPreview() {
             onChangePassword = { _, _ -> },
             onScreenPrivacy = {},
             onTheme = {},
-            onDeleteAccount = {},
+            onDeleteAccount = { _ -> },
         )
     }
 }
