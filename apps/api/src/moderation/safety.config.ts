@@ -1,6 +1,6 @@
 import type { Helpline } from './safety-policy.js';
 
-export type ModerationProviderId = 'local' | 'openai' | 'gemini' | 'stub';
+export type ModerationProviderId = 'local' | 'openai' | 'gemini';
 
 export interface SafetyConfig {
     enabled: boolean;
@@ -26,9 +26,7 @@ export function resolveModerationProvider(
     env: NodeJS.ProcessEnv,
 ): ModerationProviderId {
     const name = requested?.trim().toLowerCase();
-    if (name === 'local' || name === 'openai' || name === 'gemini' || name === 'stub') {
-        return name;
-    }
+    if (name === 'local' || name === 'openai' || name === 'gemini') return name;
     if (env.OPENAI_API_KEY?.trim()) return 'openai';
     if (env.GEMINI_API_KEY?.trim()) return 'gemini';
     return 'local';
@@ -68,20 +66,10 @@ export function safetyConfigFromEnv(
         );
     }
     const model = env.MODERATION_MODEL?.trim();
-    const provider = resolveModerationProvider(env.MODERATION_PROVIDER, env);
-    if (
-        provider === 'stub'
-        && (env.NODE_ENV ?? '').toLowerCase() === 'production'
-        && !flag(env.MODERATION_STUB_ALLOWED, false)
-    ) {
-        throw new Error(
-            'MODERATION_PROVIDER=stub is not allowed when NODE_ENV=production',
-        );
-    }
     return {
         enabled,
         failClosed: flag(env.MODERATION_FAIL_CLOSED, true),
-        provider,
+        provider: resolveModerationProvider(env.MODERATION_PROVIDER, env),
         ...(model ? { moderationModel: model } : {}),
         helplines: helplinesFromEnv(env),
     };

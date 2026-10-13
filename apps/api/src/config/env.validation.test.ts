@@ -80,16 +80,6 @@ test('production refuses to disable moderation or store files on local disk', ()
         () => validateEnv({ ...PRODUCTION, STORAGE_DRIVER: 'local' }),
         /STORAGE_DRIVER must be s3/,
     );
-    assert.throws(
-        () => validateEnv({ ...PRODUCTION, MODERATION_PROVIDER: 'stub' }),
-        /MODERATION_PROVIDER=stub/,
-    );
-    const allowed = validateEnv({
-        ...PRODUCTION,
-        MODERATION_PROVIDER: 'stub',
-        MODERATION_STUB_ALLOWED: 'true',
-    });
-    assert.equal(allowed.MODERATION_PROVIDER, 'stub');
 });
 
 test('s3 storage requires its credentials outside production too', () => {

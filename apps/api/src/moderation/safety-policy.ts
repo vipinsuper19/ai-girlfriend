@@ -76,25 +76,8 @@ export const EXPLICIT_REFUSAL_MESSAGE =
 export const UNAVAILABLE_MESSAGE =
     "I can't reply just now. Please try again in a moment.";
 
-export const PERSONA_MINOR_MESSAGE =
-    "That companion description isn't allowed. Keep the persona an adult, and leave out sexual content involving minors.";
-
-export const PERSONA_EXPLICIT_MESSAGE =
-    "That companion description isn't allowed. Leave out graphic sexual content.";
-
-/** Other blocked personas. This does not mention minors. */
 export const PERSONA_REJECTION_MESSAGE =
-    "That companion description isn't allowed. Leave out harmful or illegal content.";
-
-export function personaRejectionMessage(categories: readonly SafetyCategory[]): string {
-    if (categories.includes('sexual_minors') || categories.includes('minor')) {
-        return PERSONA_MINOR_MESSAGE;
-    }
-    if (categories.includes('explicit')) {
-        return PERSONA_EXPLICIT_MESSAGE;
-    }
-    return PERSONA_REJECTION_MESSAGE;
-}
+    "That companion description isn't allowed. Keep the persona an adult, and leave out harmful, illegal, or sexual content involving minors.";
 
 const NOTICE_CODES = new Set<SafetyCode>([
     'content_policy',
@@ -313,7 +296,16 @@ type Rule = {
 
 const ALL: ReadonlySet<ModerationSurface> = new Set(['input', 'output', 'persona']);
 const INPUT_AND_PERSONA: ReadonlySet<ModerationSurface> = new Set(['input', 'persona']);
+const PERSONA_ONLY: ReadonlySet<ModerationSurface> = new Set(['persona']);
 const OUTPUT_ONLY: ReadonlySet<ModerationSurface> = new Set(['output']);
+
+/** Spelled-out ages under 18. Longer words come first so a shorter prefix cannot win. */
+const UNDER_18_AGE_WORDS =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven|ten|nine|eight|seven|six|five|four|three|two|one|zero';
+/** Teen ages written without a unit. Short words like "one" or "ten" need a unit so "she is one" stays allowed. */
+const SPELLED_TEEN_AGES =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven';
+const AGE_UNIT = String.raw`(?:years?[\s-]*old|y\/o|yo)`;
 
 const RULES: Rule[] = [
     {
@@ -366,6 +358,52 @@ const RULES: Rule[] = [
         category: 'minor',
         pattern: /\b(?:i(?:'m| am)|you(?:'re| are))\s+(?:a\s+)?(?:minor|underage)\b/i,
         surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(String.raw`\b(?:1[0-7]|[1-9])[\s-]*${AGE_UNIT}\b`, 'i'),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*${AGE_UNIT}\b`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:${SPELLED_TEEN_AGES})\b`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:pre[\s-]?teens?|teenagers?|teens?)\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bhigh[\s-]*schools?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bschool[\s-]*girls?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th)[\s-]+grades?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bsophomores?\b/i,
+        surfaces: PERSONA_ONLY,
     },
     {
         category: 'explicit',

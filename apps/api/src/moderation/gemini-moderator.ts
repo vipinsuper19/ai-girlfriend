@@ -4,7 +4,6 @@ import {
     HarmCategory,
 } from '@google/genai';
 
-import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
     categoriesFromClassifier,
@@ -12,13 +11,14 @@ import {
 } from './provider-categories.js';
 
 /**
- * Stable Gemini 3.6 Flash.
- * https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
- * Sampling parameters are omitted: Gemini 3.6 ignores them, and later models reject them.
+ * Stable Gemini 3.5 Flash-Lite.
+ * https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
+ * Sampling parameters are omitted: Gemini 3.x models ignore or reject them.
  */
-export const GEMINI_MODERATION_MODEL = 'gemini-3.6-flash';
+export const GEMINI_MODERATION_MODEL = 'gemini-3.5-flash-lite';
 export const GEMINI_MODERATION_MAX_CHARS = 8_000;
-export const GEMINI_MODERATION_TIMEOUT_MS = CLASSIFIER_TIMEOUT_MS;
+/** Client abort only. Do not send this as httpOptions.timeout: the SDK copies that into X-Server-Timeout seconds, and Gemini rejects a server deadline under 10s with 400. */
+export const GEMINI_MODERATION_TIMEOUT_MS = 12_000;
 
 const UNTRUSTED_START = '<<<UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_TEXT>>>';
@@ -58,10 +58,6 @@ export function geminiModerationRequest(model: string, text: string) {
         config: {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
-            httpOptions: {
-                timeout: GEMINI_MODERATION_TIMEOUT_MS,
-                retryOptions: { attempts: 1 },
-            },
             safetySettings: SAFETY_OFF.map((category) => ({
                 category,
                 threshold: HarmBlockThreshold.BLOCK_NONE,

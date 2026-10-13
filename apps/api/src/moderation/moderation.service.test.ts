@@ -12,7 +12,7 @@ import { OpenAiContentModerator, OPENAI_MODERATION_MAX_CHARS } from './openai-mo
 import { safetyConfigFromEnv } from './safety.config.js';
 import {
     EXPLICIT_REFUSAL_MESSAGE,
-    PERSONA_MINOR_MESSAGE,
+    PERSONA_REJECTION_MESSAGE,
     REFUSAL_MESSAGE,
     UNAVAILABLE_MESSAGE,
 } from './safety-policy.js';
@@ -58,12 +58,11 @@ test('a crisis message is returned without calling the provider and without logg
     assert.equal(notice?.code, 'self_harm');
     assert.match(notice?.message ?? '', /14416/);
     assert.match(notice?.message ?? '', /iasp\.info/);
-    assert.equal(logs.length, 2);
+    assert.equal(logs.length, 1);
     assert.match(logs[0] ?? '', /surface=input action=crisis code=self_harm/);
     assert.match(logs[0] ?? '', /userId=4 conversationId=9/);
-    assert.match(logs[1] ?? '', /moderation\.blocked source=local category=self_harm/);
-    assert.equal(logs.some((line) => line.includes('CANARY-991')), false);
-    assert.equal(logs.some((line) => line.includes('kill myself')), false);
+    assert.equal(logs[0]?.includes('CANARY-991'), false);
+    assert.equal(logs[0]?.includes('kill myself'), false);
 });
 
 test('the provider can flag a paraphrase the local patterns miss', async () => {
@@ -97,6 +96,9 @@ test('a provider failure withholds the reply when fail closed, and logs no text'
     assert.equal(notice?.message, UNAVAILABLE_MESSAGE);
     assert.equal(logs.some((line) => line.includes('CANARY-220')), false);
     assert.equal(logs.some((line) => line.includes('upstream echoed')), false);
+    const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
+    assert.match(line, /provider=gemini status=http code=unknown/);
+    assert.equal(line.includes('message='), false);
 });
 
 test('fail open keeps a locally allowed message when the provider errors', async () => {
@@ -140,7 +142,7 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
             assert.ok(error instanceof UnsafePersonaException);
             const body = error.getResponse() as { code?: string; message?: string };
             assert.equal(body.code, 'UNSAFE_PERSONA');
-            assert.equal(body.message, PERSONA_MINOR_MESSAGE);
+            assert.equal(body.message, PERSONA_REJECTION_MESSAGE);
             return true;
         },
     );

@@ -115,10 +115,9 @@ export const envValidationSchema = Joi.object({
     OPENAI_CHAT_MODEL: Joi.string().optional(),
 
     MODERATION_ENABLED: Joi.string().optional(),
-    MODERATION_PROVIDER: Joi.string().valid('auto', 'openai', 'gemini', 'local', 'stub').optional(),
+    MODERATION_PROVIDER: Joi.string().valid('auto', 'openai', 'gemini', 'local').optional(),
     MODERATION_MODEL: Joi.string().optional(),
     MODERATION_FAIL_CLOSED: Joi.string().optional(),
-    MODERATION_STUB_ALLOWED: Joi.string().optional(),
     CRISIS_HELPLINE_IN_NAME: Joi.string().optional(),
     CRISIS_HELPLINE_IN_CONTACT: Joi.string().optional(),
     CRISIS_HELPLINE_IN_DETAIL: Joi.string().optional(),
@@ -202,16 +201,6 @@ function assertProductionPolicy(value: Record<string, unknown>): void {
     }
     if (String(value.MODERATION_PROVIDER ?? '').toLowerCase() === 'local') {
         problems.push('MODERATION_PROVIDER=local is not allowed when NODE_ENV=production');
-    }
-    if (String(value.MODERATION_PROVIDER ?? '').toLowerCase() === 'stub') {
-        const allowed = ['1', 'true', 'yes', 'on'].includes(
-            String(value.MODERATION_STUB_ALLOWED ?? '').trim().toLowerCase(),
-        );
-        if (!allowed) {
-            problems.push(
-                'MODERATION_PROVIDER=stub is not allowed when NODE_ENV=production',
-            );
-        }
     }
     if (problems.length > 0) {
         throw new Error(`Refusing to start. Invalid environment:\n${problems.join('\n')}`);
