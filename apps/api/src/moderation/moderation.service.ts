@@ -92,6 +92,16 @@ export class ModerationService {
                             `conversationId=${ctx.conversationId ?? '-'}`,
                         ].join(' '),
                     );
+                    const rateLimited = failure.status === '429';
+                    // Output keeps locally clean text. Input does that only for 429/quota.
+                    // Persona stays fail-closed. Local categories already collected still decide.
+                    if (surface === 'output' || (surface === 'input' && rateLimited)) {
+                        const reason = rateLimited ? 'rate_limited' : 'provider_error';
+                        this.logger.warn(
+                            `moderation.degraded fallback=local reason=${reason}`,
+                        );
+                        break;
+                    }
                     if (!this.config.failClosed) return null;
                     const notice = unavailableNotice();
                     this.logNotice(notice, surface, ctx, trimmed.length, ['provider_error']);
@@ -141,7 +151,7 @@ function merge(left: SafetyCategory[], right: SafetyCategory[]): SafetyCategory[
     return [...new Set([...left, ...right])];
 }
 
-type ProviderFailureStatus = 'http' | 'timeout' | 'parse';
+type ProviderFailureStatus = 'http' | 'timeout' | 'parse' | '429';
 
 interface ProviderFailure {
     status: ProviderFailureStatus;
@@ -151,6 +161,12 @@ interface ProviderFailure {
 
 /** Shape of a provider failure for the structured log. Never includes user text or keys. */
 export function describeProviderFailure(error: unknown, userText: string): ProviderFailure {
+    if (isRateLimited(error)) {
+        const message = error instanceof Error && error.name === 'ApiError'
+            ? redactProviderMessage(error.message, userText)
+            : '';
+        return { status: '429', code: rateLimitCode(error), message };
+    }
     if (isProviderTimeout(error)) {
         const code = error instanceof Error && error.name ? error.name : 'timeout';
         return { status: 'timeout', code, message: '' };
@@ -181,6 +197,26 @@ export function redactProviderMessage(message: string, userText: string): string
         );
     if (text.length > 300) text = `${text.slice(0, 300)}...`;
     return text;
+}
+
+function isRateLimited(error: unknown): boolean {
+    if (httpStatus(error) === 429) return true;
+    const message = error instanceof Error ? error.message : '';
+    const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+        ? (error as { code: string }).code
+        : '';
+    return /RESOURCE_EXHAUSTED|\bquota\b|rate[_ ]limit|too many requests/i.test(`${code} ${message}`);
+}
+
+function rateLimitCode(error: unknown): string {
+    const message = error instanceof Error ? error.message : '';
+    const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+        ? (error as { code: string }).code
+        : '';
+    if (/RESOURCE_EXHAUSTED/i.test(`${code} ${message}`)) return 'RESOURCE_EXHAUSTED';
+    if (code.trim()) return code.trim();
+    if (/\bquota\b/i.test(message)) return 'quota';
+    return 'RESOURCE_EXHAUSTED';
 }
 
 function httpStatus(error: unknown): number | undefined {

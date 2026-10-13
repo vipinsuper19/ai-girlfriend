@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { ApiError } from '@google/genai';
+
 import type { ContentModerator } from '../moderation/content-moderator.js';
 import { ModerationService } from '../moderation/moderation.service.js';
 import { safetyConfigFromEnv } from '../moderation/safety.config.js';
-import { EXPLICIT_REFUSAL_MESSAGE, REFUSAL_MESSAGE } from '../moderation/safety-policy.js';
+import {
+    EXPLICIT_REFUSAL_MESSAGE,
+    REFUSAL_MESSAGE,
+    UNAVAILABLE_MESSAGE,
+} from '../moderation/safety-policy.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { AiService, SAFETY_SYSTEM_RULES } from './ai.service.js';
 
@@ -55,6 +61,7 @@ function harness(options: {
     generate?: (prompt: string) => string;
     stream?: string[];
     streamChat?: (request: { signal?: AbortSignal }) => AsyncGenerator<string>;
+    logs?: string[];
 }) {
     const created: Record<string, unknown>[] = [];
     const prompts: string[] = [];
@@ -94,7 +101,7 @@ function harness(options: {
     const moderation = new ModerationService(
         safetyConfigFromEnv({ MODERATION_PROVIDER: 'local' }),
         options.provider ?? localProvider,
-        { warn() {} },
+        { warn(message) { options.logs?.push(message); } },
     );
     const ai = new AiService(
         { client: db } as never,
@@ -193,7 +200,9 @@ test('flagged model output is replaced before it is saved or streamed', async ()
         events.push(event);
     }
     const deltas = events.filter((event) => event.type === 'delta');
-    assert.deepEqual(deltas.map((event) => event.content), [REFUSAL_MESSAGE]);
+    assert.deepEqual(deltas, []);
+    const replaced = events.filter((event) => event.type === 'replace');
+    assert.deepEqual(replaced.map((event) => event.content), [REFUSAL_MESSAGE]);
     assert.equal(events.some((event) => JSON.stringify(event).includes('bomb')), false);
     const done = events.find((event) => event.type === 'done');
     const doneContent =
@@ -248,10 +257,9 @@ test('a safe sentence streams before a later unsafe sentence is replaced', async
     const events = [];
     for await (const event of streamed.ai.streamResponse(1, 3)) events.push(event);
     const deltas = events.filter((event) => event.type === 'delta');
-    assert.deepEqual(deltas.map((event) => event.content), [
-        'I saved you a seat. ',
-        REFUSAL_MESSAGE,
-    ]);
+    assert.deepEqual(deltas.map((event) => event.content), ['I saved you a seat. ']);
+    const replaced = events.filter((event) => event.type === 'replace');
+    assert.deepEqual(replaced.map((event) => event.content), [REFUSAL_MESSAGE]);
     assert.equal(events.some((event) => JSON.stringify(event).includes('bomb')), false);
     const done = events.find((event) => event.type === 'done');
     const doneContent =
@@ -261,9 +269,54 @@ test('a safe sentence streams before a later unsafe sentence is replaced', async
         'content' in done.message
             ? String(done.message.content)
             : '';
-    assert.match(doneContent, /I saved you a seat/);
-    assert.match(doneContent, /I can't help with that/);
+    assert.equal(doneContent, REFUSAL_MESSAGE);
+    assert.equal(doneContent.includes('I saved you a seat'), false);
     assert.equal(doneContent.includes('bomb'), false);
+    assert.equal(streamed.created.some((row) => String(row['content']).includes('I saved you a seat')), false);
+});
+
+test('a provider error after streamed text keeps that text and does not append the canned reply', async () => {
+    const logs: string[] = [];
+    let calls = 0;
+    const streamed = harness({
+        logs,
+        messages: [{ role: 'USER', content: 'Tell me a story' }],
+        provider: {
+            id: 'gemini',
+            model: 'gemini-3.5-flash-lite',
+            async moderate() {
+                calls += 1;
+                if (calls === 1) return { categories: [] };
+                throw new ApiError({ status: 429, message: 'RESOURCE_EXHAUSTED' });
+            },
+        },
+        stream: ['I saved you a seat. ', 'The evening stayed quiet.'],
+    });
+    const events = [];
+    for await (const event of streamed.ai.streamResponse(1, 3)) events.push(event);
+    const deltas = events.filter((event) => event.type === 'delta');
+    assert.deepEqual(deltas.map((event) => event.content), [
+        'I saved you a seat. ',
+        'The evening stayed quiet.',
+    ]);
+    assert.equal(events.some((event) => event.type === 'replace'), false);
+    assert.equal(events.some((event) => JSON.stringify(event).includes(UNAVAILABLE_MESSAGE)), false);
+    const done = events.find((event) => event.type === 'done');
+    const doneContent =
+        done &&
+        typeof done.message === 'object' &&
+        done.message !== null &&
+        'content' in done.message
+            ? String(done.message.content)
+            : '';
+    assert.equal(doneContent, 'I saved you a seat. The evening stayed quiet.');
+    assert.equal(done && 'safety' in done ? done.safety : undefined, undefined);
+    const saved = streamed.created.find((row) => row['role'] === 'ASSISTANT');
+    assert.equal(saved?.content, doneContent);
+    assert.equal(saved?.metadata, null);
+    assert.match(logs.join('\n'), /moderation\.provider_error provider=gemini status=429 code=RESOURCE_EXHAUSTED/);
+    assert.match(logs.join('\n'), /moderation\.degraded fallback=local reason=rate_limited/);
+    assert.equal(logs.some((line) => line.includes('I saved you a seat')), false);
 });
 
 test('an aborted moderated stream neither persists nor charges', async () => {

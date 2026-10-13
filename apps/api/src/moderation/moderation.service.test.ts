@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { ApiError } from '@google/genai';
+
 import type { ContentModerator } from './content-moderator.js';
 import {
     GeminiContentModerator,
@@ -99,6 +101,101 @@ test('a provider failure withholds the reply when fail closed, and logs no text'
     const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
     assert.match(line, /provider=gemini status=http code=unknown/);
     assert.equal(line.includes('message='), false);
+});
+
+test('a 429 on input chat falls back to the local pre-filter and is logged as 429', async () => {
+    const logs: string[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        model: 'gemini-3.5-flash-lite',
+        async moderate() {
+            throw new ApiError({
+                status: 429,
+                message: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota"}}',
+            });
+        },
+    };
+    const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
+        'Tell me about your day',
+        'input',
+    );
+    assert.equal(notice, null);
+    const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
+    assert.match(line, /provider=gemini status=429 code=RESOURCE_EXHAUSTED/);
+    assert.match(line, /model=gemini-3\.5-flash-lite/);
+    assert.equal(line.includes('Tell me about your day'), false);
+    assert.match(
+        logs.find((entry) => entry.startsWith('moderation.degraded')) ?? '',
+        /fallback=local reason=rate_limited/,
+    );
+    assert.equal(logs.some((entry) => entry.includes('moderation_unavailable')), false);
+
+    const quotaLogs: string[] = [];
+    const quota: ContentModerator = {
+        id: 'gemini',
+        async moderate() {
+            throw Object.assign(new Error('quota exceeded for this project'), { code: 'quota' });
+        },
+    };
+    assert.equal(
+        await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, quota, quotaLogs).noticeFor(
+            'hello there',
+            'input',
+        ),
+        null,
+    );
+    assert.match(quotaLogs.join('\n'), /status=429 code=quota/);
+    assert.match(quotaLogs.join('\n'), /reason=rate_limited/);
+});
+
+test('a rate limit still hard-blocks a minor, and persona stays fail-closed', async () => {
+    let calls = 0;
+    const provider: ContentModerator = {
+        id: 'gemini',
+        model: 'gemini-3.5-flash-lite',
+        async moderate() {
+            calls += 1;
+            throw new ApiError({ status: 429, message: 'RESOURCE_EXHAUSTED' });
+        },
+    };
+    const minor = await serviceFor({}, provider).noticeFor('you are 15 years old', 'input');
+    assert.equal(minor?.code, 'content_policy');
+    assert.equal(minor?.message, REFUSAL_MESSAGE);
+    assert.equal(calls, 0);
+
+    const logs: string[] = [];
+    await assert.rejects(
+        () => serviceFor({}, provider, logs).assertSafePersona({ name: 'Aria' }),
+        (error: unknown) => {
+            assert.ok(error instanceof UnsafePersonaException);
+            const body = error.getResponse() as { message?: string };
+            assert.equal(body.message, PERSONA_REJECTION_MESSAGE);
+            return true;
+        },
+    );
+    assert.match(logs.join('\n'), /status=429 code=RESOURCE_EXHAUSTED/);
+    assert.equal(logs.some((entry) => entry.startsWith('moderation.degraded')), false);
+});
+
+test('an output provider error keeps locally clean text instead of a canned refusal', async () => {
+    const logs: string[] = [];
+    const provider: ContentModerator = {
+        id: 'gemini',
+        async moderate() {
+            throw new Error('upstream unavailable');
+        },
+    };
+    const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
+        'I saved you a seat.',
+        'output',
+    );
+    assert.equal(notice, null);
+    assert.match(
+        logs.find((entry) => entry.startsWith('moderation.degraded')) ?? '',
+        /fallback=local reason=provider_error/,
+    );
+    assert.equal(logs.some((entry) => entry.includes('I saved you a seat')), false);
+    assert.equal(logs.some((entry) => entry.includes(UNAVAILABLE_MESSAGE)), false);
 });
 
 test('fail open keeps a locally allowed message when the provider errors', async () => {

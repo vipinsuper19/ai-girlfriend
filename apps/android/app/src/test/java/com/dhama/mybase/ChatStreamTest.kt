@@ -43,6 +43,23 @@ class ChatStreamTest {
         val (events, rest) = consumeSse(raw)
         assertEquals(ChatStreamEvent.Delta("Hey"), events[0])
         assertEquals(ChatStreamEvent.Done("Hey there"), events[1])
+
+        val replaced = consumeSse(
+            """
+            event: delta
+            data: {"type":"delta","content":"I saved you a seat. "}
+
+            event: replace
+            data: {"type":"replace","content":"I can't help with that."}
+
+            event: done
+            data: {"type":"done","message":{"content":"I can't help with that."}}
+
+            """.trimIndent(),
+        ).first
+        assertEquals(ChatStreamEvent.Delta("I saved you a seat. "), replaced[0])
+        assertEquals(ChatStreamEvent.Replace("I can't help with that."), replaced[1])
+        assertEquals(ChatStreamEvent.Done("I can't help with that."), replaced[2])
         assertEquals(2, events.size)
         assertTrue(rest.contains("still"))
     }
