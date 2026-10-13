@@ -68,9 +68,10 @@ clients hide the matching controls, so nothing is faked.
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Push notifications through FCM. Raw JSON or base64 |
 | `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL`, `GEMINI_STT_MODEL`, `GEMINI_TTS_MODEL`, `GEMINI_IMAGE_MODEL` | Chat, voice, and images |
 | `MODERATION_ENABLED` | `true` (default) scores chat input, model output, and companion persona text. `false` turns those checks off outside production. `NODE_ENV=production` refuses to boot when this is `false` |
-| `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, or `local`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns |
+| `MODERATION_PROVIDER` | `auto` (default), `openai`, `gemini`, `local`, or `stub`. `auto` uses OpenAI's moderations endpoint when `OPENAI_API_KEY` is set, otherwise Gemini when `GEMINI_API_KEY` is set, otherwise local patterns. `stub` is for CI and emulators. Production refuses `local`, and refuses `stub` unless `MODERATION_STUB_ALLOWED=true` |
 | `MODERATION_MODEL` | Optional model override. OpenAI defaults to `omni-moderation-latest`. Gemini defaults to `GEMINI_CHAT_MODEL`, or `gemini-3.6-flash` |
-| `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds the reply instead of skipping the check |
+| `MODERATION_FAIL_CLOSED` | `true` (default). A provider error withholds a chat reply. A companion persona falls back to the local check instead, and a clean local check is allowed |
+| `MODERATION_STUB_ALLOWED` | Lets `MODERATION_PROVIDER=stub` boot when `NODE_ENV=production`. Leave unset on Render |
 | `OPENAI_API_KEY` | Key for the OpenAI moderations endpoint when that provider is selected |
 | `CRISIS_HELPLINE_IN_NAME`, `CRISIS_HELPLINE_IN_CONTACT`, `CRISIS_HELPLINE_IN_DETAIL` | India crisis line. Defaults to Tele-MANAS, `14416`, 24/7 |
 | `CRISIS_HELPLINE_INTL_NAME`, `CRISIS_HELPLINE_INTL_CONTACT`, `CRISIS_HELPLINE_INTL_DETAIL` | International pointer. Defaults to the IASP suicidal-thoughts page |

@@ -76,8 +76,25 @@ export const EXPLICIT_REFUSAL_MESSAGE =
 export const UNAVAILABLE_MESSAGE =
     "I can't reply just now. Please try again in a moment.";
 
+export const PERSONA_MINOR_MESSAGE =
+    "That companion description isn't allowed. Keep the persona an adult, and leave out sexual content involving minors.";
+
+export const PERSONA_EXPLICIT_MESSAGE =
+    "That companion description isn't allowed. Leave out graphic sexual content.";
+
+/** Other blocked personas. This does not mention minors. */
 export const PERSONA_REJECTION_MESSAGE =
-    "That companion description isn't allowed. Keep the persona an adult, and leave out harmful, illegal, or sexual content involving minors.";
+    "That companion description isn't allowed. Leave out harmful or illegal content.";
+
+export function personaRejectionMessage(categories: readonly SafetyCategory[]): string {
+    if (categories.includes('sexual_minors') || categories.includes('minor')) {
+        return PERSONA_MINOR_MESSAGE;
+    }
+    if (categories.includes('explicit')) {
+        return PERSONA_EXPLICIT_MESSAGE;
+    }
+    return PERSONA_REJECTION_MESSAGE;
+}
 
 const NOTICE_CODES = new Set<SafetyCode>([
     'content_policy',

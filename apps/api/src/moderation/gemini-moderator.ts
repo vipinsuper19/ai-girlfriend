@@ -4,6 +4,7 @@ import {
     HarmCategory,
 } from '@google/genai';
 
+import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
     categoriesFromClassifier,
@@ -17,18 +18,24 @@ import {
  */
 export const GEMINI_MODERATION_MODEL = 'gemini-3.6-flash';
 export const GEMINI_MODERATION_MAX_CHARS = 8_000;
+export const GEMINI_MODERATION_TIMEOUT_MS = CLASSIFIER_TIMEOUT_MS;
 
 const UNTRUSTED_START = '<<<UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END_ESCAPED = '<<<END UNTRUSTED TEXT>>>';
 
+/**
+ * The four thresholds the Gemini Developer API safety guide lets callers set.
+ * `HARM_CATEGORY_JAILBREAK` is in the SDK enum but the Developer API rejects it
+ * with 400 INVALID_ARGUMENT (`safety_settings[5].category`).
+ * `HARM_CATEGORY_CIVIC_INTEGRITY` is deprecated (the election filter is gone).
+ * Either one makes generateContent throw ApiError before it scores the text.
+ */
 const SAFETY_OFF = [
     HarmCategory.HARM_CATEGORY_HARASSMENT,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-    HarmCategory.HARM_CATEGORY_JAILBREAK,
 ];
 
 /** Wrap model input so text inside the markers is data, not a new instruction. */
@@ -51,6 +58,10 @@ export function geminiModerationRequest(model: string, text: string) {
         config: {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
+            httpOptions: {
+                timeout: GEMINI_MODERATION_TIMEOUT_MS,
+                retryOptions: { attempts: 1 },
+            },
             safetySettings: SAFETY_OFF.map((category) => ({
                 category,
                 threshold: HarmBlockThreshold.BLOCK_NONE,
@@ -69,10 +80,14 @@ export class GeminiContentModerator implements ContentModerator {
     readonly maxChars = GEMINI_MODERATION_MAX_CHARS;
     private client: GoogleGenAI | null = null;
 
+    readonly model: string;
+
     constructor(
         private readonly apiKey: string | undefined,
-        private readonly model: string,
-    ) {}
+        model: string,
+    ) {
+        this.model = model;
+    }
 
     async moderate(text: string): Promise<ProviderModeration> {
         if (text.length > this.maxChars) {
@@ -82,13 +97,24 @@ export class GeminiContentModerator implements ContentModerator {
             throw new Error('GEMINI_API_KEY is not configured');
         }
         this.client ??= new GoogleGenAI({ apiKey: this.apiKey });
-        const response = await this.client.models.generateContent(
-            geminiModerationRequest(this.model, text),
-        );
-        const raw = response.text?.trim();
-        if (!raw) {
-            throw new Error('Moderation classifier returned an empty response');
+        const request = geminiModerationRequest(this.model, text);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), GEMINI_MODERATION_TIMEOUT_MS);
+        try {
+            const response = await this.client.models.generateContent({
+                ...request,
+                config: {
+                    ...request.config,
+                    abortSignal: controller.signal,
+                },
+            });
+            const raw = response.text?.trim();
+            if (!raw) {
+                throw new Error('Moderation classifier returned an empty response');
+            }
+            return { categories: categoriesFromClassifier(raw) };
+        } finally {
+            clearTimeout(timer);
         }
-        return { categories: categoriesFromClassifier(raw) };
     }
 }
