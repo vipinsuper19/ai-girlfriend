@@ -21,8 +21,15 @@ MAESTRO_REPORT=06-composer-open maestro_test "${DIR}/flows/06a-open-composer.yam
 
 draft="${MAESTRO_OUT}/draft-7100.txt"
 python3 -c 'open("'"${draft}"'", "w").write("a" * 7100)'
+# filesDir is not created until the app writes there. The chat screen has not.
+adb shell run-as com.dhama.mybase mkdir -p files
 adb shell run-as com.dhama.mybase rm -f files/maestro-draft.txt files/maestro-draft-ok
 adb shell run-as com.dhama.mybase sh -c 'cat > files/maestro-draft.txt' < "${draft}"
+written="$(adb shell run-as com.dhama.mybase wc -c files/maestro-draft.txt | tr -d '\r' | awk '{print $1}')"
+if [[ "${written}" != "7100" ]]; then
+  echo "Draft file is ${written} bytes, expected 7100." >&2
+  exit 1
+fi
 adb shell am broadcast \
   -a com.dhama.mybase.DEBUG_CHAT_DRAFT \
   -n com.dhama.mybase/.debug.DebugDraftReceiver
