@@ -96,6 +96,9 @@ test('a provider failure withholds the reply when fail closed, and logs no text'
     assert.equal(notice?.message, UNAVAILABLE_MESSAGE);
     assert.equal(logs.some((line) => line.includes('CANARY-220')), false);
     assert.equal(logs.some((line) => line.includes('upstream echoed')), false);
+    const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
+    assert.match(line, /provider=gemini status=http code=unknown/);
+    assert.equal(line.includes('message='), false);
 });
 
 test('fail open keeps a locally allowed message when the provider errors', async () => {
