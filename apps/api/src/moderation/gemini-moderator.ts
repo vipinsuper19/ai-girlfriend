@@ -53,6 +53,61 @@ export function delimitedModerationInput(text: string): string {
     ].join('\n');
 }
 
+/**
+ * Finish reasons that mean Gemini withheld the classification.
+ * `MAX_TOKENS` and `STOP` are not filters: an empty body is still a block,
+ * and a normal JSON body is scored.
+ */
+export const GEMINI_FILTER_FINISH_REASONS = [
+    'SAFETY',
+    'PROHIBITED_CONTENT',
+    'BLOCKLIST',
+    'SPII',
+] as const;
+
+export class FilteredClassifierError extends Error {
+    constructor() {
+        super('Moderation classifier returned an empty response');
+        this.name = 'FilteredClassifierError';
+    }
+}
+
+export interface GeminiModerationResponse {
+    text?: string;
+    candidates?: ReadonlyArray<{ finishReason?: string } | null | undefined>;
+    promptFeedback?: { blockReason?: string };
+}
+
+/**
+ * True when the Developer API withheld a classification.
+ * An empty `text` or `candidates` array, a filter `finishReason`, or any
+ * `promptFeedback.blockReason` other than unspecified is a block. A later
+ * parse of leftover text must not turn that into an allow.
+ */
+export function geminiResponseBlocked(response: GeminiModerationResponse): boolean {
+    const blockReason = response.promptFeedback?.blockReason;
+    if (
+        typeof blockReason === 'string' &&
+        blockReason.length > 0 &&
+        blockReason !== 'BLOCKED_REASON_UNSPECIFIED'
+    ) {
+        return true;
+    }
+    const candidates = response.candidates;
+    if (!Array.isArray(candidates) || candidates.length === 0) return true;
+    for (const candidate of candidates) {
+        const reason = candidate?.finishReason;
+        if (
+            typeof reason === 'string' &&
+            (GEMINI_FILTER_FINISH_REASONS as readonly string[]).includes(reason)
+        ) {
+            return true;
+        }
+    }
+    const text = typeof response.text === 'string' ? response.text.trim() : '';
+    return text.length === 0;
+}
+
 /** Pure request body so tests can check the delimiter and sampling settings. */
 export function geminiModerationRequest(model: string, text: string) {
     return {
@@ -110,10 +165,11 @@ export class GeminiContentModerator implements ContentModerator {
                     abortSignal: controller.signal,
                 },
             });
+            // Filter shapes throw before JSON parsing. A safety finish with
+            // leftover non-JSON text must not become a degraded allow.
+            if (geminiResponseBlocked(response)) throw new FilteredClassifierError();
             const raw = response.text?.trim();
-            if (!raw) {
-                throw new Error('Moderation classifier returned an empty response');
-            }
+            if (!raw) throw new FilteredClassifierError();
             const parsed = parseClassifier(raw);
             return { categories: parsed.categories, items: parsed.items };
         } finally {

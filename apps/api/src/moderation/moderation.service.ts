@@ -107,17 +107,13 @@ export class ModerationService {
                         break;
                     }
                     if (isEmptyClassifierResponse(error)) {
-                        if (
+                        // A filtered or empty body is a block. It is not an
+                        // outage, so it must not fall through to a local allow.
+                        const minor =
                             holdsMinor(categories) ||
                             ctx.heldMinor === true ||
-                            holdsMinor(assessLocal(chunk, surface))
-                        ) {
-                            categories = merge(categories, ['minor']);
-                            break;
-                        }
-                        this.noteDegraded(error, surface, ctx, trimmed.length);
-                        this.noteProviderError(error, surface, ctx, trimmed.length, chunk, started);
-                        categories = merge(categories, ['illegal_harm']);
+                            holdsMinor(assessLocal(chunk, surface));
+                        categories = merge(categories, [minor ? 'minor' : 'explicit']);
                         break;
                     }
                     if (surface === 'persona') {
@@ -252,7 +248,7 @@ export class ModerationService {
      * One classifier attempt, kept under the provider limit. `null` means the
      * call failed and the caller must keep the local verdict without caching
      * the miss. An over-limit body is chunked or refused, not treated as an outage.
-     * An empty classifier body is a block, never a cached allow.
+     * An empty or filtered classifier body is a block, never a cached allow.
      */
     private async scoreBlocks(
         blocks: readonly ClassifierBlock[],
@@ -329,9 +325,10 @@ export class ModerationService {
     }
 
     /**
-     * An empty classifier response blocks. A minor signal uses the local
-     * verdict and is not counted as degraded. Anything else is a degraded
-     * refusal and is not cached as an allow.
+     * Timeouts and provider outages keep the local verdict (`null`).
+     * A filtered or empty body never does: a minor signal is a hard block,
+     * and anything else is the in-character explicit refusal. Neither is
+     * cached, and neither is counted as a degraded allow.
      */
     private classifierFailure(
         error: unknown,
@@ -343,11 +340,12 @@ export class ModerationService {
             this.noteDegraded(error, 'input', ctx, chars);
             return null;
         }
-        if (this.hasMinorSignal(blocks, ctx)) return null;
-        this.noteDegraded(error, 'input', ctx, chars);
+        const minor = this.hasMinorSignal(blocks, ctx);
         const categories = new Map<string, SafetyCategory[]>();
         for (const block of blocks) {
-            if (block.id === 'user') categories.set(block.id, ['illegal_harm']);
+            if (block.id === 'user') {
+                categories.set(block.id, [minor ? 'minor' : 'explicit']);
+            }
         }
         return { categories, cache: false };
     }

@@ -342,6 +342,31 @@ const UNDER_18_AGE_WORDS =
 const SPELLED_TEEN_AGES =
     'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven';
 const MINOR_AGE_UNIT = String.raw`(?:years?[\s-]*old|y\/o|yo)`;
+const RELATIVE_NOUN = String.raw`sisters?|brothers?|daughters?|sons?|nephews?|nieces?|cousins?|grandsons?|granddaughters?|grandchildren|grandchild`;
+
+/**
+ * Instructions aimed at the model. Couples talking about their own rules,
+ * and "you are now" used as affection, stay outside this pattern.
+ */
+const JAILBREAK_PATTERN = new RegExp(
+    [
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|rules|prompts?|guidelines|restrictions|policies)\b`,
+        String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
+        String.raw`\b(?:in|into)\s+developer\s+mode\b`,
+        String.raw`\bdeveloper\s+mode\s+(?:on|enabled)\b`,
+        String.raw`\byou(?:'re|\s+are)\s+now\b[\s\S]{0,48}\b(?:dan|unfiltered|unrestricted|uncensored|jailbroken|developer|without\s+(?:any\s+)?(?:rules|restrictions|filters)|an?\s+(?:ai|model|assistant)\s+with\s+no)\b`,
+        String.raw`\b(?:reveal|print|show|dump|repeat|recite)\s+(?:me\s+)?(?:your\s+|the\s+)?(?:hidden\s+|full\s+|entire\s+|system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\bwhat(?:'s|\s+is)\s+your\s+(?:system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\b(?:read|tell)\s+me\s+your\s+(?:system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\bwhat\s+instructions\s+(?:were\s+you\s+given|did\s+you\s+get)\b`,
+        String.raw`\brepeat\s+everything\s+above\b`,
+        String.raw`</?\s*system\b`,
+        String.raw`\b(?:system|developer)\s+prompt\s*:`,
+        String.raw`\b(?:ai|model|assistant|chatbot|dan)\b[\s\S]{0,32}\b(?:with\s+)?(?:no|without|zero)\s+(?:safety\s+)?(?:rules|restrictions|filters)\b`,
+        String.raw`\b(?:from\s+now\s+on|your\s+new\s+role|new\s+role)\b[\s\S]{0,48}\b(?:dan|unfiltered|uncensored|developer\s+mode|jailbreak|no\s+(?:safety\s+)?rules)\b`,
+    ].join('|'),
+    'i',
+);
 
 const RULES: Rule[] = [
     {
@@ -368,14 +393,18 @@ const RULES: Rule[] = [
     },
     {
         category: 'sexual_minors',
-        pattern:
-            /\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy)\b/i,
+        pattern: new RegExp(
+            String.raw`\b(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy|romantic|romance|girlfriend|boyfriend|flirt)\b`,
+            'i',
+        ),
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
-        pattern:
-            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
+        pattern: new RegExp(
+            String.raw`\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy|romantic|romance|girlfriend|boyfriend|flirt)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b`,
+            'i',
+        ),
         surfaces: ALL,
     },
     {
@@ -396,9 +425,11 @@ const RULES: Rule[] = [
         surfaces: INPUT_AND_PERSONA,
     },
     {
+        // Chat may mention a relative's age ("my 10-year-old nephew").
+        // A sexual or romantic co-signal is handled by the rules above.
         category: 'minor',
         pattern: new RegExp(String.raw`\b(?:1[0-7]|[1-9])[\s-]*${MINOR_AGE_UNIT}\b`, 'i'),
-        surfaces: INPUT_AND_PERSONA,
+        surfaces: PERSONA_ONLY,
     },
     {
         category: 'minor',
@@ -406,7 +437,7 @@ const RULES: Rule[] = [
             String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b`,
             'i',
         ),
-        surfaces: INPUT_AND_PERSONA,
+        surfaces: PERSONA_ONLY,
     },
     {
         category: 'minor',
@@ -543,16 +574,19 @@ const RULES: Rule[] = [
     },
     {
         category: 'minor',
-        // "15yo" / "15 y/o" / "turning 16" / "under 18". "15 years old" about someone else stays put.
+        // "turning 16" / "under 18". Hyphenated ages and y/o stay on the persona rules above.
         pattern:
-            /\b(?:1[0-7]|[1-9])\s*(?:yo|y\/o)\b|\bturning\s+(?:1[0-7]|[1-9]|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b|\bunder\s*-?\s*(?:18|eighteen)\b/i,
+            /\bturning\s+(?:1[0-7]|[1-9]|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b|\bunder\s*-?\s*(?:18|eighteen)\b/i,
         surfaces: INPUT_AND_PERSONA,
     },
     {
         category: 'minor',
-        // Spelled teen ages. "fifteen minutes" and "fifteen years of experience" stay ordinary.
-        pattern:
-            /\b(?:eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))/i,
+        // Spelled teen ages. A following year-old unit is persona-only, so a
+        // relative ("sixteen-year-old nephew") is not a chat block on its own.
+        pattern: new RegExp(
+            String.raw`\b(?:${SPELLED_TEEN_AGES})\b(?![\s-]*${MINOR_AGE_UNIT})(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))`,
+            'i',
+        ),
         surfaces: INPUT_AND_PERSONA,
     },
     {
@@ -563,9 +597,9 @@ const RULES: Rule[] = [
     },
     {
         category: 'jailbreak',
-        // An instruction aimed at the model's rules. "ignore the traffic" and "no rules tonight" do not match.
-        pattern:
-            /\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:your\s+|the\s+|these\s+|my\s+)?(?:previous\s+|prior\s+|above\s+|system\s+)?(?:safety\s+|content\s+)?(?:instructions|rules|prompts?|guidelines|restrictions|policies)\b|\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b|\b(?:reveal|print|show|dump)\s+(?:me\s+)?(?:your\s+)?(?:hidden\s+|system\s+)?(?:prompt|instructions|rules)\b/i,
+        // Aimed at the model's instructions. Relationship "rules", "no rules tonight",
+        // and "you are now the best part of my day" do not match.
+        pattern: JAILBREAK_PATTERN,
         surfaces: ALL,
     },
 ];
@@ -655,13 +689,11 @@ export function assessLocal(
 ): SafetyCategory[] {
     const found: SafetyCategory[] = [];
     for (const form of safetyForms(text)) {
-        for (const rule of RULES) {
-            if (!rule.surfaces.has(surface)) continue;
-            rule.pattern.lastIndex = 0;
-            if (rule.pattern.test(form) && !found.includes(rule.category)) {
-                found.push(rule.category);
-            }
-        }
+        // A relative's age in ordinary chat is not a minor claim. Sexual and
+        // romantic co-signals stay on the original text, so they still block.
+        const scan = surface === 'input' ? withoutRelativeAgeMentions(form) : form;
+        collectRuleHits(scan, surface, found);
+        if (scan !== form) collectRuleHits(form, surface, found, true);
         if (
             INPUT_AND_PERSONA.has(surface) &&
             claimsFirstPersonMinor(form) &&
@@ -671,6 +703,40 @@ export function assessLocal(
         }
     }
     return found;
+}
+
+function collectRuleHits(
+    text: string,
+    surface: ModerationSurface,
+    found: SafetyCategory[],
+    proximityOnly = false,
+): void {
+    for (const rule of RULES) {
+        if (!rule.surfaces.has(surface)) continue;
+        if (proximityOnly && rule.category !== 'sexual_minors') continue;
+        rule.pattern.lastIndex = 0;
+        if (rule.pattern.test(text) && !found.includes(rule.category)) {
+            found.push(rule.category);
+        }
+    }
+}
+
+/**
+ * Drops a non-sexual mention of a relative's age or school class so the
+ * chat pre-filter can allow "my 10-year-old nephew" and "my sister is in class 9".
+ * The caller's original text is still scanned for sexual co-signals.
+ */
+function withoutRelativeAgeMentions(text: string): string {
+    const lead = String.raw`\b(?:my|our|his|her|their)\s+(?:little\s+|younger\s+|older\s+)?`;
+    const age = String.raw`(?:${UNDER_18_AGE_WORDS}|1[0-7]|[1-9])`;
+    const ageUnit = String.raw`${age}[\s-]*${MINOR_AGE_UNIT}`;
+    const school = String.raw`class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class`;
+    const beforeNoun = new RegExp(String.raw`${lead}(?:${ageUnit})\s+(?:${RELATIVE_NOUN})\b`, 'gi');
+    const afterNoun = new RegExp(
+        String.raw`${lead}(?:${RELATIVE_NOUN})(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turns\s+|turning\s+)?(?:only\s+|just\s+)?(?:a\s+|an\s+|in\s+)?(?:${school}|${age}(?:[\s-]*${MINOR_AGE_UNIT})?)\b`,
+        'gi',
+    );
+    return text.replace(beforeNoun, ' ').replace(afterNoun, ' ');
 }
 
 const LEET_CHAR: Record<string, string> = {

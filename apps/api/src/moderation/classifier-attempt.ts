@@ -19,7 +19,11 @@ export function classifierTimeoutMs(env: NodeJS.ProcessEnv = process.env): numbe
 
 export type DegradedReason = 'timeout' | '429' | '503' | 'unavailable' | 'empty';
 
-/** Gemini's own filter sometimes returns no text. That is not a scored allow. */
+/**
+ * A filtered or empty classifier body. Gemini signals that with no text,
+ * no candidates, a safety finish reason, or promptFeedback.blockReason.
+ * That is a block, not a scored allow and not a degraded fallback.
+ */
 export function isEmptyClassifierResponse(error: unknown): boolean {
     const message = error instanceof Error ? error.message : '';
     return /empty response/i.test(message);

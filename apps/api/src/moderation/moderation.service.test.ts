@@ -378,25 +378,63 @@ test('an empty classifier response blocks a minor signal and is not degraded', a
     assert.equal(calls.n, 1);
 });
 
-test('an empty classifier response is a degraded refusal and never an allow', async () => {
+test('an empty classifier response is an explicit refusal and never an allow', async () => {
     const calls = { n: 0 };
     const logs: string[] = [];
     const moderation = serviceFor({}, downProvider(emptyClassifierError(), calls), logs);
     const turn = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
-    assert.equal(turn.notice?.code, 'content_policy');
-    assert.equal(turn.notice?.message, REFUSAL_MESSAGE);
+    assert.equal(turn.notice?.code, 'explicit_content');
+    assert.equal(turn.notice?.message, EXPLICIT_REFUSAL_MESSAGE);
     assert.equal(turn.holdMinor, false);
-    assert.equal(moderation.degradedFallbacks, 1);
-    assert.match(logs[0] ?? '', /moderation\.degraded provider=gemini reason=empty/);
-    assert.match(logs[0] ?? '', /fallbacks=1/);
+    assert.equal(moderation.degradedFallbacks, 0);
+    assert.equal(logs.some((line) => line.includes('moderation.degraded')), false);
     assert.equal(logs[0]?.includes('Kiss me'), false);
     const again = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
-    assert.equal(again.notice?.code, 'content_policy');
+    assert.equal(again.notice?.code, 'explicit_content');
     assert.equal(calls.n, 2);
     const noticed = await moderation.noticeFor('hello there', 'input');
-    assert.equal(noticed?.code, 'content_policy');
-    assert.equal(moderation.degradedFallbacks, 3);
+    assert.equal(noticed?.code, 'explicit_content');
+    assert.equal(noticed?.message, EXPLICIT_REFUSAL_MESSAGE);
+    assert.equal(moderation.degradedFallbacks, 0);
     assert.equal(calls.n, 3);
+    const held = await moderation.moderateTurn({
+        text: 'hello there',
+        ctx: { heldMinor: true },
+    });
+    assert.equal(held.notice?.code, 'content_policy');
+    assert.equal(held.holdMinor, true);
+});
+
+test('a filtered body on a chunked turn is a refusal and a parse error still falls back', async () => {
+    const calls = { n: 0 };
+    const filtered = serviceFor(
+        {},
+        {
+            id: 'gemini',
+            maxChars: 30,
+            async moderate() {
+                calls.n += 1;
+                throw emptyClassifierError();
+            },
+        },
+    );
+    const turn = await filtered.moderateTurn({
+        text: 'Kiss me goodnight and stay close to me tonight',
+    });
+    assert.equal(turn.notice?.code, 'explicit_content');
+    assert.equal(filtered.degradedFallbacks, 0);
+    assert.ok(calls.n >= 1);
+
+    const logs: string[] = [];
+    const parsed = serviceFor(
+        {},
+        downProvider(new Error('Moderation classifier returned no JSON'), { n: 0 }),
+        logs,
+    );
+    const allowed = await parsed.moderateTurn({ text: 'Kiss me goodnight' });
+    assert.equal(allowed.notice, null);
+    assert.equal(parsed.degradedFallbacks, 1);
+    assert.match(logs[0] ?? '', /moderation\.degraded/);
 });
 
 test('a chat message is shorter than the classifier input limit', async () => {
