@@ -127,13 +127,13 @@ Preconditions: same signed-in chat as flow 4, still online through `offline/05a-
 
 Steps: with the network off, send `This send should fail offline`. After "Not sent · Retry" is visible, restore the network and tap that control.
 
-Expected: the failed send shows `chat_retry` with "Not sent · Retry" and does not show `chat_assistant_reply`. After Retry, `chat_assistant_reply` appears (again, any non-empty assistant text). The retry control can take up to about three minutes to show, because a down connection still waits out the 90 second connect budget and then the blocking fallback. Do not run this file trio by hand without the wrapper, or the device will not change network between them.
+Expected: the failed send shows `chat_retry`, then the child caption "Not sent · Retry", and does not show `chat_assistant_reply`. The id and the caption are separate nodes, so the flow waits for the id and then asserts the caption. After Retry, `chat_assistant_reply` appears (again, any non-empty assistant text). The retry control can take up to about three minutes to show, because a down connection still waits out the 90 second connect budget and then the blocking fallback. Do not run this file trio by hand without the wrapper, or the device will not change network between them.
 
 ### 6. Composer 7000-character cap
 
 Preconditions: chat composer focused, AI disclosure already accepted (the flow does that).
 
-Steps: paste 7100 `a` characters into `chat_composer` (`setClipboard` + `pasteText`). Maestro may deliver that paste as a long text input, so this step can take several minutes.
+Steps: type 7100 `a` characters into `chat_composer` as fifteen 500-character inputs. One Maestro `inputText` of the whole draft is killed after 120 seconds, so the flow does not use `pasteText`.
 
 Expected: either the field keeps 7000 characters, or it keeps a different length and `chat_draft_limit` shows a counter matching `[0-9]+ / 7000` (today that is `7100 / 7000. Shorten it to send.`). The flow does not send the draft.
 

@@ -21,11 +21,13 @@ env:
 - takeScreenshot: ${SHOT}-offline-draft
 - tapOn:
     id: chat_send
+# chat_retry is the button. "Not sent · Retry" is the child label, so Maestro
+# will not match both on one node.
 - extendedWaitUntil:
     visible:
       id: chat_retry
-      text: "Not sent · Retry"
     timeout: 180000
+- assertVisible: "Not sent · Retry"
 - assertNotVisible:
     id: chat_assistant_reply
 - takeScreenshot: ${SHOT}-retry

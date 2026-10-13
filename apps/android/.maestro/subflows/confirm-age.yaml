@@ -16,7 +16,8 @@ tags:
       DOB_LABEL: "January 15, 1990"
 - tapOn:
     id: age_adult
-- hideKeyboard
+# Do not hideKeyboard here. The checkbox tap already dismisses the IME, and
+# with animator scale 0 a second hideKeyboard sends Back and leaves this screen.
 - takeScreenshot: ${SHOT}-confirm-age-ready
 - tapOn:
     id: age_continue
