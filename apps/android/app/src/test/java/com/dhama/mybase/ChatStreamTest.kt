@@ -55,7 +55,7 @@ class ChatStreamTest {
             event: done
             data: {"type":"done","message":{"content":"I can't help with that."}}
 
-            """.trimIndent(),
+            """.trimIndent() + "\n\n",
         ).first
         assertEquals(ChatStreamEvent.Delta("I saved you a seat. "), replaced[0])
         assertEquals(ChatStreamEvent.Replace("I can't help with that."), replaced[1])
