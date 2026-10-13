@@ -116,6 +116,8 @@ export const envValidationSchema = Joi.object({
 
     MODERATION_ENABLED: Joi.string().optional(),
     MODERATION_PROVIDER: Joi.string().valid('auto', 'openai', 'gemini', 'local').optional(),
+    // `mock` is the emulator CI chat/embedding stand-in. Production rejects it below.
+    LLM_PROVIDER: Joi.string().valid('gemini', 'mock').optional(),
     MODERATION_MODEL: Joi.string().optional(),
     MODERATION_FAIL_CLOSED: Joi.string().optional(),
     CRISIS_HELPLINE_IN_NAME: Joi.string().optional(),
@@ -201,6 +203,9 @@ function assertProductionPolicy(value: Record<string, unknown>): void {
     }
     if (String(value.MODERATION_PROVIDER ?? '').toLowerCase() === 'local') {
         problems.push('MODERATION_PROVIDER=local is not allowed when NODE_ENV=production');
+    }
+    if (String(value.LLM_PROVIDER ?? '').toLowerCase() === 'mock') {
+        problems.push('LLM_PROVIDER=mock is not allowed when NODE_ENV=production');
     }
     if (problems.length > 0) {
         throw new Error(`Refusing to start. Invalid environment:\n${problems.join('\n')}`);

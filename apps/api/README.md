@@ -101,7 +101,7 @@ The bucket stays private. The database stores a stable `/uploads/...` key. JSON 
 
 A rate-limit max of `0` turns that dimension off. Invalid numbers keep the default.
 
-`node dist/main` validates the environment before it listens. Production refuses to boot when a required secret is missing, when `MODERATION_ENABLED=false`, when `MODERATION_PROVIDER=local`, or when `STORAGE_DRIVER` is not `s3`.
+`node dist/main` validates the environment before it listens. Production refuses to boot when a required secret is missing, when `MODERATION_ENABLED=false`, when `MODERATION_PROVIDER=local`, when `LLM_PROVIDER=mock`, or when `STORAGE_DRIVER` is not `s3`.
 
 Run the API as a single instance. The lock that stops a second assistant reply from generating for the same conversation is in-process, so another instance would not see it. The Render web service is one instance for that reason.
 

@@ -47,24 +47,10 @@ tags:
 - takeScreenshot: ${SHOT}-wizard-name
 - tapOn:
     id: wizard_create
-# The create call sometimes fails once ("We couldn't create Mae just now").
-# Tap again if home never appeared.
 - extendedWaitUntil:
     visible:
       id: home_talk
     timeout: 120000
-    optional: true
-- runFlow:
-    when:
-      notVisible:
-        id: home_talk
-    commands:
-      - tapOn:
-          id: wizard_create
-      - extendedWaitUntil:
-          visible:
-            id: home_talk
-          timeout: 120000
 - assertVisible: ${output.companion}
 - assertVisible: "Say hello"
 - takeScreenshot: ${SHOT}-home

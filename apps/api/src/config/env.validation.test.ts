@@ -77,9 +77,24 @@ test('production refuses to disable moderation or store files on local disk', ()
         /MODERATION_PROVIDER=local/,
     );
     assert.throws(
+        () => validateEnv({ ...PRODUCTION, LLM_PROVIDER: 'mock' }),
+        /LLM_PROVIDER=mock/,
+    );
+    assert.throws(
         () => validateEnv({ ...PRODUCTION, STORAGE_DRIVER: 'local' }),
         /STORAGE_DRIVER must be s3/,
     );
+});
+
+test('development can enable the mock LLM and local moderation without a model key', () => {
+    const value = validateEnv({
+        ...DEV,
+        LLM_PROVIDER: 'mock',
+        MODERATION_PROVIDER: 'local',
+    });
+    assert.equal(value.LLM_PROVIDER, 'mock');
+    assert.equal(value.MODERATION_PROVIDER, 'local');
+    assert.equal(value.GEMINI_API_KEY, undefined);
 });
 
 test('s3 storage requires its credentials outside production too', () => {
