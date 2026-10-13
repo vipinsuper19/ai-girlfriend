@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { HarmCategory } from '@google/genai';
+
 import { helplinesFromEnv, resolveModerationProvider, safetyConfigFromEnv } from './safety.config.js';
+
 import {
     delimitedModerationInput,
+    GEMINI_CLIENT_ABORT_MS,
+    GEMINI_MIN_DEADLINE_MS,
     GEMINI_MODERATION_MODEL,
+    geminiClientAbortMs,
     geminiModerationRequest,
 } from './gemini-moderator.js';
 import {
@@ -319,8 +325,27 @@ test('gemini moderation wraps untrusted text and does not send sampling paramete
     assert.equal(wrapped.includes(payload), false);
     const request = geminiModerationRequest(GEMINI_MODERATION_MODEL, 'hello there');
     assert.equal(Object.hasOwn(request.config, 'temperature'), false);
-    assert.equal(request.config.httpOptions.timeout, 4000);
     assert.equal(request.config.httpOptions.retryOptions.attempts, 1);
+    assert.equal(Object.hasOwn(request.config.httpOptions, 'timeout'), false);
+    assert.equal(geminiClientAbortMs(), GEMINI_CLIENT_ABORT_MS);
+    assert.equal(GEMINI_CLIENT_ABORT_MS, 12_000);
+    assert.equal(geminiClientAbortMs(4_000), GEMINI_MIN_DEADLINE_MS);
+    assert.deepEqual(
+        request.config.safetySettings.map((setting) => setting.category),
+        [
+            HarmCategory.HARM_CATEGORY_HARASSMENT,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        ],
+    );
+    assert.equal(
+        request.config.safetySettings.some(
+            (setting) => setting.category === HarmCategory.HARM_CATEGORY_JAILBREAK
+                || setting.category === HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+        ),
+        false,
+    );
     assert.match(request.contents, /<<<UNTRUSTED_TEXT>>>\nhello there\n<<<END_UNTRUSTED_TEXT>>>/);
 });
 

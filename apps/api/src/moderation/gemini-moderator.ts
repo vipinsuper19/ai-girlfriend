@@ -4,7 +4,6 @@ import {
     HarmCategory,
 } from '@google/genai';
 
-import { CLASSIFIER_TIMEOUT_MS } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
     categoriesFromClassifier,
@@ -18,18 +17,29 @@ import {
  */
 export const GEMINI_MODERATION_MODEL = 'gemini-3.6-flash';
 export const GEMINI_MODERATION_MAX_CHARS = 8_000;
+/** Gemini rejects a server deadline under 10s. Callers abort on the client instead. */
+export const GEMINI_MIN_DEADLINE_MS = 10_000;
+export const GEMINI_CLIENT_ABORT_MS = 12_000;
+
+/** Never returns a Gemini deadline under {@link GEMINI_MIN_DEADLINE_MS}. */
+export function geminiClientAbortMs(ms: number = GEMINI_CLIENT_ABORT_MS): number {
+    return Math.max(ms, GEMINI_MIN_DEADLINE_MS);
+}
 
 const UNTRUSTED_START = '<<<UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_TEXT>>>';
 const UNTRUSTED_END_ESCAPED = '<<<END UNTRUSTED TEXT>>>';
 
+/**
+ * The Developer API accepts these four categories.
+ * `HARM_CATEGORY_JAILBREAK` and `HARM_CATEGORY_CIVIC_INTEGRITY` make
+ * generateContent return 400 before it scores the text.
+ */
 const SAFETY_OFF = [
     HarmCategory.HARM_CATEGORY_HARASSMENT,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-    HarmCategory.HARM_CATEGORY_JAILBREAK,
 ];
 
 /** Wrap model input so text inside the markers is data, not a new instruction. */
@@ -53,7 +63,6 @@ export function geminiModerationRequest(model: string, text: string) {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
             httpOptions: {
-                timeout: CLASSIFIER_TIMEOUT_MS,
                 retryOptions: { attempts: 1 },
             },
             safetySettings: SAFETY_OFF.map((category) => ({
@@ -92,7 +101,7 @@ export class GeminiContentModerator implements ContentModerator {
             ...request,
             config: {
                 ...request.config,
-                abortSignal: AbortSignal.timeout(CLASSIFIER_TIMEOUT_MS),
+                abortSignal: AbortSignal.timeout(geminiClientAbortMs()),
             },
         });
         const raw = response.text?.trim();

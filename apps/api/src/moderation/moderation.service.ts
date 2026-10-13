@@ -7,6 +7,7 @@ import {
     withAttemptTimeout,
 } from './classifier-attempt.js';
 import type { ContentModerator } from './content-moderator.js';
+import { geminiClientAbortMs } from './gemini-moderator.js';
 import { ModerationTemporarilyUnavailableException } from './moderation-unavailable.exception.js';
 import type { SafetyConfig } from './safety.config.js';
 import {
@@ -47,7 +48,8 @@ export class ModerationService {
         runtime: ModerationRuntime = {},
     ) {
         this.logger = logger ?? new Logger(ModerationService.name);
-        this.attemptTimeoutMs = runtime.attemptTimeoutMs ?? CLASSIFIER_TIMEOUT_MS;
+        this.attemptTimeoutMs = runtime.attemptTimeoutMs
+            ?? (provider.id === 'gemini' ? geminiClientAbortMs() : CLASSIFIER_TIMEOUT_MS);
         this.fallback = runtime.fallback ?? null;
     }
 
