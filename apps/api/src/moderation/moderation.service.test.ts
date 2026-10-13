@@ -9,7 +9,7 @@ import {
     GEMINI_MODERATION_MAX_CHARS,
     GEMINI_MODERATION_MODEL,
 } from './gemini-moderator.js';
-import { ModerationService } from './moderation.service.js';
+import { describeProviderFailure, ModerationService } from './moderation.service.js';
 import { OpenAiContentModerator, OPENAI_MODERATION_MAX_CHARS } from './openai-moderator.js';
 import { safetyConfigFromEnv } from './safety.config.js';
 import {
@@ -130,22 +130,135 @@ test('a 429 on input chat falls back to the local pre-filter and is logged as 42
     );
     assert.equal(logs.some((entry) => entry.includes('moderation_unavailable')), false);
 
-    const quotaLogs: string[] = [];
-    const quota: ContentModerator = {
-        id: 'gemini',
-        async moderate() {
-            throw Object.assign(new Error('quota exceeded for this project'), { code: 'quota' });
-        },
-    };
+    const outputLogs: string[] = [];
     assert.equal(
-        await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, quota, quotaLogs).noticeFor(
-            'hello there',
-            'input',
+        await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, outputLogs).noticeFor(
+            'I saved you a seat.',
+            'output',
         ),
         null,
     );
-    assert.match(quotaLogs.join('\n'), /status=429 code=quota/);
-    assert.match(quotaLogs.join('\n'), /reason=rate_limited/);
+    assert.match(outputLogs.join('\n'), /status=429 code=RESOURCE_EXHAUSTED/);
+    assert.match(outputLogs.join('\n'), /reason=rate_limited/);
+    assert.equal(outputLogs.some((entry) => entry.includes('I saved you a seat')), false);
+
+    const exhaustedLogs: string[] = [];
+    const exhausted: ContentModerator = {
+        id: 'gemini',
+        async moderate() {
+            throw Object.assign(new Error('provider code only'), { code: 'RESOURCE_EXHAUSTED' });
+        },
+    };
+    assert.equal(
+        await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, exhausted, exhaustedLogs).noticeFor(
+            'hello there',
+            'output',
+        ),
+        null,
+    );
+    assert.match(exhaustedLogs.join('\n'), /status=429 code=RESOURCE_EXHAUSTED/);
+    assert.match(exhaustedLogs.join('\n'), /reason=rate_limited/);
+});
+
+test('output timeouts and aborts fall back to the local pre-filter', async () => {
+    const cases = [
+        Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }),
+        Object.assign(new Error('timed out'), { name: 'TimeoutError' }),
+    ];
+    for (const error of cases) {
+        const logs: string[] = [];
+        const provider: ContentModerator = {
+            id: 'gemini',
+            async moderate() {
+                throw error;
+            },
+        };
+        const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
+            'I saved you a seat.',
+            'output',
+        );
+        assert.equal(notice, null, error.name);
+        assert.match(logs.join('\n'), /status=timeout/, error.name);
+        assert.match(logs.join('\n'), /moderation\.degraded fallback=local reason=timeout/, error.name);
+        assert.equal(logs.some((entry) => entry.includes('I saved you a seat')), false, error.name);
+        assert.equal(logs.some((entry) => entry.includes('moderation_unavailable')), false, error.name);
+    }
+});
+
+test('other provider failures stay fail-closed on input and output', async () => {
+    const cases: Array<{ name: string; error: unknown; status: string; code: string }> = [
+        {
+            name: '400 INVALID_ARGUMENT',
+            error: new ApiError({ status: 400, message: 'INVALID_ARGUMENT' }),
+            status: 'http',
+            code: '400',
+        },
+        {
+            name: '401',
+            error: new ApiError({ status: 401, message: 'UNAUTHENTICATED' }),
+            status: 'http',
+            code: '401',
+        },
+        {
+            name: '403',
+            error: new ApiError({ status: 403, message: 'PERMISSION_DENIED' }),
+            status: 'http',
+            code: '403',
+        },
+        {
+            name: 'empty response',
+            error: new Error('Moderation classifier returned an empty response'),
+            status: 'parse',
+            code: 'parse',
+        },
+        {
+            name: 'quota mentioned on a non-429 error',
+            error: new Error('daily quota exceeded'),
+            status: 'http',
+            code: 'unknown',
+        },
+    ];
+    for (const surface of ['input', 'output'] as const) {
+        for (const item of cases) {
+            const logs: string[] = [];
+            const provider: ContentModerator = {
+                id: 'gemini',
+                async moderate() {
+                    throw item.error;
+                },
+            };
+            const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
+                'Tell me about your day',
+                surface,
+            );
+            assert.equal(notice?.code, 'moderation_unavailable', `${surface} ${item.name}`);
+            assert.equal(notice?.message, UNAVAILABLE_MESSAGE, `${surface} ${item.name}`);
+            assert.match(
+                logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '',
+                new RegExp(`status=${item.status} code=${item.code}`),
+                `${surface} ${item.name}`,
+            );
+            assert.equal(
+                logs.some((entry) => entry.startsWith('moderation.degraded')),
+                false,
+                `${surface} ${item.name}`,
+            );
+            assert.equal(logs.some((entry) => entry.includes('Tell me about your day')), false);
+            assert.equal(logs.some((entry) => entry.includes('daily quota')), false);
+        }
+    }
+});
+
+test('a non-429 error whose message mentions quota is not a rate limit', () => {
+    const failure = describeProviderFailure(
+        new ApiError({ status: 500, message: 'quota exceeded RESOURCE_EXHAUSTED' }),
+        'hello',
+    );
+    assert.equal(failure.status, 'http');
+    assert.equal(failure.code, '500');
+    const plain = describeProviderFailure(new Error('daily quota exceeded'), 'hello');
+    assert.equal(plain.status, 'http');
+    assert.notEqual(plain.status, '429');
 });
 
 test('a rate limit still hard-blocks a minor, and persona stays fail-closed', async () => {
@@ -177,25 +290,21 @@ test('a rate limit still hard-blocks a minor, and persona stays fail-closed', as
     assert.equal(logs.some((entry) => entry.startsWith('moderation.degraded')), false);
 });
 
-test('an output provider error keeps locally clean text instead of a canned refusal', async () => {
+test('an input timeout stays fail-closed', async () => {
     const logs: string[] = [];
     const provider: ContentModerator = {
         id: 'gemini',
         async moderate() {
-            throw new Error('upstream unavailable');
+            throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
         },
     };
     const notice = await serviceFor({ MODERATION_FAIL_CLOSED: 'true' }, provider, logs).noticeFor(
-        'I saved you a seat.',
-        'output',
+        'Tell me about your day',
+        'input',
     );
-    assert.equal(notice, null);
-    assert.match(
-        logs.find((entry) => entry.startsWith('moderation.degraded')) ?? '',
-        /fallback=local reason=provider_error/,
-    );
-    assert.equal(logs.some((entry) => entry.includes('I saved you a seat')), false);
-    assert.equal(logs.some((entry) => entry.includes(UNAVAILABLE_MESSAGE)), false);
+    assert.equal(notice?.code, 'moderation_unavailable');
+    assert.match(logs.join('\n'), /status=timeout code=AbortError/);
+    assert.equal(logs.some((entry) => entry.startsWith('moderation.degraded')), false);
 });
 
 test('fail open keeps a locally allowed message when the provider errors', async () => {

@@ -93,10 +93,11 @@ export class ModerationService {
                         ].join(' '),
                     );
                     const rateLimited = failure.status === '429';
-                    // Output keeps locally clean text. Input does that only for 429/quota.
-                    // Persona stays fail-closed. Local categories already collected still decide.
-                    if (surface === 'output' || (surface === 'input' && rateLimited)) {
-                        const reason = rateLimited ? 'rate_limited' : 'provider_error';
+                    const outputTimedOut = surface === 'output' && failure.status === 'timeout';
+                    // Input degrades only on 429. Output also degrades on timeout or abort.
+                    // Other 4xx, auth errors, and parse failures stay fail-closed. Persona does too.
+                    if ((surface === 'input' || surface === 'output') && (rateLimited || outputTimedOut)) {
+                        const reason = rateLimited ? 'rate_limited' : 'timeout';
                         this.logger.warn(
                             `moderation.degraded fallback=local reason=${reason}`,
                         );
@@ -165,7 +166,7 @@ export function describeProviderFailure(error: unknown, userText: string): Provi
         const message = error instanceof Error && error.name === 'ApiError'
             ? redactProviderMessage(error.message, userText)
             : '';
-        return { status: '429', code: rateLimitCode(error), message };
+        return { status: '429', code: rateLimitCode(), message };
     }
     if (isProviderTimeout(error)) {
         const code = error instanceof Error && error.name ? error.name : 'timeout';
@@ -199,23 +200,18 @@ export function redactProviderMessage(message: string, userText: string): string
     return text;
 }
 
-function isRateLimited(error: unknown): boolean {
-    if (httpStatus(error) === 429) return true;
-    const message = error instanceof Error ? error.message : '';
-    const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
-        ? (error as { code: string }).code
-        : '';
-    return /RESOURCE_EXHAUSTED|\bquota\b|rate[_ ]limit|too many requests/i.test(`${code} ${message}`);
+function providerCode(error: unknown): string {
+    if (!error || typeof error !== 'object') return '';
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code.trim() : '';
 }
 
-function rateLimitCode(error: unknown): string {
-    const message = error instanceof Error ? error.message : '';
-    const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
-        ? (error as { code: string }).code
-        : '';
-    if (/RESOURCE_EXHAUSTED/i.test(`${code} ${message}`)) return 'RESOURCE_EXHAUSTED';
-    if (code.trim()) return code.trim();
-    if (/\bquota\b/i.test(message)) return 'quota';
+/** HTTP 429 or a provider code of RESOURCE_EXHAUSTED. Message text is not consulted. */
+function isRateLimited(error: unknown): boolean {
+    return httpStatus(error) === 429 || providerCode(error) === 'RESOURCE_EXHAUSTED';
+}
+
+function rateLimitCode(): string {
     return 'RESOURCE_EXHAUSTED';
 }
 
