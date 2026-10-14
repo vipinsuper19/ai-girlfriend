@@ -1,52 +1,45 @@
-/** One classifier attempt. Outages fall back instead of waiting through retries. */
-export const CLASSIFIER_TIMEOUT_MS = 4_000;
-
-export type DegradedReason = 'timeout' | '429' | '503' | 'unavailable';
+/**
+ * One classifier attempt. Outages fall back instead of waiting through retries.
+ * Gemini rejects a server deadline under 10s, so this is a client abort only.
+ */
+export const CLASSIFIER_TIMEOUT_MIN_MS = 10_000;
+export const CLASSIFIER_TIMEOUT_MS = 12_000;
 
 /**
- * Why a classifier call could not be used. Never includes the user text.
- * `429` covers numeric rate limits and Gemini quota errors (`RESOURCE_EXHAUSTED`).
+ * Client abort budget. `MODERATION_TIMEOUT_MS` may raise it.
+ * Values under 10s clamp up, so nothing sends a shorter deadline.
  */
+export function classifierTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+    const raw = env.MODERATION_TIMEOUT_MS?.trim();
+    if (!raw) return CLASSIFIER_TIMEOUT_MS;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return CLASSIFIER_TIMEOUT_MS;
+    return Math.max(CLASSIFIER_TIMEOUT_MIN_MS, Math.floor(parsed));
+}
+
+export type DegradedReason = 'timeout' | '429' | '503' | 'unavailable' | 'empty';
+
+/**
+ * A filtered or empty classifier body. Gemini signals that with no text,
+ * no candidates, a safety finish reason, or promptFeedback.blockReason.
+ * That is a block, not a scored allow and not a degraded fallback.
+ */
+export function isEmptyClassifierResponse(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : '';
+    return /empty response/i.test(message);
+}
+
+/** Why a classifier call could not be used. Never includes the user text. */
 export function degradedReason(error: unknown): DegradedReason {
+    if (isEmptyClassifierResponse(error)) return 'empty';
     const status = httpStatus(error);
     if (status === 429) return '429';
     if (status === 503) return '503';
     if (isTimeout(error)) return 'timeout';
-    const code = rawCode(error);
-    if (code === 'RESOURCE_EXHAUSTED' || code === '429') return '429';
-    if (code === 'UNAVAILABLE' || code === '503') return '503';
     const message = error instanceof Error ? error.message : '';
-    if (/\b429\b|rate limit|resource exhausted|quota/i.test(message)) return '429';
+    if (/\b429\b|rate limit/i.test(message)) return '429';
     if (/\b503\b/.test(message)) return '503';
     return 'unavailable';
-}
-
-/** Bound one provider call. A late rejection from the original promise is ignored. */
-export function withAttemptTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            const error = new Error('Moderation provider timed out');
-            error.name = 'TimeoutError';
-            reject(error);
-        }, ms);
-        work.then(
-            (value) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                resolve(value);
-            },
-            (error: unknown) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                reject(error);
-            },
-        );
-    });
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -66,19 +59,6 @@ function httpStatus(error: unknown): number | undefined {
     ]) {
         if (typeof value === 'number' && value >= 100 && value <= 599) return value;
         if (typeof value === 'string' && /^\d{3}$/.test(value)) return Number(value);
-    }
-    return undefined;
-}
-
-function rawCode(error: unknown): string | undefined {
-    if (!error || typeof error !== 'object') return undefined;
-    const record = error as {
-        code?: unknown;
-        status?: unknown;
-        error?: { code?: unknown; status?: unknown };
-    };
-    for (const value of [record.code, record.status, record.error?.status, record.error?.code]) {
-        if (typeof value === 'string' && value.trim()) return value.trim();
     }
     return undefined;
 }

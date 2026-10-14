@@ -15,6 +15,8 @@ import {
     redactProviderMessage,
 } from './moderation.service.js';
 import { safetyConfigFromEnv } from './safety.config.js';
+import { PERSONA_REJECTION_MESSAGE } from './safety-policy.js';
+import { UnsafePersonaException } from './unsafe-persona.exception.js';
 
 const API_KEY = 'AIzaSyCANARYKEY1234567890';
 const FOUR_CATEGORIES = [
@@ -56,7 +58,16 @@ test('an ApiError is logged with status and message, and the key and persona tex
             throw new ApiError({ status: 400, message: raw });
         },
     };
-    await serviceFor(provider, logs).assertSafePersona({ name: 'Aria' });
+    await assert.rejects(
+        () => serviceFor(provider, logs).assertSafePersona({ name: 'Aria' }),
+        (error: unknown) => {
+            assert.ok(error instanceof UnsafePersonaException);
+            const body = error.getResponse() as { code?: string; message?: string };
+            assert.equal(body.code, 'UNSAFE_PERSONA');
+            assert.equal(body.message, PERSONA_REJECTION_MESSAGE);
+            return true;
+        },
+    );
     const line = logs.find((entry) => entry.startsWith('moderation.provider_error')) ?? '';
     assert.match(line, /provider=gemini status=http code=400/);
     assert.match(line, /model=gemini-3\.5-flash-lite/);
@@ -66,7 +77,7 @@ test('an ApiError is logged with status and message, and the key and persona tex
     assert.equal(line.includes('Aria'), false);
     assert.match(
         logs.find((entry) => entry.startsWith('safety ')) ?? '',
-        /degraded provider=gemini reason=unavailable surface=persona/,
+        /name=ApiError surface=persona/,
     );
 });
 

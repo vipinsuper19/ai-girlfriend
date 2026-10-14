@@ -27,13 +27,19 @@ test('the idempotency migration sorts after deletion request and chains from it'
         .join('\n');
 
     assert.equal(manifest.from, DELETION_HASH);
+    assert.equal(manifest.to, '6afb1ed044483b010a3ad7b98f053ca39bc0a58954913a503d04694fe7a090bb');
+    const minorHold = JSON.parse(
+        readFileSync(join(migrationsRoot, '20261012T1030_add_minor_hold/migration.json'), 'utf8'),
+    ) as { from: string; to: string };
+    assert.equal(minorHold.from, manifest.to);
     const authDir = join(migrationsRoot, AUTH_CLEANUP);
     const auth = JSON.parse(readFileSync(join(authDir, 'migration.json'), 'utf8')) as {
         from: string;
         to: string;
     };
-    assert.ok(AUTH_CLEANUP > MIGRATION);
-    assert.equal(auth.from, manifest.to);
+    assert.ok(AUTH_CLEANUP > '20261012T1030_add_minor_hold');
+    // Auth cleanup chains after #23's minor hold (630c27ec...).
+    assert.equal(auth.from, minorHold.to);
     assert.equal(ref.hash, auth.to);
     assert.match(sql, /ALTER TABLE "public"\."message" ADD COLUMN "idempotencyKey" text/);
     assert.match(sql, /ALTER TABLE "public"\."message" ADD COLUMN "userId" int4/);

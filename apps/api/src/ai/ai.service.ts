@@ -9,8 +9,11 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { MemoryContextService } from '../memories/memory-context.service.js';
 import { ModerationService } from '../moderation/moderation.service.js';
 import {
+    assessLocal,
     companionSafetyRules,
     hiddenFromModel,
+    personaText,
+    priorUserTexts,
     type SafetyNotice,
 } from '../moderation/safety-policy.js';
 import { takeReadyWindow } from '../moderation/text-windows.js';
@@ -151,27 +154,28 @@ export class AiService {
                         message.content?.trim(),
                 );
 
-        const inputNotice = await this.moderation.noticeFor(
-            currentUserMessage?.content ?? '',
-            'input',
-            {
-                userId: numericUserId,
-                conversationId: numericConversationId,
-            },
+        const guarded = await this.guardInput(
+            conversation,
+            companion.id,
+            numericUserId,
+            numericConversationId,
+            currentUserMessage,
+            chronologicalMessages,
+            companionPersonaText(companion, personality),
         );
 
-        if (inputNotice) {
+        if (guarded.notice) {
             if (currentUserMessage) {
                 await this.flagUserMessage(
                     currentUserMessage,
-                    inputNotice,
+                    guarded.notice,
                 );
             }
             return this.finishTurn(
                 numericConversationId,
                 numericUserId,
-                inputNotice.message,
-                inputNotice,
+                guarded.notice.message,
+                guarded.notice,
                 options.persistMessage ?? true,
             );
         }
@@ -181,15 +185,7 @@ export class AiService {
          * 6. Retrieve relevant long-term memories
          * ------------------------------------------------------
          */
-        const memoryContext =
-            currentUserMessage
-                ? await this.memoryContextService
-                    .buildContext(
-                        numericUserId,
-                        companion.id,
-                        currentUserMessage.content,
-                    )
-                : '';
+        const memoryContext = guarded.memoryContext;
 
         /*
          * ------------------------------------------------------
@@ -397,6 +393,10 @@ export class AiService {
             content: string;
         }
         | {
+            type: 'replace';
+            content: string;
+        }
+        | {
             type: 'done';
             message: unknown;
             safety?: SafetyNotice;
@@ -493,41 +493,42 @@ export class AiService {
                         message.content?.trim(),
                 );
 
-        const inputNotice = await this.moderation.noticeFor(
-            currentUserMessage?.content ?? '',
-            'input',
-            {
-                userId: numericUserId,
-                conversationId: numericConversationId,
-            },
+        const guarded = await this.guardInput(
+            conversation,
+            companion.id,
+            numericUserId,
+            numericConversationId,
+            currentUserMessage,
+            chronologicalMessages,
+            companionPersonaText(companion, personality),
         );
 
-        if (inputNotice) {
+        if (guarded.notice) {
             if (options.signal?.aborted) return;
             if (currentUserMessage) {
                 await this.flagUserMessage(
                     currentUserMessage,
-                    inputNotice,
+                    guarded.notice,
                 );
             }
             if (options.signal?.aborted) return;
             yield {
                 type: 'delta',
-                content: inputNotice.message,
+                content: guarded.notice.message,
             };
             if (options.signal?.aborted) return;
             const assistantMessage = await this.finishTurn(
                 numericConversationId,
                 numericUserId,
-                inputNotice.message,
-                inputNotice,
+                guarded.notice.message,
+                guarded.notice,
                 true,
             );
             if (options.signal?.aborted) return;
             yield {
                 type: 'done',
                 message: assistantMessage,
-                safety: inputNotice,
+                safety: guarded.notice,
             };
             return;
         }
@@ -537,15 +538,7 @@ export class AiService {
          * 6. Retrieve long-term memory
          * ------------------------------------------------------
          */
-        const memoryContext =
-            currentUserMessage
-                ? await this.memoryContextService
-                    .buildContext(
-                        numericUserId,
-                        companion.id,
-                        currentUserMessage.content,
-                    )
-                : '';
+        const memoryContext = guarded.memoryContext;
 
         /*
          * ------------------------------------------------------
@@ -570,8 +563,9 @@ export class AiService {
          * ------------------------------------------------------
          *
          * Score sentence-sized windows so a safe sentence can
-         * leave before the rest of the reply is known. A flagged
-         * window is replaced by the refusal and the rest is dropped.
+         * leave before the rest of the reply is known. A real block
+         * sends one replace event and the rest is dropped. A provider
+         * error keeps text the local pre-filter already passed.
          *
          * The reply is persisted only when that loop finishes and
          * the client is still connected. Stop / disconnect aborts
@@ -613,7 +607,7 @@ export class AiService {
                     if (notice) {
                         outputNotice = notice;
                         yield {
-                            type: 'delta',
+                            type: 'replace',
                             content: notice.message,
                         };
                         break;
@@ -642,7 +636,7 @@ export class AiService {
             if (notice) {
                 outputNotice = notice;
                 yield {
-                    type: 'delta',
+                    type: 'replace',
                     content: notice.message,
                 };
             } else {
@@ -657,9 +651,7 @@ export class AiService {
         if (signal?.aborted) return;
 
         const streamedContent = outputNotice
-            ? [safeText.trim(), outputNotice.message]
-                .filter((part) => part.length > 0)
-                .join('\n')
+            ? outputNotice.message
             : safeText.trim();
 
         if (!streamedContent) {
@@ -674,16 +666,10 @@ export class AiService {
          * ------------------------------------------------------
          */
         if (signal?.aborted) return;
+        // A replaced reply is shown as the refusal (one SSE replace event) and
+        // is not stored, so a reload cannot surface the withdrawn prefix.
         const stored = outputNotice
-            ? (safeText.trim()
-                ? await this.finishTurn(
-                    numericConversationId,
-                    numericUserId,
-                    safeText.trim(),
-                    null,
-                    true,
-                )
-                : null)
+            ? null
             : await this.finishTurn(
                 numericConversationId,
                 numericUserId,
@@ -711,6 +697,82 @@ export class AiService {
             message: assistantMessage,
             ...(outputNotice ? { safety: outputNotice } : {}),
         };
+    }
+
+    /**
+     * Local crisis skips memory search. Everything else is one classifier
+     * call that also scores the memory lines. A minor result is stored on
+     * the user and the conversation until it is cleared.
+     */
+    private async guardInput(
+        conversation: { id: number; minorHeldAt?: string | null },
+        companionId: number,
+        userId: number,
+        conversationId: number,
+        current: { id?: unknown; content?: unknown; metadata?: unknown } | undefined,
+        chronologicalMessages: readonly { role?: unknown; content?: unknown; metadata?: unknown }[],
+        persona = '',
+    ): Promise<{ notice: SafetyNotice | null; memoryContext: string }> {
+        const text = typeof current?.content === 'string' ? current.content : '';
+        const heldMinor = await this.minorHoldActive(conversation, userId);
+        const priorTexts = priorUserTexts(chronologicalMessages, current);
+        const crisis = assessLocal(text, 'input').includes('self_harm');
+        const found = crisis
+            ? []
+            : await this.memoryContextService.candidates(userId, companionId, text);
+        const turn = await this.moderation.moderateTurn({
+            text,
+            memories: found.map((memory) => ({
+                id: String(memory.id),
+                content: memory.content,
+            })),
+            ctx: {
+                userId,
+                conversationId,
+                priorTexts,
+                heldMinor,
+                ...(persona ? { personaText: persona } : {}),
+            },
+        });
+        if (turn.holdMinor) await this.persistMinorHold(conversation, userId);
+        const allowed = new Set(turn.allowedMemoryIds);
+        const kept = found.filter((memory) => allowed.has(String(memory.id)));
+        const memoryContext = kept.length === 0
+            ? ''
+            : this.memoryContextService.formatMemoryContext(kept);
+        return { notice: turn.notice, memoryContext };
+    }
+
+    private async minorHoldActive(
+        conversation: { minorHeldAt?: string | null },
+        userId: number,
+    ): Promise<boolean> {
+        if (conversation.minorHeldAt) return true;
+        const users = this.db.orm.public.User;
+        if (!users?.where) return false;
+        const user = await users.where({ id: userId }).first();
+        return Boolean(user?.minorHeldAt);
+    }
+
+    private async persistMinorHold(
+        conversation: { id: number; minorHeldAt?: string | null },
+        userId: number,
+    ): Promise<void> {
+        const now = new Date().toISOString();
+        if (!conversation.minorHeldAt) {
+            await this.db.orm.public.Conversation
+                .where({ id: conversation.id, userId })
+                .update({ minorHeldAt: now, updatedAt: now });
+            conversation.minorHeldAt = now;
+        }
+        const users = this.db.orm.public.User;
+        if (!users?.where) return;
+        const user = await users.where({ id: userId }).first();
+        if (user?.minorHeldAt) return;
+        await users.where({ id: userId }).update({
+            minorHeldAt: now,
+            updatedAt: now,
+        });
     }
 
     private async finishTurn(
@@ -760,4 +822,24 @@ export class AiService {
 
         return assistantMessage;
     }
+}
+
+/** Persona text for the filtered-classifier minor check. Missing fields are skipped. */
+function companionPersonaText(companion: any, personality: any): string {
+    return personaText({
+        name: companion?.name,
+        systemPrompt: personality?.systemPrompt ?? companion?.systemPrompt,
+        greeting: personality?.greeting ?? companion?.greeting,
+        personality: {
+            traits: personality?.traits,
+            interests: personality?.interests,
+            likes: personality?.likes,
+            dislikes: personality?.dislikes,
+            communicationStyle: personality?.communicationStyle,
+        },
+        appearance: {
+            age: companion?.age ?? personality?.age,
+            imagePrompt: companion?.imagePrompt ?? personality?.imagePrompt,
+        },
+    });
 }

@@ -68,3 +68,7 @@ apps/android/local.properties
 
 # Sentry
 .sentryclirc
+
+# Safety held-out cases are scored from a path outside this repo.
+**/*heldout*.json
+**/*held-out*.json

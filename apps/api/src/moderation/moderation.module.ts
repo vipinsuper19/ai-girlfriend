@@ -5,7 +5,7 @@ import {
     SAFETY_CONFIG,
     type ContentModerator,
 } from './content-moderator.js';
-import { createContentModerator, openaiModerationFallback } from './moderation.factory.js';
+import { createContentModerator } from './moderation.factory.js';
 import { ModerationService } from './moderation.service.js';
 import { safetyConfigFromEnv, type SafetyConfig } from './safety.config.js';
 
@@ -25,9 +25,7 @@ import { safetyConfigFromEnv, type SafetyConfig } from './safety.config.js';
             provide: ModerationService,
             inject: [SAFETY_CONFIG, CONTENT_MODERATOR],
             useFactory: (config: SafetyConfig, provider: ContentModerator) =>
-                new ModerationService(config, provider, undefined, {
-                    fallback: openaiModerationFallback(config, process.env),
-                }),
+                new ModerationService(config, provider),
         },
     ],
     exports: [ModerationService],
