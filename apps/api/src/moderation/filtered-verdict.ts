@@ -6,9 +6,10 @@ import { hasMinorCue, type SafetyCategory, type SafetyLogContext } from './safet
  * (moderateTurn), noticeFor, personas, and scripts/eval-safety.ts all reach
  * this, so the server and the eval cannot diverge.
  *
- * Always `filtered` (a hard content_policy block). Adds `minor` (the minor
- * hold) when Gemini's block points at child safety, a hold is already stored,
- * or hasMinorCue matches the input, earlier allowed turns, or the persona.
+ * With a minor signal: `filtered` + `minor`, the hard content_policy block
+ * and the minor hold. Otherwise `explicit`, the soft in-character refusal
+ * with no hold. Never an allow. A minor signal is Gemini's child-safety block (PROHIBITED_CONTENT), a stored
+ * hold, or hasMinorCue matching the input, earlier allowed turns, or the persona.
  */
 export function filteredClassifierCategories(
     error: unknown,
@@ -20,7 +21,8 @@ export function filteredClassifierCategories(
         childSafety ||
         ctx.heldMinor === true ||
         hasMinorCue(...texts, ...(ctx.priorTexts ?? []), ctx.personaText);
-    return minor ? ['filtered', 'minor'] : ['filtered'];
+    // Adult filtered text: the soft in-character refusal, no hold. Never allow.
+    return minor ? ['filtered', 'minor'] : ['explicit'];
 }
 
 /**

@@ -577,23 +577,23 @@ test('an empty classifier response blocks a minor signal and is not degraded', a
     assert.equal(calls.n, 1);
 });
 
-test('an empty classifier response is a hard content_policy block and never an allow', async () => {
+test('an empty classifier response is the soft explicit refusal and never an allow', async () => {
     const calls = { n: 0 };
     const logs: string[] = [];
     const moderation = serviceFor({}, downProvider(emptyClassifierError(), calls), logs);
     const turn = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
-    assert.equal(turn.notice?.code, 'content_policy');
-    assert.equal(turn.notice?.message, REFUSAL_MESSAGE);
+    assert.equal(turn.notice?.code, 'explicit_content');
+    assert.equal(turn.notice?.message, EXPLICIT_REFUSAL_MESSAGE);
     assert.equal(turn.holdMinor, false);
     assert.equal(moderation.degradedFallbacks, 0);
     assert.equal(logs.some((line) => line.includes('moderation.degraded')), false);
     assert.equal(logs[0]?.includes('Kiss me'), false);
     const again = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
-    assert.equal(again.notice?.code, 'content_policy');
+    assert.equal(again.notice?.code, 'explicit_content');
     assert.equal(calls.n, 2);
     const noticed = await moderation.noticeFor('hello there', 'input');
-    assert.equal(noticed?.code, 'content_policy');
-    assert.equal(noticed?.message, REFUSAL_MESSAGE);
+    assert.equal(noticed?.code, 'explicit_content');
+    assert.equal(noticed?.message, EXPLICIT_REFUSAL_MESSAGE);
     assert.equal(moderation.degradedFallbacks, 0);
     assert.equal(calls.n, 3);
     const held = await moderation.moderateTurn({
@@ -620,7 +620,7 @@ test('a filtered body on a chunked turn is a refusal and a parse error still fal
     const turn = await filtered.moderateTurn({
         text: 'Kiss me goodnight and stay close to me tonight',
     });
-    assert.equal(turn.notice?.code, 'content_policy');
+    assert.equal(turn.notice?.code, 'explicit_content');
     assert.equal(filtered.degradedFallbacks, 0);
     assert.ok(calls.n >= 1);
 

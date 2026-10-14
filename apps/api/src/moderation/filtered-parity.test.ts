@@ -12,7 +12,13 @@ import {
 } from './gemini-moderator.js';
 import { ModerationService } from './moderation.service.js';
 import { safetyConfigFromEnv } from './safety.config.js';
-import { assessLocal, hasMinorCue, priorUserTexts, REFUSAL_MESSAGE } from './safety-policy.js';
+import {
+    assessLocal,
+    EXPLICIT_REFUSAL_MESSAGE,
+    hasMinorCue,
+    priorUserTexts,
+    REFUSAL_MESSAGE,
+} from './safety-policy.js';
 
 const API_KEY = 'AIzaSyTESTKEY000000000';
 const ALLOW_JSON =
@@ -72,7 +78,7 @@ async function withBody<T>(body: unknown, run: () => Promise<T>): Promise<T> {
     }
 }
 
-test('every filtered or empty shape is a hard block; the hold follows child safety or a minor cue', async () => {
+test('a filtered or empty shape is the hard block with a minor signal and the soft refusal otherwise', async () => {
     for (const shape of SHAPES) {
         assert.equal(
             geminiChildSafetySignal(shape.body as GeminiModerationResponse),
@@ -87,14 +93,20 @@ test('every filtered or empty shape is a hard block; the hold follows child safe
             ] as const) {
                 const moderation = service(new GeminiContentModerator(API_KEY, GEMINI_MODERATION_MODEL));
                 const turn = await moderation.moderateTurn({ text });
-                assert.equal(turn.notice?.code, 'content_policy', `${shape.name}: ${text}`);
-                assert.equal(turn.notice?.message, REFUSAL_MESSAGE, `${shape.name}: ${text}`);
-                assert.equal(turn.holdMinor, cue || shape.childSafety, `${shape.name}: ${text}`);
+                const minor = cue || shape.childSafety;
+                const code = minor ? 'content_policy' : 'explicit_content';
+                assert.equal(turn.notice?.code, code, `${shape.name}: ${text}`);
+                assert.equal(
+                    turn.notice?.message,
+                    minor ? REFUSAL_MESSAGE : EXPLICIT_REFUSAL_MESSAGE,
+                    `${shape.name}: ${text}`,
+                );
+                assert.equal(turn.holdMinor, minor, `${shape.name}: ${text}`);
                 assert.equal(moderation.degradedFallbacks, 0);
                 const notice = await moderation.noticeFor(text, 'input');
-                assert.equal(notice?.code, 'content_policy', `${shape.name} notice: ${text}`);
+                assert.equal(notice?.code, code, `${shape.name} notice: ${text}`);
                 const output = await moderation.noticeFor(text, 'output');
-                assert.equal(output?.code, 'content_policy', `${shape.name} output: ${text}`);
+                assert.equal(output?.code, code, `${shape.name} output: ${text}`);
             }
         });
     }
@@ -125,7 +137,10 @@ test('eval and server give the same verdict object on filtered and empty shapes'
                     },
                     shape.name,
                 );
-                assert.equal(evaluated.got, 'content_policy', shape.name);
+                const minor = shape.childSafety || 'priorTexts' in ctx;
+                assert.equal(evaluated.got, minor ? 'content_policy' : 'explicit_content', shape.name);
+                assert.equal(evaluated.holdMinor, minor, shape.name);
+                assert.notEqual(evaluated.got, 'allow', shape.name);
             }
         });
     }
@@ -227,8 +242,8 @@ test('a refused injection is excluded from server and eval context and does not 
     ];
     assert.deepEqual(priorUserTexts(server, server[2]), []);
 
-    // Same follow-up when Gemini filters it: still a block, but the prior refused
-    // injection adds nothing (no minor hold from context).
+    // Same follow-up when Gemini filters it: the soft refusal, and the prior
+    // refused injection adds nothing (no hard block, no minor hold).
     const filtering: ContentModerator = {
         id: 'gemini',
         async moderate() {
@@ -236,5 +251,6 @@ test('a refused injection is excluded from server and eval context and does not 
         },
     };
     const filtered = await chatTranscriptVerdicts(service(filtering), lines);
+    assert.equal(filtered[1]?.got, 'explicit_content');
     assert.equal(filtered[1]?.holdMinor, false);
 });
