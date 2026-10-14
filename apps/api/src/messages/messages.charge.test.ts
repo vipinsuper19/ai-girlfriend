@@ -275,3 +275,31 @@ test('an aborted stream does not charge', async () => {
     assert.deepEqual(events, ['message']);
     assert.deepEqual(charges, []);
 });
+
+test('a generation rate limit is an SSE RATE_LIMITED error, with no stored reply and no charge', async () => {
+    const { GenerationRateLimitedException } = await import('../ai/generation-rate-limit.js');
+    const { streamErrorPayload } = await import('./sse-stream.js');
+    const { messagesService, charges, messages } = serviceFor({
+        stream: async function* () {
+            throw new GenerationRateLimitedException(17);
+        },
+    });
+    const events: Array<{ type: string }> = [];
+    let caught: unknown;
+    try {
+        for await (const event of messagesService.createAndStream('1', '5', { content: 'quick one' })) {
+            events.push(event as { type: string });
+        }
+    } catch (error) {
+        caught = error;
+    }
+    assert.ok(caught instanceof GenerationRateLimitedException);
+    assert.deepEqual(streamErrorPayload(caught), {
+        message: 'Give me a moment, then try again.',
+        code: 'RATE_LIMITED',
+        retryAfterSeconds: 17,
+    });
+    assert.deepEqual(charges, []);
+    assert.equal(events.some((event) => event.type === 'done'), false);
+    assert.equal(messages.filter((row) => row['role'] === 'ASSISTANT').length, 1);
+});
