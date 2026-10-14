@@ -66,16 +66,42 @@ export const GEMINI_FILTER_FINISH_REASONS = [
 ] as const;
 
 export class FilteredClassifierError extends Error {
-    constructor() {
+    /** True when Gemini's own block points at child safety (see geminiChildSafetySignal). */
+    constructor(readonly childSafety = false) {
         super('Moderation classifier returned an empty response');
         this.name = 'FilteredClassifierError';
     }
 }
 
+/**
+ * @google/genai has no child-safety HarmCategory or BlockedReason. Gemini
+ * reports CSAM blocks as PROHIBITED_CONTENT (prompt blockReason or candidate
+ * finishReason). A safety rating whose category names a child or minor, or
+ * an IMAGE_PROHIBITED_CONTENT finish, counts too, in case the API adds one.
+ */
+export function geminiChildSafetySignal(response: GeminiModerationResponse): boolean {
+    if (response.promptFeedback?.blockReason === 'PROHIBITED_CONTENT') return true;
+    const ratings = [
+        ...(response.promptFeedback?.safetyRatings ?? []),
+        ...(response.candidates ?? []).flatMap((candidate) => candidate?.safetyRatings ?? []),
+    ];
+    if (ratings.some((rating) => /CHILD|CSAM|MINOR/i.test(String(rating?.category ?? '')))) return true;
+    return (response.candidates ?? []).some((candidate) =>
+        candidate?.finishReason === 'PROHIBITED_CONTENT' || candidate?.finishReason === 'IMAGE_PROHIBITED_CONTENT',
+    );
+}
+
+interface GeminiSafetyRating {
+    category?: string;
+    blocked?: boolean;
+}
+
 export interface GeminiModerationResponse {
     text?: string;
-    candidates?: ReadonlyArray<{ finishReason?: string } | null | undefined>;
-    promptFeedback?: { blockReason?: string };
+    candidates?: ReadonlyArray<
+        { finishReason?: string; safetyRatings?: readonly GeminiSafetyRating[] } | null | undefined
+    >;
+    promptFeedback?: { blockReason?: string; safetyRatings?: readonly GeminiSafetyRating[] };
 }
 
 /**
@@ -167,9 +193,12 @@ export class GeminiContentModerator implements ContentModerator {
             });
             // Filter shapes throw before JSON parsing. A safety finish with
             // leftover non-JSON text must not become a degraded allow.
-            if (geminiResponseBlocked(response)) throw new FilteredClassifierError();
+            const shape = response as GeminiModerationResponse;
+            if (geminiResponseBlocked(shape)) {
+                throw new FilteredClassifierError(geminiChildSafetySignal(shape));
+            }
             const raw = response.text?.trim();
-            if (!raw) throw new FilteredClassifierError();
+            if (!raw) throw new FilteredClassifierError(geminiChildSafetySignal(shape));
             const parsed = parseClassifier(raw);
             return { categories: parsed.categories, items: parsed.items };
         } finally {

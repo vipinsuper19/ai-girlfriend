@@ -5,7 +5,11 @@ export type SafetyCategory =
     | 'self_harm'
     | 'hate'
     | 'illegal_harm'
-    | 'jailbreak';
+    | 'jailbreak'
+    /** The classifier withheld a verdict (filtered or empty). Always a hard block. */
+    | 'filtered'
+    /** Classifier minor_present with no minor_role. Resolved by the service against hasMinorCue; never enforced directly. */
+    | 'minor_unconfirmed';
 
 export type ModerationSurface = 'input' | 'output' | 'persona';
 
@@ -101,6 +105,7 @@ const HARD_CATEGORIES = new Set<SafetyCategory>([
     'hate',
     'illegal_harm',
     'jailbreak',
+    'filtered',
 ]);
 
 export function crisisMessage(helplines: Helpline[]): string {
@@ -127,7 +132,7 @@ export function unavailableNotice(): SafetyNotice {
  * The same categories on model output or a persona are a refusal.
  */
 function enforced(categories: SafetyCategory[]): SafetyCategory[] {
-    const unique = [...new Set(categories)];
+    const unique = [...new Set(categories)].filter((category) => category !== 'minor_unconfirmed');
     if (CONTENT_POLICY.blockExplicit) return unique;
     return unique.filter((category) => category !== 'explicit');
 }
@@ -699,14 +704,14 @@ function ageTokenIsMinor(token: string, rest: string): boolean {
 const MINOR_CUE = new RegExp(
     [
         String.raw`\b(?:child|children|childlike|kid|kids|kiddo|toddler|infant|tween|tweens|teen|teens|teenage[dr]?|teenagers?|adolescen(?:t|ts|ce)|pre-?teens?|puberty|pubescent|underage|under-age|minors?|juvenile|jailbait|barely\s+legal|not\s+(?:yet\s+)?(?:18|eighteen|legal)|loli|shota)\b`,
-        String.raw`\b(?:little|young|younger|small)\s+(?:girl|boy|sister|brother|cousin|one|thing)s?\b|\b(?:girl|boy)\s+next\s+door\b`,
+        String.raw`\b(?:little|younger)\s+(?:sister|brother|cousin)s?\b|\b(?:little|young)\s+(?:girl|boy)s?\b(?=[\s\S]{0,40}\b(?:school|class|grade|years?\s+old|yo|kid|child|age[ds]?|teen|saal)\b)`,
         String.raw`\b(?:school|schoolgirl|schoolboy|schoolkid|schooler|schoolmate|classmates?|homework|recess|playground|school\s+uniform|tuition|freshman|sophomore|junior\s+high|middle\s+school|high\s+school|elementary|primary\s+school|kindergarten|grade\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+(?:grade|grader|standard|std)|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|boards?\s+exams?)\b`,
-        String.raw`\b(?:daughter|son|niece|nephew|stepdaughter|stepson|step-?daughter|step-?son|step-?sister|step-?brother|granddaughter|grandson|babysit(?:ter|ting)?|daddy'?s\s+little|bachp[ae]n)\b`,
+        String.raw`\b(?:daughter|son|niece|nephew|stepdaughter|stepson|step-?daughter|step-?son|step-?sister|step-?brother|granddaughter|grandson|babysit(?:ter|ting)?|bachp[ae]n)\b`,
         String.raw`\b(?:1[0-7]|[1-9])\s*(?:-|\s)?\s*(?:years?|yrs?|yr|y\/?o|yo|saal|sal|baras)\b|\b(?:age[ds]?|aged|umar|umr|umra)\s*(?:is\s*|of\s*|:|-)?\s*(?:1[0-7]|[1-9])\b|\bunder\s*-?\s*(?:18|eighteen)\b|\b(?:turning|turned|just\s+turned)\s+(?:1[0-7]|[1-9])\b`,
         String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*(?:years?|yrs?|saal)\b|(?<!\b(?:at|by|around|till|until|before|after|past)\s+)\b(?:${SPELLED_TEEN_AGES})\b(?!\s*(?:o'?clock|tonight|today|tomorrow|pm\b|am\b|baje|thirty|forty|:|roses?|kisses|reasons?))`,
         String.raw`\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:grade|grader|graders|standard|std|class)\b|\b(?:(?:1[0-7]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth)\s+(?:birthday|bday)\b`,
         String.raw`\b(?:bachcha|bachcho|bachche|bacche|bachchi|bachi|bacchi|baccha|chhot[ia]|chot[ia]\s+(?:bachi|ladki|ladka|behen|bhai)|kishor[ie]?|nabalig|naabalig|na[- ]balig|ladkiya?\s+school|school\s*wal[ai]|school\s+(?:jaati|jata|jati|jaata)|padhti|padhta|kaksha|beti|bitiya|munni|munna|guddi|pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\b`,
-        String.raw`(?:pretend|act|roleplay|role-?play|imagine|be)\b[\s\S]{0,40}\b(?:younger|little\s+(?:girl|boy)|small|young|a\s+(?:girl|boy)\b(?!friend)|virgin\s+(?:girl|boy))\b`,
+        String.raw`\b(?:pretend|roleplay|role-?play|act\s+like|act\s+as)\b[\s\S]{0,40}\b(?:younger|underage|a\s+(?:minor|child|kid|teen))\b`,
     ].join('|'),
     'i',
 );

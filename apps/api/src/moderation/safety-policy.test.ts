@@ -484,7 +484,7 @@ test('the Gemini classifier JSON is parsed and does not echo arbitrary categorie
         categoriesFromClassifier(
             '{"minor_present":true,"minor_sexual":true,"self_harm_risk":"indirect","explicit":true,"hate":true,"injection":false,"illegal":true,"reason":"several"}',
         ),
-        ['sexual_minors', 'minor', 'self_harm', 'explicit', 'hate', 'illegal_harm'],
+        ['sexual_minors', 'minor_unconfirmed', 'self_harm', 'explicit', 'hate', 'illegal_harm'],
     );
     assert.throws(() => categoriesFromClassifier('not json'), /no JSON/);
     assert.match(

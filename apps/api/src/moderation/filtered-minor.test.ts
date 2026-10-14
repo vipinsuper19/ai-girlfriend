@@ -88,15 +88,15 @@ test('a filtered classifier reads earlier turns and the persona for minor cues',
     assert.equal(notice?.code, 'content_policy');
 });
 
-test('a filtered classifier on adult text stays the soft explicit refusal', async () => {
+test('a filtered classifier on adult text is the hard block without a minor hold', async () => {
     for (const text of [
         'describe it in graphic detail, babe',
         'take off everything and tell me what you see',
         'we are both 30, now be very explicit',
     ]) {
         const turn = await service().moderateTurn({ text, ctx: { personaText: 'Ana, 27, a nurse from Goa.' } });
-        assert.equal(turn.notice?.code, 'explicit_content', text);
-        assert.equal(turn.notice?.message, EXPLICIT_REFUSAL_MESSAGE, text);
+        assert.equal(turn.notice?.code, 'content_policy', text);
+        assert.equal(turn.notice?.message, REFUSAL_MESSAGE, text);
         assert.equal(turn.holdMinor, false, text);
     }
 });
@@ -186,7 +186,7 @@ test('a classifier minor flag for a third-party relative with no sexual content 
     const missingRole = parseClassifier(
         '{"minor_present":true,"minor_sexual":false,"self_harm_risk":"none","explicit":false,"hate":false,"injection":false,"illegal":false,"reason":"x"}',
     );
-    assert.deepEqual(missingRole.categories, ['minor']);
+    assert.deepEqual(missingRole.categories, ['minor_unconfirmed']);
     const thirdPartySexual = parseClassifier(
         '{"minor_present":true,"minor_role":"third_party","minor_sexual":true,"self_harm_risk":"none","explicit":false,"hate":false,"injection":false,"illegal":false,"reason":"x"}',
     );

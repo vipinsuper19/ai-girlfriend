@@ -16,7 +16,6 @@ import type { SafetyConfig } from './safety.config.js';
 import {
     assessLocal,
     decideSafety,
-    hasMinorCue,
     personaMinorAge,
     personaText,
     unavailableNotice,
@@ -26,6 +25,7 @@ import {
     type SafetyLogContext,
     type SafetyNotice,
 } from './safety-policy.js';
+import { filteredClassifierCategories, resolveMinorUnconfirmed } from './filtered-verdict.js';
 import { textChunks } from './text-windows.js';
 import { UnsafePersonaException } from './unsafe-persona.exception.js';
 
@@ -100,7 +100,10 @@ export class ModerationService {
                 const started = Date.now();
                 try {
                     const remote = await this.provider.moderate(chunk);
-                    categories = merge(categories, remote.categories);
+                    categories = merge(
+                        categories,
+                        resolveMinorUnconfirmed(remote.categories, [trimmed, chunk], ctx),
+                    );
                     if (categories.length > 0) break;
                 } catch (error) {
                     if (isOverLimitError(error)) {
@@ -111,10 +114,10 @@ export class ModerationService {
                         // A filtered or empty body is a block. It is not an
                         // outage, so it must not fall through to a local allow
                         // or a moderation-unavailable reply.
-                        const minor =
-                            holdsMinor(categories) ||
-                            filteredMinorSignal([trimmed, chunk], ctx);
-                        categories = merge(categories, [minor ? 'minor' : 'explicit']);
+                        categories = merge(
+                            categories,
+                            filteredClassifierCategories(error, [trimmed, chunk], ctx),
+                        );
                         break;
                     }
                     const failure = describeProviderFailure(error, chunk);
@@ -187,14 +190,22 @@ export class ModerationService {
         if (remoteRequired) {
             const pending: ClassifierBlock[] = [];
             const recalledUser = text ? this.recall(text) : undefined;
-            if (recalledUser) userCategories = merge(userCategories, recalledUser);
+            if (recalledUser) {
+                userCategories = merge(
+                    userCategories,
+                    resolveMinorUnconfirmed(recalledUser, [text], ctx),
+                );
+            }
             else if (text) pending.push({ id: 'user', text });
             for (const memory of memories) {
                 const recalled = this.recall(memory.content);
                 if (recalled) {
                     memoryCategories.set(
                         memory.id,
-                        merge(memoryCategories.get(memory.id) ?? [], recalled),
+                        merge(
+                            memoryCategories.get(memory.id) ?? [],
+                            resolveMinorUnconfirmed(recalled, [memory.content]),
+                        ),
                     );
                     scoredIds.add(memory.id);
                 } else if (memory.content.trim()) {
@@ -206,8 +217,13 @@ export class ModerationService {
                 if (scored) {
                     for (const block of pending) {
                         if (!scored.categories.has(block.id)) continue;
-                        const remote = scored.categories.get(block.id) ?? [];
-                        if (scored.cache) this.remember(block.text, remote);
+                        const raw = scored.categories.get(block.id) ?? [];
+                        if (scored.cache) this.remember(block.text, raw);
+                        const remote = resolveMinorUnconfirmed(
+                            raw,
+                            [block.text],
+                            block.id === 'user' ? ctx : {},
+                        );
                         scoredIds.add(block.id);
                         if (block.id === 'user') userCategories = merge(userCategories, remote);
                         else {
@@ -334,9 +350,9 @@ export class ModerationService {
 
     /**
      * Timeouts and provider outages keep the local verdict (`null`).
-     * A filtered or empty body never does: a minor signal is a hard block,
-     * and anything else is the in-character explicit refusal. Neither is
-     * cached, and neither is counted as a degraded allow.
+     * A filtered or empty body never does: it is always the hard
+     * content_policy block (see filteredClassifierCategories). It is not
+     * cached and not counted as a degraded allow.
      */
     private classifierFailure(
         error: unknown,
@@ -348,22 +364,18 @@ export class ModerationService {
             this.noteDegraded(error, 'input', ctx, chars);
             return null;
         }
-        const minor = this.hasMinorSignal(blocks, ctx);
+        const verdict = filteredClassifierCategories(
+            error,
+            blocks.map((block) => block.text),
+            ctx,
+        );
         const categories = new Map<string, SafetyCategory[]>();
         for (const block of blocks) {
-            if (block.id === 'user') {
-                categories.set(block.id, [minor ? 'minor' : 'explicit']);
-            }
+            if (block.id === 'user') categories.set(block.id, verdict);
         }
         return { categories, cache: false };
     }
 
-    private hasMinorSignal(
-        blocks: readonly ClassifierBlock[],
-        ctx: SafetyLogContext,
-    ): boolean {
-        return filteredMinorSignal(blocks.map((block) => block.text), ctx);
-    }
 
     private overLimitVerdict(blocks: readonly ClassifierBlock[]): BlockScore {
         const categories = new Map<string, SafetyCategory[]>();
@@ -476,16 +488,6 @@ interface BlockScore {
 
 function merge(left: SafetyCategory[], right: SafetyCategory[]): SafetyCategory[] {
     return [...new Set([...left, ...right])];
-}
-
-/**
- * Gemini withheld a verdict. Re-run the full minor detector over the input,
- * the earlier allowed user turns, and the persona. Any age or child cue is a
- * hard block plus the minor hold, never the soft explicit refusal.
- */
-function filteredMinorSignal(texts: readonly string[], ctx: SafetyLogContext): boolean {
-    if (ctx.heldMinor) return true;
-    return hasMinorCue(...texts, ...(ctx.priorTexts ?? []), ctx.personaText);
 }
 
 function holdsMinor(categories: SafetyCategory[]): boolean {

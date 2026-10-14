@@ -10,7 +10,7 @@ import {
     type GeminiModerationResponse,
 } from './gemini-moderator.js';
 import { safetyConfigFromEnv } from './safety.config.js';
-import { EXPLICIT_REFUSAL_MESSAGE } from './safety-policy.js';
+import { REFUSAL_MESSAGE } from './safety-policy.js';
 
 const API_KEY = 'AIzaSyCANARYKEY1234567890';
 const ALLOW_JSON =
@@ -171,9 +171,14 @@ test('filtered Gemini bodies block end to end and never fall back to allow', asy
                 { warn(message) { logs.push(message); } },
             );
             const turn = await moderation.moderateTurn({ text: 'Kiss me goodnight' });
-            assert.equal(turn.notice?.code, 'explicit_content', `turn shape ${index}`);
-            assert.equal(turn.notice?.message, EXPLICIT_REFUSAL_MESSAGE, `turn shape ${index}`);
-            assert.equal(turn.holdMinor, false, `turn shape ${index}`);
+            assert.equal(turn.notice?.code, 'content_policy', `turn shape ${index}`);
+            assert.equal(turn.notice?.message, REFUSAL_MESSAGE, `turn shape ${index}`);
+            // PROHIBITED_CONTENT is Gemini's child-safety block, so it sets the hold.
+            assert.equal(
+                turn.holdMinor,
+                JSON.stringify(shape).includes('PROHIBITED_CONTENT'),
+                `turn shape ${index}`,
+            );
             assert.equal(moderation.degradedFallbacks, 0, `degraded shape ${index}`);
             assert.equal(
                 logs.some((line) => line.includes('moderation.degraded')),
@@ -187,9 +192,9 @@ test('filtered Gemini bodies block end to end and never fall back to allow', asy
             assert.equal(moderation.degradedFallbacks, 0, `minor degraded ${index}`);
 
             const noticed = await moderation.noticeFor('hello there', 'input');
-            assert.equal(noticed?.code, 'explicit_content', `notice shape ${index}`);
+            assert.equal(noticed?.code, 'content_policy', `notice shape ${index}`);
             const output = await moderation.noticeFor('hello there', 'output');
-            assert.equal(output?.code, 'explicit_content', `output shape ${index}`);
+            assert.equal(output?.code, 'content_policy', `output shape ${index}`);
         }
     } finally {
         globalThis.fetch = original;
