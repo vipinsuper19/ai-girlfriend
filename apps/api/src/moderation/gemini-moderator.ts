@@ -4,10 +4,11 @@ import {
     HarmCategory,
 } from '@google/genai';
 
+import { classifierTimeoutMs } from './classifier-attempt.js';
 import type { ContentModerator, ProviderModeration } from './content-moderator.js';
 import {
-    categoriesFromClassifier,
     GEMINI_CLASSIFIER_INSTRUCTION,
+    parseClassifier,
 } from './provider-categories.js';
 
 /**
@@ -30,6 +31,8 @@ const UNTRUSTED_END_ESCAPED = '<<<END UNTRUSTED TEXT>>>';
  * with 400 INVALID_ARGUMENT (`safety_settings[5].category`).
  * `HARM_CATEGORY_CIVIC_INTEGRITY` is deprecated (the election filter is gone).
  * Either one makes generateContent throw ApiError before it scores the text.
+ * No `httpOptions.timeout`: the SDK sends that as `X-Server-Timeout`, and
+ * Gemini rejects a deadline under 10s. The client abort lives on the call.
  */
 const SAFETY_OFF = [
     HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -50,6 +53,87 @@ export function delimitedModerationInput(text: string): string {
     ].join('\n');
 }
 
+/**
+ * Finish reasons that mean Gemini withheld the classification.
+ * `MAX_TOKENS` and `STOP` are not filters: an empty body is still a block,
+ * and a normal JSON body is scored.
+ */
+export const GEMINI_FILTER_FINISH_REASONS = [
+    'SAFETY',
+    'PROHIBITED_CONTENT',
+    'BLOCKLIST',
+    'SPII',
+] as const;
+
+export class FilteredClassifierError extends Error {
+    /** True when Gemini's own block points at child safety (see geminiChildSafetySignal). */
+    constructor(readonly childSafety = false) {
+        super('Moderation classifier returned an empty response');
+        this.name = 'FilteredClassifierError';
+    }
+}
+
+/**
+ * @google/genai has no child-safety HarmCategory or BlockedReason. Gemini
+ * reports CSAM blocks as PROHIBITED_CONTENT (prompt blockReason or candidate
+ * finishReason). A safety rating whose category names a child or minor, or
+ * an IMAGE_PROHIBITED_CONTENT finish, counts too, in case the API adds one.
+ */
+export function geminiChildSafetySignal(response: GeminiModerationResponse): boolean {
+    if (response.promptFeedback?.blockReason === 'PROHIBITED_CONTENT') return true;
+    const ratings = [
+        ...(response.promptFeedback?.safetyRatings ?? []),
+        ...(response.candidates ?? []).flatMap((candidate) => candidate?.safetyRatings ?? []),
+    ];
+    if (ratings.some((rating) => /CHILD|CSAM|MINOR/i.test(String(rating?.category ?? '')))) return true;
+    return (response.candidates ?? []).some((candidate) =>
+        candidate?.finishReason === 'PROHIBITED_CONTENT' || candidate?.finishReason === 'IMAGE_PROHIBITED_CONTENT',
+    );
+}
+
+interface GeminiSafetyRating {
+    category?: string;
+    blocked?: boolean;
+}
+
+export interface GeminiModerationResponse {
+    text?: string;
+    candidates?: ReadonlyArray<
+        { finishReason?: string; safetyRatings?: readonly GeminiSafetyRating[] } | null | undefined
+    >;
+    promptFeedback?: { blockReason?: string; safetyRatings?: readonly GeminiSafetyRating[] };
+}
+
+/**
+ * True when the Developer API withheld a classification.
+ * An empty `text` or `candidates` array, a filter `finishReason`, or any
+ * `promptFeedback.blockReason` other than unspecified is a block. A later
+ * parse of leftover text must not turn that into an allow.
+ */
+export function geminiResponseBlocked(response: GeminiModerationResponse): boolean {
+    const blockReason = response.promptFeedback?.blockReason;
+    if (
+        typeof blockReason === 'string' &&
+        blockReason.length > 0 &&
+        blockReason !== 'BLOCKED_REASON_UNSPECIFIED'
+    ) {
+        return true;
+    }
+    const candidates = response.candidates;
+    if (!Array.isArray(candidates) || candidates.length === 0) return true;
+    for (const candidate of candidates) {
+        const reason = candidate?.finishReason;
+        if (
+            typeof reason === 'string' &&
+            (GEMINI_FILTER_FINISH_REASONS as readonly string[]).includes(reason)
+        ) {
+            return true;
+        }
+    }
+    const text = typeof response.text === 'string' ? response.text.trim() : '';
+    return text.length === 0;
+}
+
 /** Pure request body so tests can check the delimiter and sampling settings. */
 export function geminiModerationRequest(model: string, text: string) {
     return {
@@ -58,6 +142,9 @@ export function geminiModerationRequest(model: string, text: string) {
         config: {
             systemInstruction: GEMINI_CLASSIFIER_INSTRUCTION,
             responseMimeType: 'application/json' as const,
+            httpOptions: {
+                retryOptions: { attempts: 1 },
+            },
             safetySettings: SAFETY_OFF.map((category) => ({
                 category,
                 threshold: HarmBlockThreshold.BLOCK_NONE,
@@ -95,7 +182,7 @@ export class GeminiContentModerator implements ContentModerator {
         this.client ??= new GoogleGenAI({ apiKey: this.apiKey });
         const request = geminiModerationRequest(this.model, text);
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), GEMINI_MODERATION_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(), classifierTimeoutMs());
         try {
             const response = await this.client.models.generateContent({
                 ...request,
@@ -104,11 +191,16 @@ export class GeminiContentModerator implements ContentModerator {
                     abortSignal: controller.signal,
                 },
             });
-            const raw = response.text?.trim();
-            if (!raw) {
-                throw new Error('Moderation classifier returned an empty response');
+            // Filter shapes throw before JSON parsing. A safety finish with
+            // leftover non-JSON text must not become a degraded allow.
+            const shape = response as GeminiModerationResponse;
+            if (geminiResponseBlocked(shape)) {
+                throw new FilteredClassifierError(geminiChildSafetySignal(shape));
             }
-            return { categories: categoriesFromClassifier(raw) };
+            const raw = response.text?.trim();
+            if (!raw) throw new FilteredClassifierError(geminiChildSafetySignal(shape));
+            const parsed = parseClassifier(raw);
+            return { categories: parsed.categories, items: parsed.items };
         } finally {
             clearTimeout(timer);
         }

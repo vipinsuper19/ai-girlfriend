@@ -201,6 +201,8 @@ notificationsEnabledAt TimestamptzString?
 // When the person confirmed they are 18 or older. The date of birth is checked
 // and then discarded; it is not stored.
 ageConfirmedAt         TimestamptzString?
+// Set when chat shows this person is under 18. It does not expire with the message window.
+minorHeldAt            TimestamptzString?
 
 accounts     Account[]
 sessions     Session[]
@@ -436,6 +438,8 @@ companionId   Int
 
 title         String?
 lastMessageAt TimestamptzString?
+// Set when this conversation shows someone under 18. It does not expire with the message window.
+minorHeldAt   TimestamptzString?
 
 metadata      Json?
 

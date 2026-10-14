@@ -1563,6 +1563,13 @@
                   "kind": "scalar"
                 }
               },
+              "minorHeldAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
               "title": {
                 "nullable": true,
                 "type": {
@@ -1711,6 +1718,9 @@
                 },
                 "metadata": {
                   "column": "metadata"
+                },
+                "minorHeldAt": {
+                  "column": "minorHeldAt"
                 },
                 "title": {
                   "column": "title"
@@ -3372,6 +3382,13 @@
                   "kind": "scalar"
                 }
               },
+              "minorHeldAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
               "notificationsEnabledAt": {
                 "nullable": true,
                 "type": {
@@ -3614,6 +3631,9 @@
                 },
                 "memoryPausedAt": {
                   "column": "memoryPausedAt"
+                },
+                "minorHeldAt": {
+                  "column": "minorHeldAt"
                 },
                 "notificationsEnabledAt": {
                   "column": "notificationsEnabledAt"
@@ -4526,6 +4546,11 @@
                 "metadata": {
                   "codecId": "pg/json@1",
                   "nativeType": "json",
+                  "nullable": true
+                },
+                "minorHeldAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
                   "nullable": true
                 },
                 "title": {
@@ -6305,6 +6330,11 @@
                   "nativeType": "timestamptz",
                   "nullable": true
                 },
+                "minorHeldAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
                 "notificationsEnabledAt": {
                   "codecId": "pg/timestamptz-string@1",
                   "nativeType": "timestamptz",
@@ -6541,7 +6571,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "6afb1ed044483b010a3ad7b98f053ca39bc0a58954913a503d04694fe7a090bb",
+    "storageHash": "630c27ec57f75f16797bd5aa17654561a9e1e6bf23a00f7d3926d4cfe5f1ea1d",
     "types": {
       "Embedding1536": {
         "codecId": "pg/vector@1",

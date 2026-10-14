@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 
 import { AiModule } from '../ai/ai.module.js';
+import { ModerationModule } from '../moderation/moderation.module.js';
 import { MemoriesController } from './memories.controller.js';
 import { MemoryEmbeddingService } from './memory-embedding.service.js';
 import { MemoryExtractorService } from './memory-extractor.service.js';
@@ -11,6 +12,7 @@ import { MemoryContextService } from './memory-context.service.js';
 @Module({
   imports: [
     forwardRef(() => AiModule),
+    ModerationModule,
   ],
   controllers: [
     MemoriesController,
