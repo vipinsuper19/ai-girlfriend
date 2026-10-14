@@ -1,5 +1,6 @@
 package com.dhama.mybase.core.network
 
+import com.dhama.mybase.core.age.AGE_REQUIRED
 import com.dhama.mybase.core.chat.ChatStreamEvent
 
 /**
@@ -18,6 +19,7 @@ import com.dhama.mybase.core.chat.ChatStreamEvent
  * `404` the message is missing, deleted, or not a user line in this conversation.
  * `409` `NOT_LATEST_USER_MESSAGE` — reload the thread and do not call again.
  * `403` `USAGE_LIMIT_EXCEEDED` — show the usage-limit state.
+ * `403` `AGE_REQUIRED` — the client re-attests once when the on-device gate already passed, then retries this call. Otherwise it shows the age gate.
  * `429` `RATE_LIMITED` — wait for `Retry-After`, or `retryAfterSeconds` in the body.
  */
 interface LastUserReplyApi {
@@ -84,6 +86,7 @@ fun idempotencyKeyFor(
 
 enum class RemoteSendFailure {
     UsageLimit,
+    AgeRequired,
     RateLimited,
     NotLatest,
     Missing,
@@ -94,6 +97,7 @@ enum class RemoteSendFailure {
 
 fun remoteSendFailure(status: Int, code: String?): RemoteSendFailure {
     return when {
+        code == AGE_REQUIRED -> RemoteSendFailure.AgeRequired
         status == 403 || code == "USAGE_LIMIT_EXCEEDED" -> RemoteSendFailure.UsageLimit
         status == 429 || code == RATE_LIMITED -> RemoteSendFailure.RateLimited
         code == IDEMPOTENCY_KEY_REUSED -> RemoteSendFailure.KeyReused

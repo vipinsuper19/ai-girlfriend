@@ -52,12 +52,7 @@ class AuthRepoImpl(
         return auth.currentUser
     }
 
-    override suspend fun register(
-        email: String,
-        password: String,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean {
+    override suspend fun register(email: String, password: String): Boolean {
         try {
             val result = suspendCoroutine { continuation ->
                 Firebase.auth
@@ -65,7 +60,7 @@ class AuthRepoImpl(
                     .addOnSuccessListener {
                         println("$tag register successful.")
                         CoroutineScope(Dispatchers.IO).launch {
-                            continuation.resume(login(email, password, dateOfBirth, ageConfirmedAt))
+                            continuation.resume(login(email, password))
                         }
                     }
                     .addOnFailureListener {
@@ -83,16 +78,7 @@ class AuthRepoImpl(
         }
     }
 
-    override suspend fun submitAge(dateOfBirth: String, ageConfirmedAt: String) {
-        api.patchAge(dateOfBirth, ageConfirmedAt)
-    }
-
-   override suspend fun login(
-       email: String,
-       password: String,
-       dateOfBirth: String?,
-       ageConfirmedAt: String?,
-   ) : Boolean{
+   override suspend fun login(email: String, password: String): Boolean {
        try {
            val result = suspendCoroutine { continuation ->
                Firebase.auth
@@ -109,7 +95,7 @@ class AuthRepoImpl(
 
            if (result) {
                try {
-                   api.establish(email, password, dateOfBirth, ageConfirmedAt)
+                   api.establish(email, password)
                } catch (error: CancellationException) {
                    throw error
                } catch (_: Exception) {
@@ -155,17 +141,13 @@ class AuthRepoImpl(
         }
     }
 
-    override suspend fun signInWithGoogle(
-        result: GetCredentialResponse,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean {
+    override suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean {
         if(isLoggedIn())
             return true
         try {
 
             //val result = buildCredentialRequest()
-            return handleSignIn(result, dateOfBirth, ageConfirmedAt)
+            return handleSignIn(result)
 
         }catch (e : Exception){
             if(e is kotlin.coroutines.cancellation.CancellationException) throw e
@@ -176,11 +158,7 @@ class AuthRepoImpl(
     }
 
 
-    private suspend fun handleSignIn(
-        result: GetCredentialResponse,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean{
+    private suspend fun handleSignIn(result: GetCredentialResponse): Boolean {
         val credential = result.credential
         if(
             credential is CustomCredential &&
@@ -201,7 +179,7 @@ class AuthRepoImpl(
                 if (user != null) {
                     // Google sign-in stands either way. Without an API session, chat stays on this phone.
                     val firebaseToken = runCatching { user.getIdToken(false).await().token }.getOrNull()
-                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken, dateOfBirth, ageConfirmedAt)
+                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken)
                     return true
                 }
                 return false

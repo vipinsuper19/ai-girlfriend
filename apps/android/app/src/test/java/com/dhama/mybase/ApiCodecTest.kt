@@ -77,6 +77,8 @@ class ApiCodecTest {
         assertEquals(RemoteSendFailure.InvalidKey, remoteSendFailure(400, "INVALID_IDEMPOTENCY_KEY"))
         assertEquals(RemoteSendFailure.Other, remoteSendFailure(409, null))
         assertEquals(RemoteSendFailure.UsageLimit, remoteSendFailure(403, "USAGE_LIMIT_EXCEEDED"))
+        assertEquals(RemoteSendFailure.AgeRequired, remoteSendFailure(403, "AGE_REQUIRED"))
+        assertEquals(RemoteSendFailure.UsageLimit, remoteSendFailure(403, null))
         assertEquals(RemoteSendFailure.Missing, remoteSendFailure(404, null))
         assertEquals(RemoteSendFailure.RateLimited, remoteSendFailure(429, "RATE_LIMITED"))
         val key = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
