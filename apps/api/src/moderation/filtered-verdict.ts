@@ -1,5 +1,10 @@
 import { FilteredClassifierError } from './gemini-moderator.js';
-import { hasMinorCue, type SafetyCategory, type SafetyLogContext } from './safety-policy.js';
+import {
+    assessLocal,
+    hasMinorCue,
+    type SafetyCategory,
+    type SafetyLogContext,
+} from './safety-policy.js';
 
 /**
  * The one verdict for an empty or filtered classifier result. Chat
@@ -40,4 +45,27 @@ export function resolveMinorUnconfirmed(
         return rest.includes('minor') ? rest : [...rest, 'minor'];
     }
     return rest;
+}
+
+const FOLLOW_UP_OPENER =
+    /^\s*(?:ok(?:ay)?|k|sorry|soz|my\s+bad|never\s*mind|nvm|forget\s+(?:it|that|about\s+it|what\s+i\s+said)|fine|alright|all\s+right|anyway|chalo|theek\s+hai|thik\s+hai|accha|achha|haan|leave\s+it|no\s+worries|oops)\b/i;
+const INSTRUCTION_WORDS =
+    /\b(?:instructions?|prompts?|system|developer|mode|dan|jailbreak\w*|unfiltered|uncensored|unrestricted|rules|restrictions?|filters?|polic(?:y|ies)|override|bypass|pretend|role|act\s+as|you\s+are\s+now|from\s+now\s+on|reveal|repeat)\b/i;
+
+/**
+ * A short "ok sorry, how was your day?" after a refused request is not a
+ * prompt injection. Drops a classifier-only `jailbreak` from such a
+ * follow-up when the local injection rules do not match and the text names
+ * no instruction, prompt, mode, or rule. Every other category is kept.
+ */
+export function withoutFollowUpInjection(
+    categories: readonly SafetyCategory[],
+    text: string,
+): SafetyCategory[] {
+    if (!categories.includes('jailbreak')) return [...categories];
+    const trimmed = text.trim();
+    if (trimmed.length > 140) return [...categories];
+    if (!FOLLOW_UP_OPENER.test(trimmed) || INSTRUCTION_WORDS.test(trimmed)) return [...categories];
+    if (assessLocal(trimmed, 'input').includes('jailbreak')) return [...categories];
+    return categories.filter((category) => category !== 'jailbreak');
 }
