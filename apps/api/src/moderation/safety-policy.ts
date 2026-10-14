@@ -360,7 +360,7 @@ const JAILBREAK_PATTERN = new RegExp(
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|prompts?|guidelines|restrictions|policies|programming|directives)\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system|safety|content|original|default)\s+(?:\w+\s+)?rules\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?your\s+rules\b`,
-        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before|previous|prior|you\s+were\s+told)\b`,
+        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|previous|prior|you\s+were\s+told|before\s+(?:this|now)\b)\b`,
         String.raw`\b(?:act|behave)\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:an?\s+)?(?:unfiltered|unrestricted|uncensored|jailbroken)\b`,
         String.raw`\[\s*(?:system|developer|admin)\s*\]|\bnew\s+system\s+(?:prompt|instructions|message)\b|\bsystem\s+override\b|\b(?:admin|developer|sudo)\s+(?:mode|override|command)\b`,
         String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
@@ -688,7 +688,15 @@ function scanAges(pattern: RegExp, text: string): boolean {
     for (const match of text.matchAll(pattern)) {
         const token = (match[1] ?? '').toLowerCase();
         const rest = text.slice((match.index ?? 0) + match[0].length);
-        if (ageTokenIsMinor(token, rest)) return true;
+        if (!ageTokenIsMinor(token, rest)) continue;
+        // Single-digit ages ("I'm 1 call away", "I'm 9 to 5", "me 2!") need
+        // an age unit, or must end the line. "me 2!" is "me too".
+        const age = /^\d+$/.test(token) ? Number(token) : SPELLED_MINOR[token] ?? (token === 'two' ? 2 : token === 'four' ? 4 : null);
+        if (age !== null && age < 10 && !AGE_UNIT.test(rest)) {
+            if (pattern === ME_AGE) continue;
+            if (!/^\s*[.!?]*\s*$/.test(rest)) continue;
+        }
+        return true;
     }
     return false;
 }

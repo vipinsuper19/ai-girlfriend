@@ -48,13 +48,19 @@ export function resolveMinorUnconfirmed(
 }
 
 const FOLLOW_UP_OPENER =
-    /^\s*(?:ok(?:ay)?|k|sorry|soz|my\s+bad|never\s*mind|nvm|forget\s+(?:it|that|about\s+it|what\s+i\s+said)|fine|alright|all\s+right|anyway|chalo|theek\s+hai|thik\s+hai|accha|achha|haan|leave\s+it|no\s+worries|oops)\b/i;
+    /^\s*(?:ok(?:ay)?|k|sorry|soz|my\s+bad|never\s*mind|nvm|forget\s+(?:it|that|about\s+it|what\s+i\s+(?:said|asked)(?:\s+before)?|the\s+previous\s+stuff)|ignore\s+that|fine|alright|all\s+right|anyway|chalo|theek\s+hai|thik\s+hai|accha|achha|acha|haan|leave\s+it|no\s+worries|oops|lol|haha\w*|cool|nice|thanks|thank\s+you|whatever|moving\s+on|can\s+we\s+(?:go\s+back|talk|just)|let'?s\s+(?:talk|just|go\s+back))\b/i;
+/** Romance role talk inside the companion relationship ("you are now my girlfriend"). */
+const ROMANCE_ROLE =
+    /\b(?:you(?:'re|\s+are)\s+(?:now\s+)?(?:officially\s+)?|from\s+now\s+on\s+you(?:'re|\s+are)\s+|pretend\s+(?:you(?:'re|\s+are)|to\s+be)\s+|role-?play\s+as\s+|be\s+)(?:my|mine)\b(?:\s+(?:girlfriend|boyfriend|wife|husband|partner|valentine|date|love|lover|darling|baby|babe|queen|king|girl|boy|forever))?/i;
+/** "I won't ask about your instructions again" is an apology, not a probe. */
+const NEGATED_PROBE =
+    /\b(?:won'?t|will\s+not|not\s+going\s+to|no\s+more|stop(?:ped)?|never|didn'?t\s+mean\s+to)\s+(?:\w+\s+){0,3}(?:ask(?:ing)?|try(?:ing)?|mention(?:ing)?|bring(?:ing)?\s+up)\s+(?:\w+\s+){0,3}(?:instructions?|rules|prompts?|system\s+prompt|setup)\b(?:\s+again)?/gi;
 const INSTRUCTION_WORDS =
-    /\b(?:instructions?|prompts?|system|developer|mode|dan|jailbreak\w*|unfiltered|uncensored|unrestricted|rules|restrictions?|filters?|polic(?:y|ies)|override|bypass|pretend|role|act\s+as|you\s+are\s+now|from\s+now\s+on|reveal|repeat)\b/i;
+    /\b(?:instructions?|prompts?|system|developer|mode|dan|jailbreak\w*|unfiltered|uncensored|unrestricted|rules|restrictions?|filters?|polic(?:y|ies)|override|bypass|pretend|role|act\s+as|you\s+are\s+now|from\s+now\s+on|reveal|repeat|limits?|censor\w*|unlock\w*|guardrails?|safety|ethics|obey|commands?|admin|sudo|hidden|secret|setup|configuration|told\s+to)\b/i;
 
 /**
- * A short "ok sorry, how was your day?" after a refused request is not a
- * prompt injection. Drops a classifier-only `jailbreak` from such a
+ * A short "ok sorry, how was your day?" after a refused request, or romance
+ * role talk ("you are now my girlfriend"), is not a prompt injection. Drops a classifier-only `jailbreak` from such a
  * follow-up when the local injection rules do not match and the text names
  * no instruction, prompt, mode, or rule. Every other category is kept.
  */
@@ -65,7 +71,11 @@ export function withoutFollowUpInjection(
     if (!categories.includes('jailbreak')) return [...categories];
     const trimmed = text.trim();
     if (trimmed.length > 140) return [...categories];
-    if (!FOLLOW_UP_OPENER.test(trimmed) || INSTRUCTION_WORDS.test(trimmed)) return [...categories];
     if (assessLocal(trimmed, 'input').includes('jailbreak')) return [...categories];
+    const romanceRole = ROMANCE_ROLE.test(trimmed);
+    if (!romanceRole && !FOLLOW_UP_OPENER.test(trimmed)) return [...categories];
+    const probe = trimmed.replace(NEGATED_PROBE, ' ');
+    const scan = romanceRole ? probe.replace(/\b(?:you\s+are\s+now|you're\s+now|from\s+now\s+on|pretend|role)\b/gi, ' ') : probe;
+    if (INSTRUCTION_WORDS.test(scan)) return [...categories];
     return categories.filter((category) => category !== 'jailbreak');
 }

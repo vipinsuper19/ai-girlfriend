@@ -8,8 +8,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
-    chatTranscriptVerdicts,
     chatTurnVerdict,
+    describeVerdict,
+    evaluateChatCase,
     personaVerdict,
 } from '../src/moderation/eval-verdict.js';
 import { heldoutPathProblem } from '../src/moderation/heldout-path.js';
@@ -62,6 +63,9 @@ async function verdictFor(
         : chatTurnVerdict(moderation, text);
 }
 
+/** The app's final verdict per case id, printed with each miss. */
+const finals = new Map<string, string>();
+
 async function evaluate(
     moderation: ModerationService,
     redteamCase: RedteamCase,
@@ -85,31 +89,9 @@ async function evaluate(
         return problems;
     }
 
-    const memories = redteamCase.turns.filter((turn) => turn.role === 'memory');
-    const users = redteamCase.turns.filter((turn) => turn.role === 'user');
-    const problems: string[] = [];
-    if (memories.length > 0) {
-        for (const turn of memories) {
-            const verdict = await verdictFor(moderation, turn.text, 'input');
-            problems.push(...problemsFor(redteamCase, verdict.got, verdict.message, 'memory '));
-        }
-        for (const turn of users) {
-            const verdict = await verdictFor(moderation, turn.text, 'input');
-            if (verdict.got !== 'allow') problems.push(`follow-up expected allow got ${verdict.got}`);
-        }
-        return problems;
-    }
-    // Same path as chat: moderateTurn with priorUserTexts, refused turns dropped.
-    const verdicts = await chatTranscriptVerdicts(moderation, users.map((turn) => turn.text));
-    for (const [index, verdict] of verdicts.entries()) {
-        const last = index === verdicts.length - 1;
-        if (!last) {
-            if (verdict.got !== 'allow') problems.push(`earlier turn expected allow got ${verdict.got}`);
-            continue;
-        }
-        problems.push(...problemsFor(redteamCase, verdict.got, verdict.message));
-    }
-    return problems;
+    const outcome = await evaluateChatCase(moderation, redteamCase, redteamCase.turns);
+    finals.set(redteamCase.id, describeVerdict(outcome.final));
+    return outcome.problems;
 }
 
 function problemsFor(
@@ -146,7 +128,8 @@ async function score(moderation: ModerationService, title: string, path: string)
             pass += 1;
             bucket.pass += 1;
         } else {
-            misses.push(`${redteamCase.id} ${problems.join('; ')}`);
+            const final = finals.get(redteamCase.id);
+            misses.push(`${redteamCase.id} ${final ? `[app=${final}] ` : ''}${problems.join('; ')}`);
         }
         byCategory.set(redteamCase.category, bucket);
     }
