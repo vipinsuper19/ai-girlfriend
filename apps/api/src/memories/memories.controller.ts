@@ -10,6 +10,7 @@ import {
     UseGuards
 } from '@nestjs/common';
 
+import { ParseEntityIdPipe } from '../common/pipes/parse-entity-id.pipe.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
@@ -50,7 +51,7 @@ export class MemoriesController {
     @Get(':id')
     async findOne(
         @CurrentUser() user: JwtPayload,
-        @Param('id') memoryId: string,
+        @Param('id', ParseEntityIdPipe) memoryId: number,
     ) {
         return this.memoriesService.findOne(
             String(user.sub),
@@ -61,7 +62,7 @@ export class MemoriesController {
     @Patch(':id')
     async update(
         @CurrentUser() user: JwtPayload,
-        @Param('id') memoryId: string,
+        @Param('id', ParseEntityIdPipe) memoryId: number,
         @Body() dto: UpdateMemoryDto,
     ) {
         return this.memoriesService.update(
@@ -85,7 +86,7 @@ export class MemoriesController {
     @Delete(':id')
     async remove(
         @CurrentUser() user: JwtPayload,
-        @Param('id') memoryId: string,
+        @Param('id', ParseEntityIdPipe) memoryId: number,
     ) {
         return this.memoriesService.remove(
             String(user.sub),

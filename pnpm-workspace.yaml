@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  '@firebase/util': false
   '@google/genai': true
   "@parcel/watcher": false
   bcrypt: false

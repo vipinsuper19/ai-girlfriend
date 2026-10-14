@@ -14,6 +14,8 @@ export type GoogleIdentity = {
     googleId: string;
     email: string;
     name: string | null;
+    /** Firebase Auth uid (`sub`) when the token was issued by Firebase. */
+    firebaseUid: string | null;
 };
 
 export const FIREBASE_ISSUER_PREFIX = 'https://securetoken.google.com/';
@@ -51,11 +53,16 @@ export function googleIdentity(
         return fail('Google email is not verified');
     }
 
+    const firebaseUid = isFirebaseIssuer(claims.iss) && typeof claims.sub === 'string'
+        ? claims.sub.trim()
+        : '';
+
     return {
         identity: {
             googleId,
             email: claims.email.trim().toLowerCase(),
             name: typeof claims.name === 'string' && claims.name.trim() ? claims.name.trim() : null,
+            firebaseUid: firebaseUid || null,
         },
         problem: null,
     };
@@ -74,6 +81,21 @@ export function googleSignInPlan(
     if (linkedUserId != null) return { kind: 'existing', userId: linkedUserId };
     if (emailOwnerId != null) return { kind: 'conflict' };
     return { kind: 'create' };
+}
+
+/** Keeps the email and, for a Firebase token, the Auth uid used by deleteUser. */
+export function accountProviderData(
+    existing: unknown,
+    identity: Pick<GoogleIdentity, 'email' | 'firebaseUid'>,
+): Record<string, unknown> {
+    const base = existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? { ...(existing as Record<string, unknown>) }
+        : {};
+    return {
+        ...base,
+        email: identity.email,
+        ...(identity.firebaseUid ? { firebaseUid: identity.firebaseUid } : {}),
+    };
 }
 
 export function googleDisplayName(identity: GoogleIdentity): string {

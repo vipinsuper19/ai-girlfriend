@@ -16,7 +16,9 @@ import type { SafetyConfig } from './safety.config.js';
 import {
     assessLocal,
     decideSafety,
+    hasMinorCue,
     personaMinorAge,
+    personaRejectionMessage,
     personaText,
     unavailableNotice,
     type ModerationSurface,
@@ -153,7 +155,18 @@ export class ModerationService {
         const extra: SafetyCategory[] = personaMinorAge(draft) ? ['minor'] : [];
         const text = personaText(draft);
         const notice = await this.noticeFor(text, 'persona', { ...ctx, personaText: text }, extra);
-        if (notice) throw new UnsafePersonaException();
+        if (!notice) return;
+        // A provider error stays fail-closed with the generic message.
+        if (notice.code === 'moderation_unavailable') throw new UnsafePersonaException();
+        // The message names minors only when a minor signal is present.
+        const local = merge(extra, assessLocal(text, 'persona'));
+        const categories: SafetyCategory[] =
+            notice.code === 'explicit_content'
+                ? ['explicit']
+                : holdsMinor(local) || hasMinorCue(text)
+                    ? merge(local, ['minor'])
+                    : local;
+        throw new UnsafePersonaException(personaRejectionMessage(categories));
     }
 
     /**

@@ -24,6 +24,7 @@ import { CreateMessageDto } from '../messages/dto/create-message.dto.js';
 import { MESSAGE_CONTENT_MAX } from '../messages/message-limits.js';
 import {
     EXPLICIT_REFUSAL_MESSAGE,
+    PERSONA_MINOR_MESSAGE,
     PERSONA_REJECTION_MESSAGE,
     REFUSAL_MESSAGE,
     UNAVAILABLE_MESSAGE,
@@ -350,7 +351,7 @@ test('unsafe personas are rejected and ordinary ones are kept', async () => {
             assert.ok(error instanceof UnsafePersonaException);
             const body = error.getResponse() as { code?: string; message?: string };
             assert.equal(body.code, 'UNSAFE_PERSONA');
-            assert.equal(body.message, PERSONA_REJECTION_MESSAGE);
+            assert.equal(body.message, PERSONA_MINOR_MESSAGE);
             return true;
         },
     );

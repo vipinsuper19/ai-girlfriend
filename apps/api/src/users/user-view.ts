@@ -9,6 +9,17 @@ export type UserRow = {
     ageConfirmedAt?: string | null;
 };
 
+/** ISO time the 18+ attestation was stored, or null when it has not been. */
+export function publicAgeConfirmedAt(value: unknown): string | null {
+    if (value == null || value === '') return null;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    }
+    if (typeof value !== 'string') return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export function userView(user: UserRow) {
     return {
         id: user.id,
@@ -18,6 +29,22 @@ export function userView(user: UserRow) {
         updatedAt: user.updatedAt ?? null,
         memoryPaused: user.memoryPausedAt != null,
         notificationsEnabled: user.notificationsEnabledAt != null,
+        ageConfirmedAt: publicAgeConfirmedAt(user.ageConfirmedAt),
+    };
+}
+
+/** User object on register, login, refresh, and Google/Firebase session responses. */
+export function sessionUser(user: {
+    id: number | string;
+    email: string;
+    displayName?: string | null;
+    ageConfirmedAt?: unknown;
+}) {
+    return {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName ?? null,
+        ageConfirmedAt: publicAgeConfirmedAt(user.ageConfirmedAt),
     };
 }
 
