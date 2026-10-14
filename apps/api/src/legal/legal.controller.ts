@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import { RawHtml } from '../common/decorators/raw-html.decorator.js';
 import { DeletionRequestsService } from './deletion-requests.service.js';
 import { requestOrigin } from './deletion-link.js';
-import { accountDeletionHtml, privacyHtml } from './pages.js';
+import { accountDeletionHtml, privacyHtml, termsHtml } from './pages.js';
 
 @Controller()
 export class LegalController {
@@ -19,6 +19,14 @@ export class LegalController {
     @Header('Cache-Control', 'no-cache')
     privacy(): string {
         return privacyHtml(this.deletions.identity());
+    }
+
+    @Get('terms')
+    @RawHtml()
+    @Header('Content-Type', 'text/html; charset=utf-8')
+    @Header('Cache-Control', 'no-cache')
+    terms(): string {
+        return termsHtml(this.deletions.identity());
     }
 
     @Get('account-deletion')
@@ -37,8 +45,9 @@ export class LegalController {
         @Req() request: Request,
         @Res() response: Response,
     ): Promise<void> {
+        const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
         const result = await this.deletions.submit(
-            { email: body['email'], note: body['note'] },
+            { email: payload['email'], note: payload['note'] },
             request.ip || request.socket?.remoteAddress || 'unknown',
             requestOrigin(request),
         );

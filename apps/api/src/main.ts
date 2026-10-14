@@ -17,6 +17,7 @@ import { StorageService } from './storage/storage.service.js';
 import { API_BASE_PATH, UNPREFIXED_ROUTES } from './common/constants/api.constants.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
+import { installBodyParsers, installUnknownRoute } from './common/http-server.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
 
 validateEnv(process.env);
@@ -24,7 +25,9 @@ validateEnv(process.env);
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
+    { bodyParser: false },
   );
+  installBodyParsers(app);
 
   // const configService = app.get(ConfigService);
 
@@ -68,7 +71,7 @@ async function bootstrap(): Promise<void> {
   });
 
   // /health stays unprefixed for the Render health check. Play Store
-  // pages (/privacy, /account-deletion) stay unprefixed too.
+  // pages (/privacy, /terms, /account-deletion) stay unprefixed too.
   app.setGlobalPrefix(API_BASE_PATH, { exclude: [...UNPREFIXED_ROUTES] });
 
   app.useGlobalPipes(
@@ -98,6 +101,8 @@ async function bootstrap(): Promise<void> {
 
   //const port =configService.get<number>('app.port') ?? 3001;
   const port = Number(process.env['PORT'] ?? 3001);
+  await app.init();
+  installUnknownRoute(app);
   await app.listen(port, '0.0.0.0');
 
   console.log(`API running on http://localhost:${port}/${API_BASE_PATH}`);

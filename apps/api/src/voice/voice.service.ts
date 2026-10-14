@@ -430,6 +430,20 @@ export class VoiceService {
             );
         }
 
+        if (safety) {
+            return {
+                transcript: cleanTranscript,
+                userMessage,
+                assistantMessage: {
+                    role: 'ASSISTANT',
+                    type: 'TEXT',
+                    content: assistantText,
+                    metadata: { source: 'voice', safety },
+                },
+                safety,
+            };
+        }
+
         /*
          * ------------------------------------------------------
          * 9. Generate companion voice

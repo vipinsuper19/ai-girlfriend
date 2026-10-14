@@ -7,7 +7,7 @@ import {
     type DeletionRequestStore,
 } from './deletion-request.store.js';
 import { deletionConfirmLink, deletionConfirmMail, hashDeletionToken, newDeletionToken } from './deletion-link.js';
-import { deletionResultHtml, type LegalIdentity } from './pages.js';
+import { accountDeletionHtml, deletionResultHtml, type LegalIdentity } from './pages.js';
 import { SlidingWindowLimiter } from './rate-limit.js';
 
 const EMAIL_MAX = 320;
@@ -51,7 +51,10 @@ export class DeletionRequestsService {
         if (!email) {
             return {
                 status: 400,
-                html: deletionResultHtml({ identity, status: 'invalid' }),
+                html: accountDeletionHtml(
+                    identity,
+                    'Enter the account email and submit the form again.',
+                ),
             };
         }
 

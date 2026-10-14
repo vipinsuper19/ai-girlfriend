@@ -26,6 +26,9 @@ envVarGroups:
         value: "3600"
       - key: MODERATION_ENABLED
         value: "true"
+      # Off until clients call PATCH /users/me/age. true returns 403 AGE_REQUIRED.
+      - key: AGE_GATE_ENFORCED
+        value: "false"
       - key: MODERATION_FAIL_CLOSED
         value: "true"
       - key: MODERATION_PROVIDER
@@ -141,7 +144,10 @@ services:
         sync: false
       # --- Optional secrets. Leave the dashboard value empty to keep the
       # feature off (password-reset secret falls back, Play billing 503,
-      # push 503, OpenAI moderation unused). Do not set value: "". ---
+      # push 503, Firebase Auth user deletion queued, OpenAI moderation
+      # unused). Do not set value: "". FIREBASE_SERVICE_ACCOUNT_JSON is also
+      # the Admin key for auth.deleteUser on DELETE /users/me. Production
+      # with FIREBASE_PROJECT_ID logs if that JSON is missing and still boots. ---
       - key: JWT_RESET_SECRET
         sync: false
       - key: OPENAI_API_KEY

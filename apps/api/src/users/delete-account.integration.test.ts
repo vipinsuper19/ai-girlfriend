@@ -80,6 +80,7 @@ test('deleteMe removes the account and leaves the other one', { skip: !databaseU
 
         const result = await service.deleteMe(String(subject.userId));
         assert.equal(result.message, 'Account deleted successfully');
+        assert.equal(result.firebaseUserDeleted, false);
 
         assert.equal(await db.orm.public.User.where({ id: subject.userId }).first(), null);
         assert.equal(await db.orm.public.Account.where({ userId: subject.userId }).first(), null);

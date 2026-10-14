@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BadRequestException, HttpStatus, type ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
 
-import { AGE_UNDER_18, AgeRejectedException } from '../../auth/age.js';
+import { GenerationTemporarilyUnavailableException } from '../../ai/generation-unavailable.js';
+import { AgeRequiredException } from '../../auth/age-confirmed.guard.js';
+import { ModerationTemporarilyUnavailableException } from '../../moderation/moderation-unavailable.exception.js';
 import { RateLimitedException } from '../../rate-limit/rate-limit.exception.js';
 import { UsageLimitExceededException } from '../../usage/usage.exceptions.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
@@ -84,18 +86,25 @@ test('rate limits are 429 with Retry-After', () => {
     assert.equal(headers['Retry-After'], '12');
 });
 
-test('forwards the under-18 code', () => {
-    const { body } = capture(
-        new AgeRejectedException(
-            AGE_UNDER_18,
-            'You must be 18 or older.',
-            HttpStatus.FORBIDDEN,
-        ),
-    );
-
+test('age confirmation is 403 AGE_REQUIRED', () => {
+    const { body } = capture(new AgeRequiredException());
     assert.equal(body.statusCode, 403);
-    assert.equal(body.code, 'UNDER_18');
-    assert.equal(body.message, 'You must be 18 or older.');
+    assert.equal(body.code, 'AGE_REQUIRED');
+    assert.match(body.message as string, /18 or older/);
+});
+
+test('provider outages are 503 with Retry-After', () => {
+    const moderation = capture(new ModerationTemporarilyUnavailableException());
+    assert.equal(moderation.body.statusCode, 503);
+    assert.equal(moderation.body.code, 'MODERATION_TEMPORARILY_UNAVAILABLE');
+    assert.equal(moderation.body.retryAfterSeconds, 30);
+    assert.equal(moderation.headers['Retry-After'], '30');
+
+    const generation = capture(new GenerationTemporarilyUnavailableException());
+    assert.equal(generation.body.statusCode, 503);
+    assert.equal(generation.body.code, 'GENERATION_TEMPORARILY_UNAVAILABLE');
+    assert.equal(generation.body.retryAfterSeconds, 30);
+    assert.equal(generation.headers['Retry-After'], '30');
 });
 
 test('leaves validation errors without a code', () => {

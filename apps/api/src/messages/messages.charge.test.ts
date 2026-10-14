@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { GenerationTemporarilyUnavailableException } from '../ai/generation-unavailable.js';
 import { REFUSAL_MESSAGE } from '../moderation/safety-policy.js';
 import { UsageFeatureDto } from '../usage/dto/record-usage.dto.js';
 import { estimateTokens } from '../usage/estimate-tokens.js';
@@ -274,4 +275,66 @@ test('an aborted stream does not charge', async () => {
     assert.equal(sawSignal, true);
     assert.deepEqual(events, ['message']);
     assert.deepEqual(charges, []);
+});
+
+test('a generation quota error is not charged and is not stored as a reply', async () => {
+    const created = serviceFor({
+        generate: async () => {
+            throw new GenerationTemporarilyUnavailableException();
+        },
+    });
+    const before = created.messages.length;
+    await assert.rejects(
+        () => created.messagesService.create('1', '5', { content: 'Hello' }),
+        GenerationTemporarilyUnavailableException,
+    );
+    assert.deepEqual(created.charges, []);
+    assert.equal(created.messages.length, before + 1);
+    assert.equal(
+        created.messages.filter((row) => row['role'] === 'ASSISTANT').length,
+        1,
+    );
+
+    const streamed = serviceFor({
+        stream: async function* () {
+            yield* [];
+            throw new GenerationTemporarilyUnavailableException();
+        },
+    });
+    await assert.rejects(async () => {
+        for await (const _event of streamed.messagesService.createAndStream('1', '5', {
+            content: 'Hello',
+        })) {
+            // The quota error leaves the generator before a done event.
+        }
+    }, GenerationTemporarilyUnavailableException);
+    assert.deepEqual(streamed.charges, []);
+});
+
+test('a generation rate limit is an SSE RATE_LIMITED error, with no stored reply and no charge', async () => {
+    const { GenerationRateLimitedException } = await import('../ai/generation-rate-limit.js');
+    const { streamErrorPayload } = await import('./sse-stream.js');
+    const { messagesService, charges, messages } = serviceFor({
+        stream: async function* () {
+            throw new GenerationRateLimitedException(17);
+        },
+    });
+    const events: Array<{ type: string }> = [];
+    let caught: unknown;
+    try {
+        for await (const event of messagesService.createAndStream('1', '5', { content: 'quick one' })) {
+            events.push(event as { type: string });
+        }
+    } catch (error) {
+        caught = error;
+    }
+    assert.ok(caught instanceof GenerationRateLimitedException);
+    assert.deepEqual(streamErrorPayload(caught), {
+        message: 'Give me a moment, then try again.',
+        code: 'RATE_LIMITED',
+        retryAfterSeconds: 17,
+    });
+    assert.deepEqual(charges, []);
+    assert.equal(events.some((event) => event.type === 'done'), false);
+    assert.equal(messages.filter((row) => row['role'] === 'ASSISTANT').length, 1);
 });

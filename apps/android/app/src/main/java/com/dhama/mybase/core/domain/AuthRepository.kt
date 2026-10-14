@@ -26,7 +26,21 @@ interface AuthRepository {
 
     suspend fun logout()
 
-    suspend fun deleteRemoteAccount()
+    /**
+     * DELETE /users/me. Returns true when the body says the Admin SDK already deleted the Firebase user.
+     * Throws when the server delete fails. Does not touch Firebase Auth or local data.
+     */
+    suspend fun deleteRemoteAccount(): Boolean
+
+    /**
+     * Deletes the signed-in Firebase user. Reauthenticates once when Firebase requires a recent login.
+     * [emailPassword] and [googleIdToken] are used only for that reauthentication.
+     */
+    suspend fun deleteFirebaseAuthUser(
+        serverDeletedFirebaseUser: Boolean,
+        emailPassword: String?,
+        googleIdToken: String?,
+    )
 
     /**
      * Signs Firebase out, then clears the API session store.

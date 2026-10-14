@@ -7,6 +7,7 @@ import {
     streamErrorPayload,
     writeServerSentEvents,
 } from './sse-stream.js';
+import { GenerationTemporarilyUnavailableException } from '../ai/generation-unavailable.js';
 import { UsageLimitExceededException } from '../usage/usage.exceptions.js';
 
 test('formats an event the client can split on a blank line', () => {
@@ -103,6 +104,13 @@ test('a failed write asks the caller to stop', async () => {
         ),
     );
     assert.equal(stopped, true);
+});
+
+test('a generation quota error keeps its code on the SSE event', () => {
+    const payload = streamErrorPayload(new GenerationTemporarilyUnavailableException());
+    assert.equal(payload.code, 'GENERATION_TEMPORARILY_UNAVAILABLE');
+    assert.equal(payload.retryAfterSeconds, 30);
+    assert.match(payload.message, /temporarily unavailable/);
 });
 
 test('a plain stream error has only a message', () => {
