@@ -45,8 +45,9 @@ export class LegalController {
         @Req() request: Request,
         @Res() response: Response,
     ): Promise<void> {
+        const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
         const result = await this.deletions.submit(
-            { email: body['email'], note: body['note'] },
+            { email: payload['email'], note: payload['note'] },
             request.ip || request.socket?.remoteAddress || 'unknown',
             requestOrigin(request),
         );

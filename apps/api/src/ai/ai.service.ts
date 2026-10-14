@@ -666,14 +666,31 @@ export class AiService {
          * ------------------------------------------------------
          */
         if (signal?.aborted) return;
-        const assistantMessage = await this.finishTurn(
-            numericConversationId,
-            numericUserId,
-            streamedContent,
-            outputNotice,
-            true,
-        );
+        // A replaced reply is shown as the refusal (one SSE replace event) and
+        // is not stored, so a reload cannot surface the withdrawn prefix.
+        const stored = outputNotice
+            ? null
+            : await this.finishTurn(
+                numericConversationId,
+                numericUserId,
+                streamedContent,
+                null,
+                true,
+            );
         if (signal?.aborted) return;
+
+        const assistantMessage = outputNotice
+            ? {
+                ...(stored ?? {
+                    role: 'ASSISTANT',
+                    type: 'TEXT',
+                    audioUrl: null,
+                    imageUrl: null,
+                }),
+                content: streamedContent,
+                metadata: { safety: outputNotice },
+            }
+            : stored;
 
         yield {
             type: 'done',
@@ -767,10 +784,15 @@ export class AiService {
     ) {
         const metadata = notice ? { safety: notice } : null;
 
-        if (!persist) {
+        // Canned refusals and transient safety replies are shown, not stored.
+        if (!persist || notice) {
             return {
+                role: 'ASSISTANT',
+                type: 'TEXT',
                 content,
                 metadata,
+                audioUrl: null,
+                imageUrl: null,
             };
         }
 

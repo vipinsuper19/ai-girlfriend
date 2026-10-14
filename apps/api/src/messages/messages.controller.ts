@@ -15,7 +15,9 @@ import {
 } from '@nestjs/common';
 
 import type { Request, Response } from 'express';
+import { AgeConfirmedGuard } from '../auth/age-confirmed.guard.js';
 import { sendException } from '../common/filters/http-exception.filter.js';
+import { ParseEntityIdPipe } from '../common/pipes/parse-entity-id.pipe.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -40,28 +42,28 @@ export class MessagesController {
     @Get('conversations/:id/messages')
     async findAll(
         @CurrentUser() user: JwtPayload,
-        @Param('id') conversationId: string,
+        @Param('id', ParseEntityIdPipe) conversationId: number,
         @Query() query: ListMessagesDto,
     ) {
         return this.messagesService.findAll(
             String(user.sub),
-            conversationId,
+            String(conversationId),
             query,
         );
     }
 
     @Post('conversations/:id/messages')
     @RateLimit('messages')
-    @UseGuards(RateLimitGuard)
+    @UseGuards(AgeConfirmedGuard, RateLimitGuard)
     async create(
         @CurrentUser() user: JwtPayload,
-        @Param('id') conversationId: string,
+        @Param('id', ParseEntityIdPipe) conversationId: number,
         @Body() dto: CreateMessageDto,
         @Headers('idempotency-key') idempotencyKey?: string | string[],
     ) {
         return this.messagesService.create(
             String(user.sub),
-            conversationId,
+            String(conversationId),
             dto,
             idempotencyKey,
         );
@@ -70,24 +72,24 @@ export class MessagesController {
     @Delete('messages/:id')
     async remove(
         @CurrentUser() user: JwtPayload,
-        @Param('id') messageId: string,
+        @Param('id', ParseEntityIdPipe) messageId: number,
     ) {
         return this.messagesService.remove(
             String(user.sub),
-            messageId,
+            String(messageId),
         );
     }
 
     @Post('messages/:id/regenerate')
     @RateLimit('messages')
-    @UseGuards(RateLimitGuard)
+    @UseGuards(AgeConfirmedGuard, RateLimitGuard)
     async regenerate(
         @CurrentUser() user: JwtPayload,
-        @Param('id') messageId: string,
+        @Param('id', ParseEntityIdPipe) messageId: number,
     ) {
         return this.messagesService.regenerate(
             String(user.sub),
-            messageId,
+            String(messageId),
         );
     }
 
@@ -97,10 +99,10 @@ export class MessagesController {
     @Header('Connection', 'keep-alive')
     @Header('X-Accel-Buffering', 'no')
     @RateLimit('messages')
-    @UseGuards(RateLimitGuard)
+    @UseGuards(AgeConfirmedGuard, RateLimitGuard)
     async createAndStream(
         @CurrentUser() user: JwtPayload,
-        @Param('id') conversationId: string,
+        @Param('id', ParseEntityIdPipe) conversationId: number,
         @Body() dto: CreateMessageDto,
         @Req() request: Request,
         @Res() response: Response,
@@ -113,16 +115,16 @@ export class MessagesController {
             () => key
                 ? this.messagesService.prepareSend(
                     String(user.sub),
-                    conversationId,
+                    String(conversationId),
                     key,
                 )
                 : this.messagesService.assertCanReply(
                     String(user.sub),
-                    conversationId,
+                    String(conversationId),
                 ),
             (signal) => this.messagesService.createAndStream(
                 user.sub,
-                conversationId,
+                String(conversationId),
                 dto,
                 signal,
                 key,
@@ -141,11 +143,11 @@ export class MessagesController {
     @Header('Connection', 'keep-alive')
     @Header('X-Accel-Buffering', 'no')
     @RateLimit('messages')
-    @UseGuards(RateLimitGuard)
+    @UseGuards(AgeConfirmedGuard, RateLimitGuard)
     async replyStream(
         @CurrentUser() user: JwtPayload,
-        @Param('conversationId') conversationId: string,
-        @Param('userMessageId') userMessageId: string,
+        @Param('conversationId', ParseEntityIdPipe) conversationId: number,
+        @Param('userMessageId', ParseEntityIdPipe) userMessageId: number,
         @Req() request: Request,
         @Res() response: Response,
     ) {
@@ -154,13 +156,13 @@ export class MessagesController {
             response,
             () => this.messagesService.prepareReplyStream(
                 String(user.sub),
-                conversationId,
-                userMessageId,
+                String(conversationId),
+                String(userMessageId),
             ),
             (signal) => this.messagesService.streamReply(
                 String(user.sub),
-                conversationId,
-                userMessageId,
+                String(conversationId),
+                String(userMessageId),
                 signal,
             ),
         );

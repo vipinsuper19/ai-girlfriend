@@ -15,6 +15,7 @@ test('privacy policy describes the data the API processes', () => {
     assert.match(html, /account email/i);
     assert.match(html, /password hash/i);
     assert.match(html, /Google sign-in/);
+    assert.match(html, /Firebase Auth uid/);
     assert.match(html, /chat/i);
     assert.match(html, /memories/i);
     assert.match(html, /embedding/i);
@@ -25,7 +26,7 @@ test('privacy policy describes the data the API processes', () => {
     assert.match(html, /safety notice/);
     assert.match(html, /age_date_of_birth/);
     assert.match(html, /18\+ confirmation flag/);
-    assert.match(html, /checks the date of birth and then discards it/);
+    assert.match(html, /never receives or stores a date of birth/);
     assert.match(html, /The only thing stored on the server is a nullable <code>ageConfirmedAt<\/code>/);
     assert.doesNotMatch(html, /dateOfBirth/);
     assert.match(html, /Firebase Analytics/);
@@ -60,7 +61,8 @@ test('terms of use match the age gate, safety rules, and account tools', () => {
     assert.match(html, /18 or older/);
     assert.match(html, /age_date_of_birth/);
     assert.match(html, /18\+ confirmation flag/);
-    assert.match(html, /checks the date of birth and then discards it/);
+    assert.match(html, /never receives or stores a date of birth/);
+    assert.match(html, /is not stored/);
     assert.match(html, /nullable <code>ageConfirmedAt<\/code>/);
     assert.doesNotMatch(html, /dateOfBirth/);
     assert.match(html, /romance between adults are allowed/);
@@ -105,6 +107,7 @@ test('account deletion page names the app, the steps, and what is kept', () => {
     assert.match(html, /confirmation link/);
     assert.match(html, /developer verifies the request from the account's email address/);
     assert.match(html, /What is deleted/);
+    assert.match(html, /Firebase Auth user is deleted after the database row/);
     assert.match(html, /message reports/);
     assert.match(html, /ageConfirmedAt/);
     assert.doesNotMatch(html, /stored date of birth/);
@@ -117,4 +120,17 @@ test('account deletion page names the app, the steps, and what is kept', () => {
     assert.match(html, /href="\/terms"/);
     assert.doesNotMatch(html, /Placeholder\./);
     assert.match(html, /Example Developer/);
+});
+
+test('an empty deletion form shows the error on the form page', () => {
+    const html = accountDeletionHtml(
+        {
+            contactEmail: 'privacy@example.com',
+            developerName: 'Example Developer',
+        },
+        'Enter the account email and submit the form again.',
+    );
+    assert.match(html, /role="alert"/);
+    assert.match(html, /Enter the account email and submit the form again/);
+    assert.match(html, /method="post" action="\/account-deletion"/);
 });

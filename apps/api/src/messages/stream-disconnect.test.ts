@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import { Test } from '@nestjs/testing';
 
+import { AgeConfirmedGuard } from '../auth/age-confirmed.guard.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 import { acquireConversationLock } from './conversation-lock.js';
@@ -112,6 +113,8 @@ async function disconnectMidStream() {
                 return true;
             },
         })
+        .overrideGuard(AgeConfirmedGuard)
+        .useValue({ canActivate: () => true })
         .overrideGuard(RateLimitGuard)
         .useValue({ canActivate: () => true })
         .compile();

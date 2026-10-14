@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import { Test } from '@nestjs/testing';
 
+import { AgeConfirmedGuard } from '../auth/age-confirmed.guard.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 import { MessagesController } from './messages.controller.js';
@@ -26,6 +27,8 @@ test('SSE stream sends Cache-Control: no-cache', async () => {
     })
         .overrideGuard(JwtAuthGuard)
         .useValue({ canActivate: () => true })
+        .overrideGuard(AgeConfirmedGuard)
+        .useValue({ canActivate: () => true })
         .overrideGuard(RateLimitGuard)
         .useValue({
             canActivate(context: { switchToHttp(): { getRequest(): { user?: unknown } } }) {
@@ -40,7 +43,7 @@ test('SSE stream sends Cache-Control: no-cache', async () => {
 
     try {
         const base = await app.getUrl();
-        const response = await fetch(`${base}/conversations/c1/messages/stream`, {
+        const response = await fetch(`${base}/conversations/1/messages/stream`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ content: 'hi' }),

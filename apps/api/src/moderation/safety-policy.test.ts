@@ -25,6 +25,7 @@ import {
     hiddenFromModel,
     personaMinorAge,
     personaText,
+    PERSONA_MINOR_MESSAGE,
     PERSONA_REJECTION_MESSAGE,
     priorUserTexts,
     REFUSAL_MESSAGE,
@@ -390,7 +391,8 @@ test('hate is left to the classifier, and the crisis core stays narrow', () => {
         }),
         true,
     );
-    assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: { safety: { action: 'refuse', code: 'content_policy', message: REFUSAL_MESSAGE } } }), false);
+    // Canned assistant refusals stay out of the model prompt too (#35).
+    assert.equal(hiddenFromModel({ role: 'ASSISTANT', metadata: { safety: { action: 'refuse', code: 'content_policy', message: REFUSAL_MESSAGE } } }), true);
 });
 
 test('a stored minor flag is not a six-message window', () => {
@@ -524,8 +526,9 @@ test('adult ages and everyday school talk stay allowed', () => {
     for (const [text, surface] of allowed) {
         assert.deepEqual(assessLocal(text, surface), [], `${surface}: ${text}`);
     }
-    assert.match(PERSONA_REJECTION_MESSAGE, /adult/);
-    assert.match(PERSONA_REJECTION_MESSAGE, /minors/);
+    assert.match(PERSONA_MINOR_MESSAGE, /adult/);
+    assert.match(PERSONA_MINOR_MESSAGE, /minors/);
+    assert.equal(/minors/.test(PERSONA_REJECTION_MESSAGE), false);
 });
 
 test('production refuses to boot with moderation disabled, and an unset flag stays on', () => {

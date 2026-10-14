@@ -5,7 +5,7 @@ import { type ArgumentsHost } from '@nestjs/common';
 import type { ContentModerator } from '../moderation/content-moderator.js';
 import { ModerationService } from '../moderation/moderation.service.js';
 import { safetyConfigFromEnv } from '../moderation/safety.config.js';
-import { PERSONA_REJECTION_MESSAGE } from '../moderation/safety-policy.js';
+import { PERSONA_MINOR_MESSAGE, PERSONA_REJECTION_MESSAGE } from '../moderation/safety-policy.js';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter.js';
 import { CompanionGender } from './dto/create-avatar.dto.js';
 import { AvatarsService } from './avatars.service.js';
@@ -51,7 +51,7 @@ test('an unsafe persona is rejected before any companion row is written', async 
             systemPrompt: "I'm 12 years old",
         }),
         (error: unknown) => {
-            assert.equal(error instanceof Error && error.message, PERSONA_REJECTION_MESSAGE);
+            assert.equal(error instanceof Error && error.message, PERSONA_MINOR_MESSAGE);
             return true;
         },
     );
@@ -174,7 +174,7 @@ test('the persona rejection uses the API error code the client already reads', a
             new HttpExceptionFilter().catch(error, host);
             assert.equal(captured?.statusCode, 400);
             assert.equal(captured?.code, 'UNSAFE_PERSONA');
-            assert.equal(captured?.message, PERSONA_REJECTION_MESSAGE);
+            assert.equal(captured?.message, PERSONA_MINOR_MESSAGE);
             return true;
         },
     );

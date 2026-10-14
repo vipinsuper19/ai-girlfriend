@@ -44,13 +44,13 @@ export function privacyHtml(identity: LegalIdentity): string {
 ${contactBlock(identity)}
 
 <h2>Age check</h2>
-<p>Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server checks the date of birth and then discards it. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
+<p>Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server never receives or stores a date of birth. When the person attests they are 18 or older, the server stores the time of that attestation. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
 
 <h2>Account email and password</h2>
 <p>Creating an account stores your account email. If you sign up with a password, the server stores a password hash, not the password itself. Your display name is stored when you set one.</p>
 
 <h2>Google sign-in</h2>
-<p>Google sign-in uses a Google or Firebase ID token. The server keeps the Google account id, the verified Google email, the name Google sends, and the provider payload on the linked account. A Google sign-in does not take over an existing email-and-password account with the same email.</p>
+<p>Google sign-in uses a Google or Firebase ID token. The server keeps the Google account id, the verified Google email, the name Google sends, and the provider payload on the linked account. A Firebase token also stores the Firebase Auth uid so that Firebase user can be removed with the account. A Google sign-in does not take over an existing email-and-password account with the same email.</p>
 
 <h2>Chat messages</h2>
 <p>Messages you send and replies the companion sends are stored with the conversation. That includes the text, the role, optional message metadata (such as the model used), and links to any audio or image attached to the message.</p>
@@ -62,7 +62,7 @@ ${contactBlock(identity)}
 <p>Companion portraits, voice recordings, and generated gallery images are private files. In production they are objects in a private Supabase Storage bucket. The database keeps a stable path: a portrait under <code>uploads/companions</code> named with the companion id, a generated image under <code>uploads/images/</code> and the account id, or voice audio under <code>uploads/voice/</code> and the account id. The app reads a file with a short-lived signed URL. The bucket is not public. Voice notes are sent to Google Gemini for speech-to-text, and spoken replies are synthesized by Gemini text-to-speech. The current public build can hide voice and the gallery. When those features are on, the audio, the transcript, the image prompt, and the image file are processed and stored as described here.</p>
 
 <h2>Chat, Gemini, and safety checks</h2>
-<p>Chat replies are written by Google Gemini, so the user message and the conversation sent with it go to Gemini. Memory embeddings, image generation, speech-to-text, and text-to-speech are also sent to Google Gemini, with the text or audio that request needs. Before a reply is shown, the user message and the reply text are sent to a safety check. When <code>OPENAI_API_KEY</code> is set, that check is OpenAI's moderation API. When that key is not set and a Gemini key is set, the same text is sent to Gemini for the check instead. A flagged user message is kept, and a safety notice is stored in its metadata. A flagged reply is kept too, as the refusal text plus that safety notice. The OpenAI chat client is not the provider that writes replies. Google and OpenAI process those requests under their own terms. This app does not receive your payment details from them.</p>
+<p>Chat replies are written by Google Gemini, so the user message and the conversation sent with it go to Gemini. Memory embeddings, image generation, speech-to-text, and text-to-speech are also sent to Google Gemini, with the text or audio that request needs. Before a reply is shown, the user message and the reply text are sent to a safety check. When <code>OPENAI_API_KEY</code> is set, that check is OpenAI's moderation API. When that key is not set and a Gemini key is set, the same text is sent to Gemini for the check instead. A flagged user message is kept, and a safety notice is stored in its metadata. A refusal, crisis reply, or temporary safety error is shown once and is not stored as a message. The OpenAI chat client is not the provider that writes replies. Google and OpenAI process those requests under their own terms. This app does not receive your payment details from them.</p>
 
 <h2>Message reports</h2>
 <p>You can report an AI reply. The report stores a snapshot of that message's text, the reason, and an optional note. The report belongs to your account.</p>
@@ -95,11 +95,11 @@ export function termsHtml(identity: LegalIdentity): string {
 ${contactBlock(identity)}
 
 <h2>18 or older</h2>
-<p>You must be 18 or older to use ${APP_NAME}. Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server checks the date of birth and then discards it. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
+<p>You must be 18 or older to use ${APP_NAME}. Signup asks for a date of birth and requires age 18 or older. On the phone, the date of birth is stored only as ciphertext sealed with the Android Keystore (key alias <code>age_date_of_birth</code>). The app also stores, in its private on-device preferences, an 18+ confirmation flag, the time that flag was set, and a subject id for the signed-in account. Signing out and deleting the account clear that on-device store. The server never receives or stores a date of birth. When the person attests they are 18 or older, the server stores the time of that attestation. The only thing stored on the server is a nullable <code>ageConfirmedAt</code>.</p>
 
 <h2>Content</h2>
 <p>Flirting, affection, and romance between adults are allowed. Explicit sexual content is not: graphic acts, sexual body descriptions, and explicit roleplay are refused, and the reply you see is a short refusal instead of that content. Sexual or romantic content involving anyone under 18 is refused. A companion described as under 18, or with sexual content involving a minor, is not saved. Hate, instructions for illegal harm, and attempts to bypass these rules are refused.</p>
-<p>A message you send that breaks these rules stays in the thread you can read, with a safety notice, and is left out of later replies. A reply that breaks them is saved as the refusal text, or as the crisis note below, plus that safety notice. Refusing a message does not by itself suspend or delete the account.</p>
+<p>A message you send that breaks these rules stays in the thread you can read, with a safety notice, and is left out of later replies. A refusal, crisis reply, or temporary safety error is shown once and is not stored. Refusing a message does not by itself suspend or delete the account.</p>
 
 <h2>AI replies</h2>
 <p>Chat replies are written by Google Gemini. They are generated text. They can be wrong. The companion is not a real person. A reply is not professional, medical, legal, or financial advice, and the companion is not a clinician or an emergency service.</p>
@@ -124,7 +124,7 @@ ${contactBlock(identity)}
 `);
 }
 
-export function accountDeletionHtml(identity: LegalIdentity): string {
+export function accountDeletionHtml(identity: LegalIdentity, formError?: string): string {
     const days = String(DELETION_REQUEST_RETENTION_DAYS);
     const email = escapeHtml(identity.contactEmail);
     const mailto = contactEmailIsConfigured(identity.contactEmail)
@@ -142,6 +142,7 @@ ${contactBlock(identity)}
 </ol>
 <p>The form does not delete the account by itself. It stores a request and emails a confirmation link to that account address. The request is confirmed only when the link is opened, which shows the request came from someone who can read that inbox. If that email cannot be sent, the developer verifies the request from the account's email address before deleting. The matching account is deleted within ${days} days of a confirmed request.</p>
 
+${formError ? `<p role="alert">${escapeHtml(formError)}</p>` : ''}
 <form method="post" action="/account-deletion">
 <p><label>Account email<br><input name="email" type="email" required autocomplete="email"></label></p>
 <p><label>Anything else we should know (optional)<br><textarea name="note" maxlength="2000" rows="4"></textarea></label></p>
@@ -149,7 +150,7 @@ ${contactBlock(identity)}
 </form>
 
 <h2>What is deleted</h2>
-<p>Deleting the account removes the user row. The database then removes the linked records: the email, display name, password hash, and any stored age-confirmation time (<code>ageConfirmedAt</code>); the Google sign-in link; refresh sessions; companions; conversations and chat messages; message reports (the message snapshot, the reason, and the note); memories and embeddings; image records; call records; the subscription rows we stored; usage records; and push device tokens. Web account-deletion requests stored for that account email are removed in the same step. Private portrait, image, and voice files for that account are deleted from storage: portraits whose names start with the companion id, generated images under that account id, and voice files under that account id. The on-device date of birth and 18+ flag are cleared on the phone. Cancel a Play subscription in Google Play. Deleting the account does not cancel it.</p>
+<p>Deleting the account removes the user row. The database then removes the linked records: the email, display name, password hash, and any stored age-confirmation time (<code>ageConfirmedAt</code>); the Google sign-in link; refresh sessions; companions; conversations and chat messages; message reports (the message snapshot, the reason, and the note); memories and embeddings; image records; call records; the subscription rows we stored; usage records; and push device tokens. Web account-deletion requests stored for that account email are removed in the same step. Private portrait, image, and voice files for that account are deleted from storage: portraits whose names start with the companion id, generated images under that account id, and voice files under that account id. When the account used Firebase sign-in, the Firebase Auth user is deleted after the database row. If Firebase is unavailable, account deletion still completes and the Firebase user is removed on a later retry. A Firebase user that is already gone is treated as deleted. The on-device date of birth and 18+ flag are cleared on the phone. Cancel a Play subscription in Google Play. Deleting the account does not cancel it.</p>
 
 <h2>What is kept, and for how long</h2>
 <ul>

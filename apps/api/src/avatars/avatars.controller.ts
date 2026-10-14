@@ -20,6 +20,8 @@ import {
 
 import { FileInterceptor } from '@nestjs/platform-express';
 
+import { AgeConfirmedGuard } from '../auth/age-confirmed.guard.js';
+import { ParseEntityIdPipe } from '../common/pipes/parse-entity-id.pipe.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -37,6 +39,7 @@ export class AvatarsController {
     ) { }
 
     @Post()
+    @UseGuards(AgeConfirmedGuard)
     async create(
         @CurrentUser() user: JwtPayload,
         @Body() dto: CreateAvatarDto,
@@ -61,23 +64,23 @@ export class AvatarsController {
     @Get(':id')
     async findOne(
         @CurrentUser() user: JwtPayload,
-        @Param('id') companionId: string,
+        @Param('id', ParseEntityIdPipe) companionId: number,
     ) {
         return this.avatarsService.getOne(
             String(user.sub),
-            companionId,
+            String(companionId),
         );
     }
 
     @Patch(':id')
     async update(
         @CurrentUser() user: JwtPayload,
-        @Param('id') avatarId: string,
+        @Param('id', ParseEntityIdPipe) avatarId: number,
         @Body() dto: UpdateAvatarDto,
     ) {
         return this.avatarsService.update(
             String(user.sub),
-            avatarId,
+            String(avatarId),
             dto,
         );
     }
@@ -85,22 +88,22 @@ export class AvatarsController {
     @Delete(':id')
     async remove(
         @CurrentUser() user: JwtPayload,
-        @Param('id') avatarId: string,
+        @Param('id', ParseEntityIdPipe) avatarId: number,
     ) {
         return this.avatarsService.remove(
             String(user.sub),
-            avatarId,
+            String(avatarId),
         );
     }
 
     @Post(':id/restore')
     async restore(
         @CurrentUser() user: JwtPayload,
-        @Param('id') companionId: string,
+        @Param('id', ParseEntityIdPipe) companionId: number,
     ) {
         return this.avatarsService.restore(
             String(user.sub),
-            companionId,
+            String(companionId),
         );
     }
 
@@ -110,7 +113,7 @@ export class AvatarsController {
     )
     async uploadAvatar(
         @CurrentUser() user: JwtPayload,
-        @Param('id') companionId: string,
+        @Param('id', ParseEntityIdPipe) companionId: number,
         @UploadedFile(
             new ParseFilePipe({
                 validators: [
@@ -127,7 +130,7 @@ export class AvatarsController {
     ) {
         return this.avatarsService.uploadAvatar(
             user.sub,
-            companionId,
+            String(companionId),
             file,
         );
     }

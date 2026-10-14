@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { exportRows, flagColumn, userView } from './user-view.js';
+import { exportRows, flagColumn, sessionUser, userView } from './user-view.js';
 
 test('flags read as booleans', () => {
     const view = userView({
@@ -23,14 +23,33 @@ test('turning a flag on keeps the first time and off clears it', () => {
     assert.equal(flagColumn(undefined, null, now), undefined);
 });
 
-test('the profile view does not echo the date of birth', () => {
-    const view = userView({
+test('the profile and session user expose ageConfirmedAt and never a date of birth', () => {
+    const confirmed = userView({
         id: 3,
         email: 'a@b.co',
         ageConfirmedAt: '2026-10-12T15:04:05.000Z',
     });
-    assert.equal('dateOfBirth' in view, false);
-    assert.equal('ageConfirmedAt' in view, false);
+    assert.equal(confirmed.ageConfirmedAt, '2026-10-12T15:04:05.000Z');
+    assert.equal('dateOfBirth' in confirmed, false);
+
+    const unset = userView({ id: 3, email: 'a@b.co', ageConfirmedAt: null });
+    assert.equal(unset.ageConfirmedAt, null);
+
+    assert.deepEqual(
+        sessionUser({
+            id: 3,
+            email: 'a@b.co',
+            displayName: 'Ana',
+            ageConfirmedAt: new Date('2026-10-12T15:04:05.000Z'),
+        }),
+        {
+            id: 3,
+            email: 'a@b.co',
+            displayName: 'Ana',
+            ageConfirmedAt: '2026-10-12T15:04:05.000Z',
+        },
+    );
+    assert.equal(sessionUser({ id: 3, email: 'a@b.co' }).ageConfirmedAt, null);
 });
 
 test('export leaves out credentials, tokens, and vectors', () => {
