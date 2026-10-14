@@ -25,11 +25,15 @@ import {
     type SafetyLogContext,
     type SafetyNotice,
 } from './safety-policy.js';
+<<<<<<< HEAD
 import {
     filteredClassifierCategories,
     resolveMinorUnconfirmed,
     withoutFollowUpInjection,
 } from './filtered-verdict.js';
+=======
+import { filteredClassifierCategories, resolveMinorUnconfirmed } from './filtered-verdict.js';
+>>>>>>> origin/main
 import { textChunks } from './text-windows.js';
 import { UnsafePersonaException } from './unsafe-persona.exception.js';
 
@@ -106,10 +110,14 @@ export class ModerationService {
                     const remote = await this.provider.moderate(chunk);
                     categories = merge(
                         categories,
+<<<<<<< HEAD
                         withoutFollowUpInjection(
                             resolveMinorUnconfirmed(remote.categories, [trimmed, chunk], ctx),
                             trimmed,
                         ),
+=======
+                        resolveMinorUnconfirmed(remote.categories, [trimmed, chunk], ctx),
+>>>>>>> origin/main
                     );
                     if (categories.length > 0) break;
                 } catch (error) {
@@ -200,7 +208,11 @@ export class ModerationService {
             if (recalledUser) {
                 userCategories = merge(
                     userCategories,
+<<<<<<< HEAD
                     withoutFollowUpInjection(resolveMinorUnconfirmed(recalledUser, [text], ctx), text),
+=======
+                    resolveMinorUnconfirmed(recalledUser, [text], ctx),
+>>>>>>> origin/main
                 );
             }
             else if (text) pending.push({ id: 'user', text });
@@ -226,14 +238,21 @@ export class ModerationService {
                         if (!scored.categories.has(block.id)) continue;
                         const raw = scored.categories.get(block.id) ?? [];
                         if (scored.cache) this.remember(block.text, raw);
+<<<<<<< HEAD
                         const resolved = resolveMinorUnconfirmed(
+=======
+                        const remote = resolveMinorUnconfirmed(
+>>>>>>> origin/main
                             raw,
                             [block.text],
                             block.id === 'user' ? ctx : {},
                         );
+<<<<<<< HEAD
                         const remote = block.id === 'user'
                             ? withoutFollowUpInjection(resolved, block.text)
                             : resolved;
+=======
+>>>>>>> origin/main
                         scoredIds.add(block.id);
                         if (block.id === 'user') userCategories = merge(userCategories, remote);
                         else {
@@ -354,6 +373,7 @@ export class ModerationService {
             return { categories, cache: true };
         } catch (error) {
             if (isOverLimitError(error)) return this.overLimitVerdict(blocks);
+<<<<<<< HEAD
             // A recalled memory (for example an old refused injection) can get
             // the whole batch filtered. Score the user turn alone once; the
             // memories stay unscored and are left out of the prompt.
@@ -361,6 +381,8 @@ export class ModerationService {
             if (isEmptyClassifierResponse(error) && blocks.length > 1 && user) {
                 return this.scoreBody([user], ctx, chars);
             }
+=======
+>>>>>>> origin/main
             return this.classifierFailure(error, blocks, ctx, chars);
         }
     }

@@ -1,10 +1,14 @@
 import { FilteredClassifierError } from './gemini-moderator.js';
+<<<<<<< HEAD
 import {
     assessLocal,
     hasMinorCue,
     type SafetyCategory,
     type SafetyLogContext,
 } from './safety-policy.js';
+=======
+import { hasMinorCue, type SafetyCategory, type SafetyLogContext } from './safety-policy.js';
+>>>>>>> origin/main
 
 /**
  * The one verdict for an empty or filtered classifier result. Chat
@@ -46,6 +50,7 @@ export function resolveMinorUnconfirmed(
     }
     return rest;
 }
+<<<<<<< HEAD
 
 const FOLLOW_UP_OPENER =
     /^\s*(?:ok(?:ay)?|k|sorry|soz|my\s+bad|never\s*mind|nvm|forget\s+(?:it|that|about\s+it|what\s+i\s+said)|fine|alright|all\s+right|anyway|chalo|theek\s+hai|thik\s+hai|accha|achha|haan|leave\s+it|no\s+worries|oops)\b/i;
@@ -69,3 +74,5 @@ export function withoutFollowUpInjection(
     if (assessLocal(trimmed, 'input').includes('jailbreak')) return [...categories];
     return categories.filter((category) => category !== 'jailbreak');
 }
+=======
+>>>>>>> origin/main
