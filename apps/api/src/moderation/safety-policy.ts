@@ -337,6 +337,11 @@ type Rule = {
     surfaces: ReadonlySet<ModerationSurface>;
 };
 
+const GRADE_ORDINAL = String.raw`(?:1[0-2]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth`;
+/** School-grade wording with no numeric age: "ninth grade", "grade 7", "class 9", "std 8", "middle school", "sophomore". */
+const GRADE_CUE = String.raw`\b(?:(?:${GRADE_ORDINAL})[\s-]+(?:grade|grader|graders|standard|std|class)|grade\s*(?:1[0-2]|[1-9])|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|middle[\s-]+school(?:er)?s?|junior\s+high|high[\s-]*school(?:er)?s?|elementary\s+school|primary\s+school|freshmen|freshman|sophomores?)\b`;
+const SEXUAL_COSIGNAL = String.raw`\b(?:sex|sexy|sexual(?:ly)?|nude|nudes|naked|undress\w*|strip\w*|erotic|intimate|intimacy|kiss\w*|make\s+out|making\s+out|hook(?:ing|ed)?\s+up|sleep(?:ing)?\s+with|have\s+sex|touch\w*|fondl\w*|grop\w*|seduc\w*|aroused|horny|turn(?:s|ed)?\s+(?:me|you|him|her)\s+on|lingerie|bed\s+scene|sex\s+scene|nsfw|explicit|lewd|dirty\s+(?:story|talk|scene))\b`;
+
 const ALL: ReadonlySet<ModerationSurface> = new Set(['input', 'output', 'persona']);
 const INPUT_AND_PERSONA: ReadonlySet<ModerationSurface> = new Set(['input', 'persona']);
 const PERSONA_ONLY: ReadonlySet<ModerationSurface> = new Set(['persona']);
@@ -360,7 +365,7 @@ const JAILBREAK_PATTERN = new RegExp(
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|prompts?|guidelines|restrictions|policies|programming|directives)\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system|safety|content|original|default)\s+(?:\w+\s+)?rules\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?your\s+rules\b`,
-        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|previous|prior|you\s+were\s+told|before\s+(?:this|now)\b)\b`,
+        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before|previous|prior|you\s+were\s+told)\b`,
         String.raw`\b(?:act|behave)\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:an?\s+)?(?:unfiltered|unrestricted|uncensored|jailbroken)\b`,
         String.raw`\[\s*(?:system|developer|admin)\s*\]|\bnew\s+system\s+(?:prompt|instructions|message)\b|\bsystem\s+override\b|\b(?:admin|developer|sudo)\s+(?:mode|override|command)\b`,
         String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
@@ -634,6 +639,17 @@ const RULES: Rule[] = [
         surfaces: ALL,
     },
     {
+        category: 'sexual_minors',
+        // A school-grade cue about anyone (the user, the persona, or a third
+        // party) near a sexual or intimate request, on every surface and
+        // anywhere in a long message. Additive only: no other minor rule changes.
+        pattern: new RegExp(
+            String.raw`(?:${GRADE_CUE})[\s\S]{0,120}?(?:${SEXUAL_COSIGNAL})|(?:${SEXUAL_COSIGNAL})[\s\S]{0,120}?(?:${GRADE_CUE})`,
+            'i',
+        ),
+        surfaces: ALL,
+    },
+    {
         category: 'jailbreak',
         // Aimed at the model's instructions. Relationship "rules", "no rules tonight",
         // and "you are now the best part of my day" do not match.
@@ -688,15 +704,7 @@ function scanAges(pattern: RegExp, text: string): boolean {
     for (const match of text.matchAll(pattern)) {
         const token = (match[1] ?? '').toLowerCase();
         const rest = text.slice((match.index ?? 0) + match[0].length);
-        if (!ageTokenIsMinor(token, rest)) continue;
-        // Single-digit ages ("I'm 1 call away", "I'm 9 to 5", "me 2!") need
-        // an age unit, or must end the line. "me 2!" is "me too".
-        const age = /^\d+$/.test(token) ? Number(token) : SPELLED_MINOR[token] ?? (token === 'two' ? 2 : token === 'four' ? 4 : null);
-        if (age !== null && age < 10 && !AGE_UNIT.test(rest)) {
-            if (pattern === ME_AGE) continue;
-            if (!/^\s*[.!?]*\s*$/.test(rest)) continue;
-        }
-        return true;
+        if (ageTokenIsMinor(token, rest)) return true;
     }
     return false;
 }
