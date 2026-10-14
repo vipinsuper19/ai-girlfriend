@@ -349,7 +349,7 @@ const UNDER_18_AGE_WORDS =
 const SPELLED_TEEN_AGES =
     'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven';
 const MINOR_AGE_UNIT = String.raw`(?:years?[\s-]*old|y\/o|yo)`;
-const RELATIVE_NOUN = String.raw`sisters?|brothers?|daughters?|sons?|nephews?|nieces?|cousins?|grandsons?|granddaughters?|grandchildren|grandchild`;
+const RELATIVE_NOUN = String.raw`beta|beti|bete|bhai|behen|bahen|bhatija|bhatiji|bhanja|bhanji|bachcha|bachche|bachchi|sisters?|brothers?|daughters?|sons?|nephews?|nieces?|cousins?|grandsons?|granddaughters?|grandchildren|grandchild`;
 
 /**
  * Instructions aimed at the model. Couples talking about their own rules,
@@ -593,10 +593,11 @@ const RULES: Rule[] = [
     },
     {
         category: 'minor',
-        // Spelled teen ages. A following year-old unit is persona-only, so a
-        // relative ("sixteen-year-old nephew") is not a chat block on its own.
+        // Spelled teen ages need an age or first-person context in chat
+        // ("I'm fifteen", "she is sixteen", a lone "fifteen"). "seventeen red
+        // roses" and "at eleven" stay ordinary. A year-old unit is persona-only.
         pattern: new RegExp(
-            String.raw`(?<!\b(?:at|by|around|till|until|before|after|past|to|from|since|about)\s+)\b(?:${SPELLED_TEEN_AGES})\b(?![\s-]*${MINOR_AGE_UNIT})(?!\s*(?:-|:|o'?clock|thirty|fifteen|forty|baje|tonight|today|tomorrow|am\b|pm\b|a\.m|p\.m|in\s+the\s+(?:morning|evening|night)|at\s+night|roses?|kisses|reasons?|things|ways|dates?|songs?|stars?|hugs?))(?!\s+(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?|years?(?!\s*old)|times|percent|rupees|dollars|bucks|pages?|chapters?|miles?|km|kilos?|people|of\s+(?:them|us)))`,
+            String.raw`(?:\b(?:i'?m|i\s+am|im|you'?re|you\s+are|she'?s|she\s+is|he'?s|he\s+is|me|age[ds]?|only|just|barely|turned|umar|umr)\s+(?:only\s+|just\s+|barely\s+)?(?:${SPELLED_TEEN_AGES})\b|^\s*(?:${SPELLED_TEEN_AGES})\s*[.!?]*\s*$)`,
             'i',
         ),
         surfaces: INPUT_AND_PERSONA,
@@ -606,6 +607,31 @@ const RULES: Rule[] = [
         pattern:
             /\b(?:nabalig|naabalig|na[- ]balig)\b|\bschool\s*wal[ai]\b|\b(?:main|mai)\s+(?:1[0-7]|[1-9])\s+saal\b|\b(?:pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\s*(?:saal|sal|baras|varsh)\b|नाबालिग|स्कूल\s*वाली/i,
         surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        // "pretend you are 14", "roleplay that I'm fifteen".
+        pattern: new RegExp(
+            String.raw`\b(?:pretend|role-?play|roleplay|act\s+like|imagine)\b[\s\S]{0,40}\b(?:you(?:'re|\s+are)|i(?:'m|\s+am)|she(?:'s|\s+is)|he(?:'s|\s+is))\s+(?:only\s+|just\s+)?(?:a\s+)?(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})\b(?!\s*(?:\+|plus))`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'sexual_minors',
+        // "my girlfriend is 15": a romantic partner under 18.
+        pattern: new RegExp(
+            String.raw`\b(?:girl\s*friend|boy\s*friend|gf|bf|crush|lover|date|partner|wife|husband|bae)(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turned\s+|turns\s+)?(?:only\s+|just\s+|barely\s+)?(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})\b(?![.:]\d)(?!\s*(?:\+|plus|minutes?|mins?|hours?|days?|weeks?|months?|years?\s+(?:older|younger|ago)|feet|foot|ft|inch(?:es)?|cm|kgs?|kilos?|out\s+of|stars?|times|pm\b|am\b|p\.m|a\.m|o'?clock|baje|tonight|today|tomorrow))`,
+            'i',
+        ),
+        surfaces: ALL,
+    },
+    {
+        category: 'sexual_minors',
+        // A school-age persona with a sexual or romantic co-signal.
+        pattern:
+            /\b(?:school\s*girls?|school\s*boys?|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grader?s?|middle\s+schooler|teen(?:age)?\s+girl)\b[\s\S]{0,60}\b(?:kiss|kissing|sexy|sex|sexual|nude|naked|flirt|undress|make\s+out|romantic|erotic)\b|\b(?:kiss|kissing|sexy|sex|sexual|nude|naked|flirt|undress|romantic|erotic)\b[\s\S]{0,60}\b(?:school\s*girls?|school\s*boys?|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grader?s?|middle\s+schooler|teen(?:age)?\s+girl)\b/i,
+        surfaces: ALL,
     },
     {
         category: 'jailbreak',
@@ -717,9 +743,32 @@ const MINOR_CUE = new RegExp(
 );
 const MINOR_CUE_DEVANAGARI = /बच्च|बच्ची|बच्चा|नाबालिग|किशोर|स्कूल|कक्षा|छोटी|बेटी|बेटा|साल\s*(?:की|का)|उम्र/;
 
+/**
+ * Romance and everyday idioms that only look like minor cues: "old school",
+ * "sweet sixteen", "chhoti si baat", "gyarah baje", "high school sweethearts",
+ * "I feel like a teenager again". Removed before the minor checks only.
+ */
+export function withoutRomanceIdioms(text: string): string {
+    return text
+        .replace(/\bold[\s-]+school\b/gi, ' ')
+        .replace(/\bsweet\s+sixteen\b/gi, ' ')
+        .replace(/\b(?:chhoti|choti|chhota|chota)\s+(?:si|sa)\b/gi, ' ')
+        .replace(/\b(?:ek|do|teen|char|paanch|chhe|saat|aath|nau|das|gyarah|barah|baarah)\s+baje\b/gi, ' ')
+        .replace(/\bhigh[\s-]*school\s+(?:sweethearts?|crush(?:es)?|reunion|days|memories|friends?)\b/gi, ' ')
+        .replace(/\b(?:since|back\s+in|in|from)\s+(?:high\s+)?school\s+(?:days|times)\b/gi, ' ')
+        .replace(/\bschool\s+(?:ki|ke)\s+(?:yaadein|yaad|dino|din)\b/gi, ' ')
+        .replace(
+            /\b(?:feel|feels|felt|feeling|giggl\w*|blush\w*|grin\w*|racing|races|race|nervous)\s+(?:like\s+)?(?:an?\s+)?(?:teen(?:ager)?|schoolboy|school\s*kid)(?:\s+(?:in\s+love|again|with\s+a\s+crush))?\b/gi,
+            ' ',
+        )
+        .replace(/\blike\s+an?\s+(?:teen(?:ager)?|schoolboy)\s+(?:in\s+love|again|with\s+a\s+crush)\b/gi, ' ')
+        .replace(/\b(?:seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven)\s+(?:red\s+|pink\s+|white\s+)?(?:roses?|kisses|reasons?|songs?|stars?|hugs?|candles?|messages?|texts?|photos?)\b/gi, ' ');
+}
+
 export function hasMinorCue(...texts: ReadonlyArray<string | null | undefined>): boolean {
-    for (const text of texts) {
-        if (!text || !text.trim()) continue;
+    for (const raw of texts) {
+        if (!raw || !raw.trim()) continue;
+        const text = withoutRomanceIdioms(raw);
         for (const form of safetyForms(text)) {
             MINOR_CUE.lastIndex = 0;
             if (MINOR_CUE.test(form) || MINOR_CUE_DEVANAGARI.test(form)) return true;
@@ -739,7 +788,9 @@ export function assessLocal(
     for (const form of safetyForms(text)) {
         // A relative's age in ordinary chat is not a minor claim. Sexual and
         // romantic co-signals stay on the original text, so they still block.
-        const scan = surface === 'input' ? withoutRelativeAgeMentions(form) : form;
+        const scan = surface === 'input'
+            ? withoutRelativeAgeMentions(withoutRomanceIdioms(form))
+            : form;
         collectRuleHits(scan, surface, found);
         if (scan !== form) collectRuleHits(form, surface, found, true);
         if (
@@ -775,13 +826,13 @@ function collectRuleHits(
  * The caller's original text is still scanned for sexual co-signals.
  */
 function withoutRelativeAgeMentions(text: string): string {
-    const lead = String.raw`\b(?:my|our|his|her|their)\s+(?:little\s+|younger\s+|older\s+)?`;
+    const lead = String.raw`\b(?:my|our|his|her|their|mera|meri|mere|hamara|hamari|hamare|uska|uski|unka|unki)\s+(?:little\s+|younger\s+|older\s+|chhota\s+|chhoti\s+|chota\s+|choti\s+)?`;
     const age = String.raw`(?:${UNDER_18_AGE_WORDS}|1[0-7]|[1-9])`;
     const ageUnit = String.raw`${age}[\s-]*${MINOR_AGE_UNIT}`;
     const school = String.raw`class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class`;
     const beforeNoun = new RegExp(String.raw`${lead}(?:${ageUnit})\s+(?:${RELATIVE_NOUN})\b`, 'gi');
     const afterNoun = new RegExp(
-        String.raw`${lead}(?:${RELATIVE_NOUN})(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turns\s+|turning\s+)?(?:only\s+|just\s+)?(?:a\s+|an\s+|in\s+)?(?:${school}|${age}(?:[\s-]*${MINOR_AGE_UNIT})?)\b`,
+        String.raw`${lead}(?:${RELATIVE_NOUN})(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turns\s+|turning\s+|starts\s+|started\s+|is\s+in\s+|goes\s+to\s+)?(?:only\s+|just\s+)?(?:a\s+|an\s+|in\s+)?(?:${school}|${age}(?:[\s-]*${MINOR_AGE_UNIT})?)\b`,
         'gi',
     );
     return text.replace(beforeNoun, ' ').replace(afterNoun, ' ');
