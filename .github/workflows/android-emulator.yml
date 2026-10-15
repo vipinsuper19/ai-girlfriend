@@ -314,7 +314,7 @@ jobs:
           key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
 
       - name: Warm up API
-            run: |
+        run: |
           set -u
           api_base="${API_BASE_URL%/}"
           case "$api_base" in
