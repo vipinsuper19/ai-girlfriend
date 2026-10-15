@@ -474,16 +474,6 @@ fun SignUpContent(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         isError = dobMessage != null,
-                        supportingText = {
-                            if (dobMessage != null) {
-                                Text(
-                                    text = dobMessage,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.testId("signup_age_error"),
-                                )
-                            }
-                        },
                         colors = TextFieldDefaults.colors(
                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
                             unfocusedIndicatorColor = Color.LightGray,
@@ -498,6 +488,18 @@ fun SignUpContent(
                             .debugDobValue(dateOfBirth?.let(::formatDateOfBirth).orEmpty())
                             .clickable { showDatePicker = true }
                             .semantics { contentDescription = "Date of birth" },
+                    )
+                }
+                // Outside the date field. Its overlay covers supporting text, so
+                // Maestro never sees signup_age_error there.
+                if (dobMessage != null) {
+                    Text(
+                        text = dobMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testId("signup_age_error"),
                     )
                 }
 

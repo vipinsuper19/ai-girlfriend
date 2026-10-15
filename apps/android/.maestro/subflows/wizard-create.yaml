@@ -8,16 +8,20 @@ tags:
 - tapOn:
     id: wizard_start
 - extendedWaitUntil:
-    visible: "How should she look"
+    visible: "How should she look[?]"
     timeout: 15000
+- assertVisible:
+    id: wizard_step
 - assertVisible: "Step 1 of 3"
 - tapOn: "Illustrated"
 - takeScreenshot: ${SHOT}-wizard-look
 - tapOn:
     id: wizard_continue
 - extendedWaitUntil:
-    visible: "Who is she"
+    visible: "Who is she[?]"
     timeout: 15000
+- assertVisible:
+    id: wizard_step
 - assertVisible: "Step 2 of 3"
 - scrollUntilVisible:
     element:
@@ -32,6 +36,8 @@ tags:
     visible:
       id: wizard_name
     timeout: 15000
+- assertVisible:
+    id: wizard_step
 - assertVisible: "Step 3 of 3"
 - tapOn:
     id: wizard_name

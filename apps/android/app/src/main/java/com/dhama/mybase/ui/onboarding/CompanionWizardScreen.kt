@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -54,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -97,6 +97,9 @@ fun CompanionWizardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // The header sat under the status bar. The bar is transparent, so the
+            // step label was painted, but accessibility omitted it.
+            .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         if (state.step == WizardStep.Intro) {
@@ -220,23 +223,29 @@ private fun StepHeader(
     val index = step.progressIndex(FeatureFlags.build.voice)
     val total = wizardStepTotal(FeatureFlags.build.voice)
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        val stepLabel = "Step $index of $total"
+        // Text inside this Row never showed up in the accessibility tree, even
+        // with its own test tag. Draw the label over the row instead.
+        Box(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Spacer(Modifier.weight(1f))
+                if (showSkip) {
+                    TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
             }
             Text(
-                "Step ${index} of $total",
+                stepLabel,
                 modifier = Modifier
-                    .weight(1f)
-                    .semantics { stateDescription = "Step $index of $total" },
+                    .align(Alignment.Center)
+                    .testId("wizard_step"),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (showSkip) {
-                TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
-            } else {
-                Spacer(Modifier.width(48.dp))
-            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(total) { segment ->

@@ -44,7 +44,9 @@ class MainActivity : ComponentActivity() {
             val view = LocalView.current
             DisposableEffect(privacy) {
                 val window = view.context.findActivity()?.window
-                if (privacy) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                // Screen privacy blocks screenshots. Debug builds stay capturable so
+                // the emulator job can record the Maestro flows. Release still honors it.
+                if (privacy && !BuildConfig.DEBUG) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 else window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 onDispose { }
             }

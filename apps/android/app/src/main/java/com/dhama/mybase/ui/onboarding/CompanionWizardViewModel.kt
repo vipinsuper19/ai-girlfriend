@@ -1,5 +1,6 @@
 package com.dhama.mybase.ui.onboarding
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -115,6 +116,7 @@ class CompanionWizardViewModel @Inject constructor(
                 _created.emit(Unit)
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
+                Log.w("CompanionWizard", "create failed", error)
                 _state.update {
                     it.copy(
                         creating = false,

@@ -1,0 +1,389 @@
+# Maestro UI flows on an API 34 emulator.
+# Pull requests start Postgres and this repo's API on the runner, with local
+# moderation and LLM_PROVIDER=mock, and point the debug APK at
+# http://10.0.2.2:3001/api/v1/. workflow_dispatch keeps a separate smoke job
+# against the live Render API.
+# This pull request is based on cursor/android-maestro-flows-a17a (PR #34),
+# which owns the flows. The job runs apps/android/.maestro/run-all.sh.
+# It is non-blocking (continue-on-error) and is not a required check.
+# No Play upload steps and no new secrets. PLAY_UPLOAD_ENABLED is untouched.
+name: Android emulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: API base URL baked into the debug APK
+        required: false
+        type: string
+        default: https://ai-girlfriend-tnu3.onrender.com/api/v1/
+  pull_request:
+    paths:
+      - apps/android/**
+      - apps/api/**
+      - .github/workflows/android-emulator.yml
+
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  maestro:
+    name: Maestro flows
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 90
+    # upload-artifact writes to the Actions artifact store, not the repo.
+    permissions:
+      contents: read
+      actions: write
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Emulator alias for the runner. The debug APK is built with this URL.
+      API_BASE_URL: http://10.0.2.2:3001/api/v1/
+      API_LOG: ${{ github.workspace }}/emulator-artifacts/api.log
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app
+      # Throwaway signing material for this job. Not a production secret.
+      JWT_ACCESS_SECRET: ci-emulator-access-secret-0123456789
+      JWT_REFRESH_SECRET: ci-emulator-refresh-secret-0123456789
+      CORS_ORIGIN: http://localhost:3000
+      STORAGE_DRIVER: local
+      MODERATION_ENABLED: "true"
+      MODERATION_PROVIDER: local
+      LLM_PROVIDER: mock
+      FREE_TIER_LLM_PERIOD: day
+      FREE_TIER_LLM_MESSAGE_LIMIT: unlimited
+      FREE_TIER_LLM_TOKEN_LIMIT: unlimited
+      RATE_LIMIT_REGISTER_IP_MAX: "100"
+      RATE_LIMIT_REGISTER_USER_MAX: "100"
+      RATE_LIMIT_LOGIN_IP_MAX: "100"
+      RATE_LIMIT_LOGIN_USER_MAX: "100"
+      RATE_LIMIT_MESSAGES_IP_MAX: "200"
+      RATE_LIMIT_MESSAGES_USER_MAX: "200"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install API dependencies
+        run: pnpm install --frozen-lockfile --filter @ai-girlfriend/api...
+
+      - name: Start local API
+        run: bash apps/api/scripts/start-ci-backend.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Start a virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libpulse0
+          nohup Xvfb :99 -screen 0 1080x2400x24 >/tmp/xvfb.log 2>&1 &
+          sleep 1
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Install the emulator package
+        run: |
+          set -u
+          yes | sdkmanager --licenses >/dev/null || true
+          for attempt in 1 2 3; do
+            if sdkmanager --install emulator --channel=0; then
+              exit 0
+            fi
+            echo "emulator package install failed (attempt ${attempt})"
+            rm -rf "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/emulator"
+            sleep 15
+          done
+          exit 1
+
+      - name: AVD snapshot cache
+        id: avd-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
+
+      - name: Create AVD and generate snapshot
+        id: avd-snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          force-avd-creation: false
+          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Save AVD snapshot cache
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.avd-snapshot.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
+
+      - name: Run Maestro flows
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          disable-spellchecker: true
+          working-directory: apps/android
+          script: bash .maestro/ci-run.sh
+
+      - name: Upload Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-maestro
+          retention-days: 7
+          if-no-files-found: warn
+          path: apps/android/.maestro/out/
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          retention-days: 7
+          if-no-files-found: warn
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-logcat
+          retention-days: 7
+          if-no-files-found: warn
+          path: emulator-artifacts/logcat.txt
+
+      - name: Upload API log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-api-log
+          retention-days: 7
+          if-no-files-found: warn
+          path: emulator-artifacts/api.log
+
+  render-smoke:
+    name: Render API smoke
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: write
+    env:
+      API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://ai-girlfriend-tnu3.onrender.com/api/v1/' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Start a virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libpulse0
+          nohup Xvfb :99 -screen 0 1080x2400x24 >/tmp/xvfb.log 2>&1 &
+          sleep 1
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Install the emulator package
+        run: |
+          set -u
+          yes | sdkmanager --licenses >/dev/null || true
+          for attempt in 1 2 3; do
+            if sdkmanager --install emulator --channel=0; then
+              exit 0
+            fi
+            echo "emulator package install failed (attempt ${attempt})"
+            rm -rf "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/emulator"
+            sleep 15
+          done
+          exit 1
+
+      - name: AVD snapshot cache
+        id: avd-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
+
+      - name: Create AVD and generate snapshot
+        id: avd-snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          force-avd-creation: false
+          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Save AVD snapshot cache
+        if: steps.avd-cache.outputs.cache-hit != 'true' && steps.avd-snapshot.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
+
+      - name: Warm up API
+        continue-on-error: true
+        run: |
+          set -u
+          api_base="${API_BASE_URL%/}"
+          case "$api_base" in
+            */api/v1) origin="${api_base%/api/v1}" ;;
+            *) origin="$api_base" ;;
+          esac
+          health="${origin}/health"
+          echo "Warming ${health} for up to 150s"
+          deadline=$((SECONDS + 150))
+          ok=0
+          attempt=0
+          while (( SECONDS < deadline )); do
+            attempt=$((attempt + 1))
+            code="$(curl -sS -o /tmp/health-body -w '%{http_code}' --max-time 20 "$health" || true)"
+            echo "attempt ${attempt}: HTTP ${code}"
+            if [[ "$code" == "200" ]]; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$ok" != "1" ]]; then
+            echo "::warning::API health did not return 200 at ${health} within 150s. Maestro will still run."
+            cat /tmp/health-body || true
+            exit 1
+          fi
+
+      - name: Run Maestro flows
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          disable-spellchecker: true
+          working-directory: apps/android
+          script: bash .maestro/ci-run.sh
+
+      - name: Upload Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-maestro
+          retention-days: 7
+          if-no-files-found: warn
+          path: apps/android/.maestro/out/
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          retention-days: 7
+          if-no-files-found: warn
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-logcat
+          retention-days: 7
+          if-no-files-found: warn
+          path: emulator-artifacts/logcat.txt

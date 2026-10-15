@@ -36,20 +36,58 @@ network_off() {
   adb shell svc data disable
 }
 
+# Host and port of API_BASE_URL. https URLs without a port use 443.
+api_endpoint() {
+  local rest="${API_BASE_URL#*://}"
+  rest="${rest%%/*}"
+  if [[ "${rest}" == *:* ]]; then
+    API_HOST="${rest%%:*}"
+    API_PORT="${rest##*:}"
+  else
+    API_HOST="${rest}"
+    if [[ "${API_BASE_URL}" == https://* ]]; then
+      API_PORT=443
+    else
+      API_PORT=80
+    fi
+  fi
+}
+
+# Airplane mode is off, and either the API host answers or Android has a
+# validated network. Ping to 8.8.8.8 is not a signal: runners drop that ICMP
+# after airplane mode is off, so a local API at 10.0.2.2 never gets a retry.
+emulator_reaches_api() {
+  local mode
+  mode="$(adb shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r')"
+  [[ "${mode}" == "0" ]] || return 1
+  if adb shell ping -c 1 -W 2 "${API_HOST}" >/dev/null 2>&1; then
+    return 0
+  fi
+  adb shell dumpsys connectivity 2>/dev/null | grep -q "VALIDATED"
+}
+
 network_on() {
   echo "Restoring network with adb."
   adb shell cmd connectivity airplane-mode disable || true
   adb shell svc wifi enable || true
   adb shell svc data enable || true
-  local attempt
+  api_endpoint
+  local attempt hits=0
   for attempt in $(seq 1 30); do
-    if adb shell ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
-      echo "Network is back."
-      return 0
+    if emulator_reaches_api; then
+      hits=$((hits + 1))
+      if [[ "${hits}" -ge 2 ]]; then
+        echo "Network is back (${API_HOST}:${API_PORT})."
+        return 0
+      fi
+    else
+      hits=0
     fi
     sleep 2
   done
-  echo "Network did not respond to ping within 60s." >&2
+  echo "Emulator could not reach ${API_HOST}:${API_PORT} within 60s." >&2
+  adb shell settings get global airplane_mode_on || true
+  adb shell ping -c 1 -W 2 "${API_HOST}" || true
   return 1
 }
 
