@@ -1,6 +1,8 @@
 package com.dhama.mybase.core.network
 
+import com.dhama.mybase.core.age.AgeAck
 import com.dhama.mybase.core.age.RegisterRequest
+import com.dhama.mybase.core.age.agePatchJson
 import com.dhama.mybase.core.model.AppearanceRequest
 import com.dhama.mybase.core.model.CreateAvatarRequest
 import com.dhama.mybase.core.model.PersonalityRequest
@@ -36,6 +38,12 @@ object DtoRoundTrip {
         val avatarBack = json.decodeFromString<CreateAvatarRequest>(avatarWire)
 
         val tokens = json.decodeFromString<SessionTokens>("""{"accessToken":"a","refreshToken":"r"}""")
+        val session = json.decodeFromString<AuthSession>(
+            """{"accessToken":"a","refreshToken":"r","user":{"email":"a@b.co","ageConfirmedAt":"2026-10-12T15:04:05Z"}}""",
+        )
+        val unset = json.decodeFromString<RemoteUser>("""{"email":"a@b.co","ageConfirmedAt":null}""")
+        val ack = json.decodeFromString<AgeAck>("""{"ageConfirmedAt":"2026-10-12T15:04:05Z"}""")
+        val patchWire = agePatchJson(json)
         val usage = json.decodeFromString<RemoteUsageSummary>(
             """{"plan":"PREMIUM","period":{"start":"2026-10-01T00:00:00Z","end":"2026-11-01T00:00:00Z"},"usage":[{"feature":"MESSAGES","used":3,"limit":100,"remaining":97}]}""",
         )
@@ -43,8 +51,6 @@ object DtoRoundTrip {
             email = "a@b.co",
             password = "secret",
             displayName = "Ann",
-            dateOfBirth = "1991-03-17",
-            ageConfirmedAt = "2026-10-12T15:04:05Z",
         )
         val registerWire = json.encodeToString(register)
         val registerBack = json.decodeFromString<RegisterRequest>(registerWire)
@@ -65,6 +71,11 @@ object DtoRoundTrip {
             tokens.accessToken,
             tokens.refreshToken,
             json.encodeToString(tokens),
+            session.user?.ageConfirmedAt,
+            session.tokens().accessToken,
+            unset.ageConfirmedAt ?: "null",
+            ack.ageConfirmedAt,
+            patchWire,
             usage.plan,
             usage.period?.start,
             line.feature,
@@ -72,7 +83,6 @@ object DtoRoundTrip {
             line.limit?.toString(),
             registerWire,
             registerBack.email,
-            registerBack.dateOfBirth,
             message.content,
             message.imageUrl,
             message.role,

@@ -9,6 +9,7 @@ import {
     UseGuards,
 } from '@nestjs/common';
 
+import { ParseEntityIdPipe } from '../common/pipes/parse-entity-id.pipe.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface.js';
@@ -42,16 +43,16 @@ export class ImagesController {
     @Get(':id')
     findOne(
         @CurrentUser() user: JwtPayload,
-        @Param('id') id: string,
+        @Param('id', ParseEntityIdPipe) id: number,
     ) {
-        return this.images.findOne(Number(user.sub), Number(id));
+        return this.images.findOne(Number(user.sub), id);
     }
 
     @Delete(':id')
     remove(
         @CurrentUser() user: JwtPayload,
-        @Param('id') id: string,
+        @Param('id', ParseEntityIdPipe) id: number,
     ) {
-        return this.images.remove(Number(user.sub), Number(id));
+        return this.images.remove(Number(user.sub), id);
     }
 }

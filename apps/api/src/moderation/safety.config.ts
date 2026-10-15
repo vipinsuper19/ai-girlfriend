@@ -28,8 +28,7 @@ export function resolveModerationProvider(
     const name = requested?.trim().toLowerCase();
     if (name === 'local' || name === 'openai' || name === 'gemini') return name;
     if (env.OPENAI_API_KEY?.trim()) return 'openai';
-    if (env.GEMINI_API_KEY?.trim()) return 'gemini';
-    return 'local';
+    return 'gemini';
 }
 
 export function helplinesFromEnv(env: NodeJS.ProcessEnv): Helpline[] {

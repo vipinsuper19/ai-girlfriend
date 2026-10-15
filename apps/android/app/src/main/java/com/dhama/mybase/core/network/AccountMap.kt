@@ -235,6 +235,7 @@ data class RemoteUser(
     val displayName: String? = null,
     val memoryPaused: Boolean = false,
     val notificationsEnabled: Boolean = false,
+    val ageConfirmedAt: String? = null,
 )
 
 @Serializable

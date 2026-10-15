@@ -5,85 +5,51 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/**
- * Register, the Google token exchange, and PATCH users/me/age will take
- * dateOfBirth and ageConfirmedAt. Leave this false until that API is deployed:
- * register currently rejects unknown fields.
- */
-const val SEND_AGE_TO_API = false
-
 const val AGE_PATCH_PATH = "users/me/age"
+
+/** Chat, conversation, and companion create return this until the account is attested. */
+const val AGE_REQUIRED = "AGE_REQUIRED"
 
 @Serializable
 data class RegisterRequest(
     val email: String,
     val password: String,
     val displayName: String,
-    val dateOfBirth: String? = null,
-    val ageConfirmedAt: String? = null,
 )
 
 @Serializable
 data class GoogleAuthRequest(
     val idToken: String,
-    val dateOfBirth: String? = null,
-    val ageConfirmedAt: String? = null,
 )
+
+/**
+ * The only age body the server accepts. `false` or a missing field is 400.
+ * The property has no default so it is always written, even when defaults are omitted.
+ */
+@Serializable
+data class AgePatchRequest(val ageConfirmed: Boolean)
 
 @Serializable
-data class AgePatchRequest(
-    val dateOfBirth: String,
-    val ageConfirmedAt: String,
-)
-
-@Serializable
-data class AgeWireFields(
-    val dateOfBirth: String? = null,
-    val ageConfirmedAt: String? = null,
-)
-
-fun ageWireFields(
-    dateOfBirth: String?,
-    ageConfirmedAt: String?,
-    sendAgeFields: Boolean,
-): AgeWireFields {
-    if (!sendAgeFields) return AgeWireFields()
-    if (dateOfBirth.isNullOrBlank() || ageConfirmedAt.isNullOrBlank()) return AgeWireFields()
-    return AgeWireFields(dateOfBirth, ageConfirmedAt)
-}
+data class AgeAck(val ageConfirmedAt: String = "")
 
 fun registerRequestJson(
     email: String,
     password: String,
     displayName: String,
-    dateOfBirth: String?,
-    ageConfirmedAt: String?,
-    sendAgeFields: Boolean,
     json: Json = apiJson(),
 ): String {
-    val fields = ageWireFields(dateOfBirth, ageConfirmedAt, sendAgeFields)
-    return json.encodeToString(
-        RegisterRequest(email, password, displayName, fields.dateOfBirth, fields.ageConfirmedAt),
-    )
+    return json.encodeToString(RegisterRequest(email, password, displayName))
 }
 
 fun googleAuthRequestJson(
     idToken: String,
-    dateOfBirth: String?,
-    ageConfirmedAt: String?,
-    sendAgeFields: Boolean,
     json: Json = apiJson(),
 ): String {
-    val fields = ageWireFields(dateOfBirth, ageConfirmedAt, sendAgeFields)
-    return json.encodeToString(GoogleAuthRequest(idToken, fields.dateOfBirth, fields.ageConfirmedAt))
+    return json.encodeToString(GoogleAuthRequest(idToken))
 }
 
-fun agePatchJson(
-    dateOfBirth: String,
-    ageConfirmedAt: String,
-    json: Json = apiJson(),
-): String {
-    return json.encodeToString(AgePatchRequest(dateOfBirth, ageConfirmedAt))
+fun agePatchJson(json: Json = apiJson()): String {
+    return json.encodeToString(AgePatchRequest(ageConfirmed = true))
 }
 
 private val ageKey = Regex(

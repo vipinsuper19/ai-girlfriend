@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { ModerationService } from '../moderation/moderation.service.js';
 import {
     MemorySearchService,
     type RelevantMemory,
@@ -30,6 +31,7 @@ export class MemoryContextService {
 
     constructor(
         private readonly memorySearchService: MemorySearchService,
+        private readonly moderation: ModerationService,
     ) { }
 
     async buildContext(
@@ -66,8 +68,25 @@ export class MemoryContextService {
                 return '';
             }
 
+            const turn = await this.moderation.moderateTurn({
+                text,
+                memories: relevantMemories.map((memory) => ({
+                    id: String(memory.id),
+                    content: memory.content,
+                })),
+                ctx: { userId },
+            });
+            const allowed = new Set(turn.allowedMemoryIds);
+            const safeMemories = relevantMemories.filter((memory) =>
+                allowed.has(String(memory.id)),
+            );
+
+            if (safeMemories.length === 0) {
+                return '';
+            }
+
             return this.formatMemoryContext(
-                relevantMemories,
+                safeMemories,
             );
         } catch (error) {
             /*
@@ -84,7 +103,36 @@ export class MemoryContextService {
         }
     }
 
-    private formatMemoryContext(
+    async candidates(
+        userId: number,
+        companionId: number,
+        userMessage: string,
+    ): Promise<RelevantMemory[]> {
+        const text = userMessage.trim();
+        if (!text) return [];
+        try {
+            const memories =
+                await this.memorySearchService.searchRelevantMemories(
+                    userId,
+                    companionId,
+                    text,
+                    this.maxMemories,
+                );
+            return memories
+                .filter((memory) => memory.similarity >= this.minimumSimilarity)
+                .slice(0, this.maxMemories);
+        } catch (error) {
+            this.logger.warn(
+                `Memory retrieval failed: ${error instanceof Error
+                    ? error.message
+                    : String(error)
+                }`,
+            );
+            return [];
+        }
+    }
+
+    formatMemoryContext(
         memories: RelevantMemory[],
     ): string {
         const memoryLines = memories.map(

@@ -7,6 +7,7 @@ import com.dhama.mybase.core.age.ageSubject
 import com.dhama.mybase.core.age.parseDateOfBirth
 import com.dhama.mybase.core.data.AccountSync
 import com.dhama.mybase.core.data.AgeAttestationStore
+import com.dhama.mybase.core.data.AgeServerSync
 import com.dhama.mybase.core.data.DataStoreRepo
 import com.dhama.mybase.core.domain.AuthRepository
 import com.dhama.mybase.core.utils.PreferencesKeys
@@ -28,9 +29,11 @@ class PostAuthViewModel @Inject constructor(
     private val accountSync: AccountSync,
     private val authRepository: AuthRepository,
     private val ageAttestation: AgeAttestationStore,
+    private val ageServerSync: AgeServerSync,
 ) : ViewModel() {
 
     suspend fun destination(): PostAuthDestination {
+        ageServerSync.onStartup()
         val flagged = dataStoreRepo.getBoolean(PreferencesKeys.IS_LOGGED_IN, false).first()
         val loggedIn = flagged || authRepository.isLoggedIn()
         if (!loggedIn) return PostAuthDestination.Welcome

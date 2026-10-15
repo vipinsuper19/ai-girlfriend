@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dhama.mybase.ui.home.AgeGatePromptViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,6 +24,15 @@ fun AppNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
 ) {
+    val ageGate: AgeGatePromptViewModel = hiltViewModel()
+    LaunchedEffect(ageGate) {
+        ageGate.show.collect {
+            navController.navigate(AgeConfirm) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
     NavHost(navController = navController, startDestination = Splash) {
         composable<Splash> {
             SplashScreen(onSplashComplete = {

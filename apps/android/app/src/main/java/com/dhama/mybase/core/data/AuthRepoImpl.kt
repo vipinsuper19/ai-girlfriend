@@ -19,6 +19,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingExcept
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.EmailAuthProvider
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.PhoneAuthCredential
@@ -39,10 +40,10 @@ import kotlin.coroutines.suspendCoroutine
 class AuthRepoImpl(
     private val api: ApiClient,
     private val ageLocal: AgeLocalStore,
+    private val auth: FirebaseAuth = Firebase.auth,
 ) : AuthRepository {
 
     private val tag = "AuthRepository"
-    private val auth = Firebase.auth
     override fun isLoggedIn(): Boolean {
         return auth.currentUser != null
     }
@@ -51,12 +52,7 @@ class AuthRepoImpl(
         return auth.currentUser
     }
 
-    override suspend fun register(
-        email: String,
-        password: String,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean {
+    override suspend fun register(email: String, password: String): Boolean {
         try {
             val result = suspendCoroutine { continuation ->
                 Firebase.auth
@@ -64,7 +60,7 @@ class AuthRepoImpl(
                     .addOnSuccessListener {
                         println("$tag register successful.")
                         CoroutineScope(Dispatchers.IO).launch {
-                            continuation.resume(login(email, password, dateOfBirth, ageConfirmedAt))
+                            continuation.resume(login(email, password))
                         }
                     }
                     .addOnFailureListener {
@@ -82,16 +78,7 @@ class AuthRepoImpl(
         }
     }
 
-    override suspend fun submitAge(dateOfBirth: String, ageConfirmedAt: String) {
-        api.patchAge(dateOfBirth, ageConfirmedAt)
-    }
-
-   override suspend fun login(
-       email: String,
-       password: String,
-       dateOfBirth: String?,
-       ageConfirmedAt: String?,
-   ) : Boolean{
+   override suspend fun login(email: String, password: String): Boolean {
        try {
            val result = suspendCoroutine { continuation ->
                Firebase.auth
@@ -108,7 +95,7 @@ class AuthRepoImpl(
 
            if (result) {
                try {
-                   api.establish(email, password, dateOfBirth, ageConfirmedAt)
+                   api.establish(email, password)
                } catch (error: CancellationException) {
                    throw error
                } catch (_: Exception) {
@@ -154,17 +141,13 @@ class AuthRepoImpl(
         }
     }
 
-    override suspend fun signInWithGoogle(
-        result: GetCredentialResponse,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean {
+    override suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean {
         if(isLoggedIn())
             return true
         try {
 
             //val result = buildCredentialRequest()
-            return handleSignIn(result, dateOfBirth, ageConfirmedAt)
+            return handleSignIn(result)
 
         }catch (e : Exception){
             if(e is kotlin.coroutines.cancellation.CancellationException) throw e
@@ -175,11 +158,7 @@ class AuthRepoImpl(
     }
 
 
-    private suspend fun handleSignIn(
-        result: GetCredentialResponse,
-        dateOfBirth: String?,
-        ageConfirmedAt: String?,
-    ): Boolean{
+    private suspend fun handleSignIn(result: GetCredentialResponse): Boolean {
         val credential = result.credential
         if(
             credential is CustomCredential &&
@@ -200,7 +179,7 @@ class AuthRepoImpl(
                 if (user != null) {
                     // Google sign-in stands either way. Without an API session, chat stays on this phone.
                     val firebaseToken = runCatching { user.getIdToken(false).await().token }.getOrNull()
-                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken, dateOfBirth, ageConfirmedAt)
+                    if (firebaseToken.isNullOrBlank()) api.clear() else api.establishWithGoogle(firebaseToken)
                     return true
                 }
                 return false
@@ -265,10 +244,42 @@ class AuthRepoImpl(
         auth.signOut()
     }
 
-    override suspend fun deleteRemoteAccount() {
+    override suspend fun deleteRemoteAccount(): Boolean {
         // A failed server delete throws and leaves the session and age data in place.
-        // AgeLocalStore.clear runs only from the local wipe after a successful delete.
-        deleteServerAccount(api.hasSession()) { api.deleteAccount() }
+        // AgeLocalStore.clear runs only from the local wipe after Firebase Auth is deleted too.
+        return deleteServerAccount(api.hasSession()) { api.deleteAccount() }
+    }
+
+    override suspend fun deleteFirebaseAuthUser(
+        serverDeletedFirebaseUser: Boolean,
+        emailPassword: String?,
+        googleIdToken: String?,
+    ) {
+        deleteSignedInFirebaseUser(auth, serverDeletedFirebaseUser) { user ->
+            reauthenticateForDeletion(user, emailPassword, googleIdToken)
+        }
+    }
+
+    private suspend fun reauthenticateForDeletion(
+        user: FirebaseUser,
+        emailPassword: String?,
+        googleIdToken: String?,
+    ) {
+        when (val provider = deletionProvider(user.providerData.map { it.providerId }, FeatureFlags.build.phoneSignIn)) {
+            LinkedSignIn.Email -> {
+                val email = user.email
+                val password = emailPassword?.takeIf { it.isNotEmpty() }
+                if (email.isNullOrBlank() || password == null) throw RecentLoginNeedsCredential(LinkedSignIn.Email)
+                user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
+            }
+            LinkedSignIn.Google -> {
+                val token = googleIdToken?.takeIf { it.isNotEmpty() }
+                    ?: throw RecentLoginNeedsCredential(LinkedSignIn.Google)
+                user.reauthenticate(GoogleAuthProvider.getCredential(token, null)).await()
+            }
+            LinkedSignIn.Phone -> throw RecentLoginNeedsCredential(LinkedSignIn.Phone)
+            LinkedSignIn.None, LinkedSignIn.Unsupported -> throw RecentLoginNeedsCredential(provider)
+        }
     }
 
     override suspend fun signInAgainAfterDelete(): Boolean {

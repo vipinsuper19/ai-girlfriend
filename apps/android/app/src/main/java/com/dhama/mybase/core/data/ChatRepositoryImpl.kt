@@ -205,6 +205,20 @@ class ChatRepositoryImpl(
                             ),
                         )
                     }
+                    is ChatStreamEvent.Replace -> {
+                        userAccepted = true
+                        built.clear()
+                        built.append(event.content)
+                        dao.upsert(
+                            ChatMessageEntity(
+                                id = assistantId,
+                                role = ROLE_ASSISTANT,
+                                text = event.content,
+                                createdAtEpochMs = now + 1,
+                                delivery = DELIVERY_STREAMING,
+                            ),
+                        )
+                    }
                     is ChatStreamEvent.Done -> {
                         val finalText = event.content.ifBlank { built.toString() }
                         built.clear()
@@ -309,6 +323,10 @@ class ChatRepositoryImpl(
             RemoteSendFailure.UsageLimit -> {
                 dao.delete(assistantId)
                 dao.delete(userLocalId)
+                throw error
+            }
+            RemoteSendFailure.AgeRequired -> {
+                dao.delete(assistantId)
                 throw error
             }
             RemoteSendFailure.RateLimited -> {
@@ -541,6 +559,19 @@ class ChatRepositoryImpl(
                             ),
                         )
                     }
+                    is ChatStreamEvent.Replace -> {
+                        built.clear()
+                        built.append(event.content)
+                        dao.upsert(
+                            ChatMessageEntity(
+                                id = assistantId,
+                                role = ROLE_ASSISTANT,
+                                text = event.content,
+                                createdAtEpochMs = userAt + 1,
+                                delivery = DELIVERY_STREAMING,
+                            ),
+                        )
+                    }
                     is ChatStreamEvent.Done -> {
                         val finalText = event.content.ifBlank { built.toString() }
                         built.clear()
@@ -574,7 +605,9 @@ class ChatRepositoryImpl(
         } catch (error: ApiStatusException) {
             dao.delete(assistantId)
             when (remoteSendFailure(error.status, error.code)) {
-                RemoteSendFailure.UsageLimit -> throw error
+                RemoteSendFailure.UsageLimit,
+                RemoteSendFailure.AgeRequired,
+                -> throw error
                 RemoteSendFailure.RateLimited -> {
                     markReplyFailed(
                         assistantId,

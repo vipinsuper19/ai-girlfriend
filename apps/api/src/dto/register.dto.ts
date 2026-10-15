@@ -1,4 +1,6 @@
 import {
+    Equals,
+    IsBoolean,
     IsEmail,
     IsNotEmpty,
     IsOptional,
@@ -22,15 +24,9 @@ export class RegisterDto {
     @MaxLength(100)
     displayName!: string;
 
-    /** ISO calendar date (YYYY-MM-DD). Checked, then discarded. Omit both age fields, or send both. */
+    /** Optional 18+ attestation. true stores ageConfirmedAt. A date of birth is not accepted. */
     @IsOptional()
-    @IsString()
-    @MaxLength(10)
-    dateOfBirth?: string;
-
-    /** ISO-8601 timestamp for when the person confirmed they are 18 or older. */
-    @IsOptional()
-    @IsString()
-    @MaxLength(40)
-    ageConfirmedAt?: string;
+    @IsBoolean()
+    @Equals(true)
+    ageConfirmed?: true;
 }
