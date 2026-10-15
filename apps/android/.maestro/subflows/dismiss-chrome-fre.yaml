@@ -1,0 +1,26 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# The emulator's Chrome shows its first-run screens before the first Custom Tab.
+# Skip them when present. No app code involved.
+- runFlow:
+    when:
+      visible: "Use without an account"
+    commands:
+      - tapOn: "Use without an account"
+- runFlow:
+    when:
+      visible: "Accept & continue"
+    commands:
+      - tapOn: "Accept & continue"
+- runFlow:
+    when:
+      visible: "No thanks"
+    commands:
+      - tapOn: "No thanks"
+- runFlow:
+    when:
+      visible: "Got it"
+    commands:
+      - tapOn: "Got it"

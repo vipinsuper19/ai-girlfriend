@@ -11,6 +11,10 @@ env:
     file: ../subflows/open-chat.yaml
 - runFlow:
     file: ../subflows/send-and-wait-reply.yaml
+# Wait for the stream to finish so the bubble has its server id before reporting.
+- extendedWaitUntil:
+    notVisible: "Typing…"
+    timeout: 180000
 - longPressOn:
     id: chat_assistant_reply
 - extendedWaitUntil:

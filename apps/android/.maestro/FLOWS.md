@@ -58,7 +58,7 @@ Voice, gallery, push, billing, and phone sign-in are off (`featureVoice` and the
 
 ## Known failure
 
-`flows/08-privacy-terms.yaml` is expected to fail. `WelcomeScreen.kt` Terms and Privacy handlers only call `Log.d`. Do not change those handlers to make the flow pass. `run-all.sh` records that failure as the expected result and continues. If the flow starts passing, the script fails on purpose so the known-failure mark can be removed.
+`flows/08-privacy-terms.yaml` now passes: main's `LegalPages.kt` opens the API host's `/terms` and `/privacy` pages in a Custom Tab. The flow skips Chrome's first-run screens with `subflows/dismiss-chrome-fre.yaml`.
 
 `maestro test apps/android/.maestro` skips that flow, the helper subflows, and the offline parts (`config.yaml` `excludeTags`). Use `run-all.sh` in CI so the known failure is still executed and the network is toggled with adb.
 
@@ -86,7 +86,7 @@ Resource ids below are Compose test tags (`Modifier.testId`). They show up to Ma
 | 5 Offline / retry | `run-offline.sh` (`offline/05a`–`05c`) | Yes, adb airplane mode |
 | 6 Composer cap | `flows/06-composer-limit.yaml` | No |
 | 7 Report | `flows/07-report-message.yaml` | No |
-| 8 Privacy and Terms | `flows/08-privacy-terms.yaml` | No. Known failure |
+| 8 Privacy and Terms | `flows/08-privacy-terms.yaml` | Yes |
 | 9 Delete account | `flows/09-delete-account.yaml` | No |
 
 ### 1. Age gate
@@ -145,7 +145,7 @@ Steps: long-press `chat_assistant_reply`, tap Report message, choose Inaccurate,
 
 Expected: the dialog shows "Thanks. We'll review this reply." (`report_thanks`).
 
-### 8. Privacy and Terms (known failure)
+### 8. Privacy and Terms
 
 Preconditions: welcome screen only. No account.
 
