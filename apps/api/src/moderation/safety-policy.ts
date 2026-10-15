@@ -379,8 +379,8 @@ type Rule = {
 
 const GRADE_ORDINAL = String.raw`(?:1[0-2]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth`;
 /** School-grade wording with no numeric age: "ninth grade", "grade 7", "class 9", "std 8", "middle school", "sophomore". */
-const GRADE_CUE = String.raw`\b(?:(?:${GRADE_ORDINAL})[\s-]+(?:grade|grader|graders|standard|std|class)|grade\s*(?:1[0-2]|[1-9])|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|middle[\s-]+school(?:er)?s?|junior\s+high|high[\s-]*school(?:er)?s?|elementary\s+school|primary\s+school|freshmen|freshman|sophomores?)\b`;
-const SEXUAL_COSIGNAL = String.raw`\b(?:sex|sexy|sexual(?:ly)?|nude|nudes|naked|undress\w*|strip\w*|erotic|intimate|intimacy|kiss\w*|make\s+out|making\s+out|hook(?:ing|ed)?\s+up|sleep(?:ing)?\s+with|have\s+sex|touch\w*|fondl\w*|grop\w*|seduc\w*|aroused|horny|turn(?:s|ed)?\s+(?:me|you|him|her)\s+on|lingerie|bed\s+scene|sex\s+scene|nsfw|explicit|lewd|dirty\s+(?:story|talk|scene))\b`;
+const GRADE_CUE = String.raw`\b(?:(?:${GRADE_ORDINAL})[\s-]+(?:grade|grader|graders|standard|std|class)|grade\s*(?:1[0-2]|[1-9])|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|middle[\s-]+school(?:er)?s?|junior\s+high|(?<!\b(?:since|from|back\s+in|met\s+in)\s+)high[\s-]*school(?:er)?s?(?!\s+(?:sweethearts?|crush(?:es)?|reunion|days|times|memories|friends?|years|romance|love|flame|ex)\b)|elementary\s+school|primary\s+school|freshmen|freshman|sophomores?)\b`;
+const SEXUAL_COSIGNAL = String.raw`\b(?:sex|sexy|sexual(?:ly)?|nude|nudes|naked|undress\w*|strip(?:s|ped|ping|per|pers|tease)?(?!\w)|erotic|intimate|intimacy|kiss(?:es|ed|ing)?(?!\w)(?!\s+(?:(?:him|her|them|my\s+\w+)\s+)?(?:good\s*night|good-?bye|bye)\b)(?!\s+(?:on\s+)?(?:the|her|his|their)\s+(?:forehead|cheek|head)\b)|make\s+out|making\s+out|hook(?:ing|ed)?\s+up|sleep(?:ing)?\s+with|have\s+sex|(?<!\b(?:in|keep\s+in|stay\s+in|get\s+in)\s+)touch(?:ed|es|ing)?(?!\w)(?!\s+(?:base|speech|story|moment|performance|my\s+heart|me\s+deeply))(?<!\btouching(?=\s+(?:speech|story|moment|performance)))|fondl\w*|grop\w*|seduc\w*|aroused|horny|turn(?:s|ed)?\s+(?:me|you|him|her)\s+on|lingerie|bed\s+scene|sex\s+scene|nsfw|explicit|lewd|dirty\s+(?:story|talk|scene))\b`;
 
 const ALL: ReadonlySet<ModerationSurface> = new Set(['input', 'output', 'persona']);
 const INPUT_AND_PERSONA: ReadonlySet<ModerationSurface> = new Set(['input', 'persona']);
@@ -405,7 +405,7 @@ const JAILBREAK_PATTERN = new RegExp(
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|prompts?|guidelines|restrictions|policies|programming|directives)\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system|safety|content|original|default)\s+(?:\w+\s+)?rules\b`,
         String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?your\s+rules\b`,
-        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before|previous|prior|you\s+were\s+told)\b`,
+        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before(?!\s+(?:you|we\s+met|i\s+met\s+you)\b)|previous|prior|you\s+were\s+told)\b`,
         String.raw`\b(?:act|behave)\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:an?\s+)?(?:unfiltered|unrestricted|uncensored|jailbroken)\b`,
         String.raw`\[\s*(?:system|developer|admin)\s*\]|\bnew\s+system\s+(?:prompt|instructions|message)\b|\bsystem\s+override\b|\b(?:admin|developer|sudo)\s+(?:mode|override|command)\b`,
         String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
@@ -707,7 +707,10 @@ const LABEL_AGE =
     /(?:^|[.!?\n]\s*|\bmy\s+)age\s*(?:is\s*)?[:-]?\s*([0-9]+|[a-z]+)\b/gi;
 const AGE_UNIT = /^(?:\s*(?:years?\s*old|yrs?\s*old|yo|y\/o))\b/i;
 const NOT_AN_AGE =
-    /^(?:\s*(?:out\s+of|drinks?|steps?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?\s+ago|feet|foot|ft|inches|cm|meters?|metres?|kilos?|kgs?|pounds?|lbs?|times|percent|rupees|rs|dollars|bucks|km|miles?|o'?clock|am|pm))\b/i;
+    /^(?:\s*(?:out\s+of|drinks?|steps?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?\s+ago|feet|foot|ft|inches|cm|meters?|metres?|kilos?|kgs?|pounds?|lbs?|times|percent|rupees|rs|dollars|bucks|km|miles?|o'?clock|am|pm|kisses|hugs?|texts?|calls?|messages?|episodes?|chapters?|pages?|songs?|cups?|glasses|shots?|pegs?|beers?|slices?)\b|\s*to\s+\d{1,2}\b(?!\s*(?:-|years?|yrs?|yo|y\/o)))/i;
+/** "I'm one lucky guy", "I'm one of a kind", "I'm 1 in a million": the number one as a word, not an age. */
+const ONE_IDIOM =
+    /^\s*(?:(?:lucky|happy|proud|blessed)\s+(?:guy|girl|man|woman|person|boy|lady|dude)\b|of\s+(?:a\s+kind|the|those|them|your|my)\b|in\s+a\s+million\b)/i;
 
 const SPELLED_MINOR: Record<string, number> = {
     one: 1,
@@ -744,6 +747,9 @@ function scanAges(pattern: RegExp, text: string): boolean {
     for (const match of text.matchAll(pattern)) {
         const token = (match[1] ?? '').toLowerCase();
         const rest = text.slice((match.index ?? 0) + match[0].length);
+        if ((token === 'one' || token === '1') && ONE_IDIOM.test(rest)) continue;
+        // "me 2!" is "me too". "me 2 years old" still counts through the unit.
+        if (pattern === ME_AGE && token === '2' && !AGE_UNIT.test(rest)) continue;
         if (ageTokenIsMinor(token, rest)) return true;
     }
     return false;
