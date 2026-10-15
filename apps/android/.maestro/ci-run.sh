@@ -94,6 +94,7 @@ required = [
     "05 offline/retry",
     "06 composer cap",
     "07 report message",
+    "08 privacy and terms",
 ]
 allowed = ["04 chat stream", "09 delete account"]
 rows = []
@@ -119,13 +120,9 @@ for name in ["05 offline/retry", "06 composer cap", "07 report message"]:
     rows.append((name, status, ""))
     if status != "PASS":
         blockers.append(name)
-if known_08 and not unexpected_08:
-    rows.append(("08 privacy and terms", "KNOWN FAILURE", "expected, handled by run-all.sh"))
-elif unexpected_08:
-    rows.append(("08 privacy and terms", "FAIL", "unexpected pass"))
-    blockers.append("08 privacy and terms")
-else:
-    rows.append(("08 privacy and terms", "MISSING", ""))
+status = cell("08 privacy and terms")
+rows.append(("08 privacy and terms", status, ""))
+if status != "PASS":
     blockers.append("08 privacy and terms")
 rows.append(("09 delete account", cell("09 delete account"), "allowed"))
 if cell("09 delete account") == "MISSING":
@@ -146,7 +143,7 @@ if blockers:
     text.append("Blocking failures:")
     text.extend(f"- {item}" for item in dict.fromkeys(blockers))
 else:
-    text.append("No blocking failures. Flows 04 and 09 may fail. Flow 08 is the expected known failure.")
+    text.append("No blocking failures. Flows 04 and 09 may fail.")
 text.append("")
 out.write_text("\n".join(text) + "\n")
 print("\n".join(text))
