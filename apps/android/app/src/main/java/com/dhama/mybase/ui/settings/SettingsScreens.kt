@@ -914,7 +914,9 @@ private fun DeleteAccountDialog(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testId("settings_delete_password"),
                         enabled = !deleting,
                         label = { Text("Password") },
                         singleLine = true,

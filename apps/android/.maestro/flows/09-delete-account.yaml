@@ -30,6 +30,11 @@ env:
     id: settings_delete_field
 - inputText: "DELETE"
 - hideKeyboard
+# Email accounts must re-enter the password since main's delete reauth (#35/#41).
+- tapOn:
+    id: settings_delete_password
+- inputText: ${output.password}
+- hideKeyboard
 - takeScreenshot: ${SHOT}-delete-typed
 - tapOn:
     id: settings_delete_confirm
