@@ -48,7 +48,7 @@ class AgeConfirmViewModel @Inject constructor(
             try {
                 val confirmedAt = Instant.now().toString()
                 if (ageAttestation.save(dateOfBirth, confirmedAt)) {
-                    ageAttestation.pushIfEnabled(dateOfBirth, confirmedAt)
+                    ageAttestation.syncAfterSave()
                     _confirmed.value = true
                 }
             } catch (error: CancellationException) {

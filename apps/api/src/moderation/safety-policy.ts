@@ -5,7 +5,11 @@ export type SafetyCategory =
     | 'self_harm'
     | 'hate'
     | 'illegal_harm'
-    | 'jailbreak';
+    | 'jailbreak'
+    /** The classifier withheld a verdict (filtered or empty). Always a hard block. */
+    | 'filtered'
+    /** Classifier minor_present with no minor_role. Resolved by the service against hasMinorCue; never enforced directly. */
+    | 'minor_unconfirmed';
 
 export type ModerationSurface = 'input' | 'output' | 'persona';
 
@@ -46,6 +50,15 @@ export interface SafetyNotice {
 export interface SafetyLogContext {
     userId?: string | number;
     conversationId?: string | number;
+    /**
+     * Earlier user lines in this chat, oldest first. A minor age among them
+     * is recorded on the user and the conversation; it is not a sliding window.
+     */
+    priorTexts?: readonly string[];
+    /** Set when a minor flag is already stored for this user or conversation. */
+    heldMinor?: boolean;
+    /** The companion persona text. Read only when the classifier withholds a verdict. */
+    personaText?: string;
 }
 
 export interface PersonaDraft {
@@ -76,8 +89,25 @@ export const EXPLICIT_REFUSAL_MESSAGE =
 export const UNAVAILABLE_MESSAGE =
     "I can't reply just now. Please try again in a moment.";
 
+export const PERSONA_MINOR_MESSAGE =
+    "That companion description isn't allowed. Keep the persona an adult, and leave out sexual content involving minors.";
+
+export const PERSONA_EXPLICIT_MESSAGE =
+    "That companion description isn't allowed. Leave out graphic sexual content.";
+
+/** Other blocked personas. This does not mention minors. */
 export const PERSONA_REJECTION_MESSAGE =
-    "That companion description isn't allowed. Keep the persona an adult, and leave out harmful, illegal, or sexual content involving minors.";
+    "That companion description isn't allowed. Leave out harmful or illegal content.";
+
+export function personaRejectionMessage(categories: readonly SafetyCategory[]): string {
+    if (categories.includes('sexual_minors') || categories.includes('minor')) {
+        return PERSONA_MINOR_MESSAGE;
+    }
+    if (categories.includes('explicit')) {
+        return PERSONA_EXPLICIT_MESSAGE;
+    }
+    return PERSONA_REJECTION_MESSAGE;
+}
 
 const NOTICE_CODES = new Set<SafetyCode>([
     'content_policy',
@@ -92,6 +122,7 @@ const HARD_CATEGORIES = new Set<SafetyCategory>([
     'hate',
     'illegal_harm',
     'jailbreak',
+    'filtered',
 ]);
 
 export function crisisMessage(helplines: Helpline[]): string {
@@ -118,7 +149,7 @@ export function unavailableNotice(): SafetyNotice {
  * The same categories on model output or a persona are a refusal.
  */
 function enforced(categories: SafetyCategory[]): SafetyCategory[] {
-    const unique = [...new Set(categories)];
+    const unique = [...new Set(categories)].filter((category) => category !== 'minor_unconfirmed');
     if (CONTENT_POLICY.blockExplicit) return unique;
     return unique.filter((category) => category !== 'explicit');
 }
@@ -138,9 +169,7 @@ export function decideSafety(
 ): SafetyNotice | null {
     const unique = enforced(categories);
     if (unique.length === 0) return null;
-    if (unique.includes('sexual_minors') || unique.includes('minor')) {
-        return firmRefusal();
-    }
+    // Crisis outranks a minor flag and a prompt-injection refusal.
     if (surface === 'input' && unique.includes('self_harm')) {
         return {
             action: 'crisis',
@@ -148,6 +177,9 @@ export function decideSafety(
             message: crisisMessage(helplines),
             helplines,
         };
+    }
+    if (unique.includes('sexual_minors') || unique.includes('minor')) {
+        return firmRefusal();
     }
     if (unique.some((category) => HARD_CATEGORIES.has(category) || category === 'self_harm')) {
         return firmRefusal();
@@ -185,9 +217,32 @@ export function companionSafetyRules(): string {
     return lines.join('\n');
 }
 
-/** Flagged user lines stay in the thread the person can read, and stay out of the model prompt. */
+/**
+ * Flagged user lines stay in the thread the person can read, and stay out of
+ * the model prompt. Canned assistant refusals and transient safety replies
+ * stay out of the prompt too.
+ */
 export function hiddenFromModel(message: { role?: unknown; metadata?: unknown }): boolean {
-    return message.role === 'USER' && safetyNoticeOf(message) !== null;
+    if (safetyNoticeOf(message) === null) return false;
+    return message.role === 'USER' || message.role === 'ASSISTANT';
+}
+
+/** Assistant rows that must not appear in GET messages. User lines stay. */
+export function excludedFromThread(message: { role?: unknown; metadata?: unknown }): boolean {
+    return message.role === 'ASSISTANT' && safetyNoticeOf(message) !== null;
+}
+
+export function isCannedAssistantText(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    if (
+        trimmed === REFUSAL_MESSAGE
+        || trimmed === EXPLICIT_REFUSAL_MESSAGE
+        || trimmed === UNAVAILABLE_MESSAGE
+    ) {
+        return true;
+    }
+    return trimmed.startsWith("I'm really glad you told me.");
 }
 
 export function safetyNoticeOf(
@@ -238,7 +293,7 @@ const AGE_WORDS: Record<string, number> = {
 export function parseAge(value: unknown): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     if (typeof value !== 'string') return null;
-    const trimmed = value.trim().toLowerCase();
+    const trimmed = collapseSplitAge(value.trim().toLowerCase());
     if (!trimmed) return null;
     const numeric = trimmed.match(
         /^(\d+(?:\.\d+)?)(?:\s*(?:years?\s*old|yrs?\s*old|yo|y\/o))?$/,
@@ -248,9 +303,37 @@ export function parseAge(value: unknown): number | null {
         .replace(/[.]+$/g, '')
         .replace(/\s*(?:years?\s*old|yrs?\s*old|yo|y\/o)$/i, '')
         .trim();
-    return Object.prototype.hasOwnProperty.call(AGE_WORDS, words)
-        ? AGE_WORDS[words] ?? null
-        : null;
+    if (Object.prototype.hasOwnProperty.call(AGE_WORDS, words)) {
+        return AGE_WORDS[words] ?? null;
+    }
+    return embeddedMinorAge(trimmed);
+}
+
+const MINOR_AGE_WORD_RE = new RegExp(
+    `\\b(?:${Object.entries(AGE_WORDS)
+        .filter(([, age]) => age < 18)
+        .map(([word]) => word)
+        .join('|')})\\b`,
+    'gi',
+);
+
+/** "sweet 16" and similar age-field phrases. An exact adult age never reaches here. */
+function embeddedMinorAge(text: string): number | null {
+    let youngest: number | null = null;
+    const consider = (age: number) => {
+        if (age >= 0 && age < 18 && (youngest === null || age < youngest)) {
+            youngest = age;
+        }
+    };
+    for (const match of text.matchAll(/\b(\d+(?:\.\d+)?)\b/g)) {
+        consider(Number(match[1]));
+    }
+    MINOR_AGE_WORD_RE.lastIndex = 0;
+    for (const match of text.matchAll(MINOR_AGE_WORD_RE)) {
+        const age = AGE_WORDS[match[0].toLowerCase()];
+        if (age !== undefined) consider(age);
+    }
+    return youngest;
 }
 
 export function personaMinorAge(draft: PersonaDraft): boolean {
@@ -294,9 +377,53 @@ type Rule = {
     surfaces: ReadonlySet<ModerationSurface>;
 };
 
+const GRADE_ORDINAL = String.raw`(?:1[0-2]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth`;
+/** School-grade wording with no numeric age: "ninth grade", "grade 7", "class 9", "std 8", "middle school", "sophomore". */
+const GRADE_CUE = String.raw`\b(?:(?:${GRADE_ORDINAL})[\s-]+(?:grade|grader|graders|standard|std|class)|grade\s*(?:1[0-2]|[1-9])|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|middle[\s-]+school(?:er)?s?|junior\s+high|(?<!\b(?:since|from|back\s+in|met\s+in)\s+)high[\s-]*school(?:er)?s?(?!\s+(?:sweethearts?|crush(?:es)?|reunion|days|times|memories|friends?|years|romance|love|flame|ex)\b)|elementary\s+school|primary\s+school|freshmen|freshman|sophomores?)\b`;
+const SEXUAL_COSIGNAL = String.raw`\b(?:sex|sexy|sexual(?:ly)?|nude|nudes|naked|undress\w*|strip(?:s|ped|ping|per|pers|tease)?(?!\w)|erotic|intimate|intimacy|kiss(?:es|ed|ing)?(?!\w)(?!\s+(?:(?:him|her|them|my\s+\w+)\s+)?(?:good\s*night|good-?bye|bye)\b)(?!\s+(?:on\s+)?(?:the|her|his|their)\s+(?:forehead|cheek|head)\b)|make\s+out|making\s+out|hook(?:ing|ed)?\s+up|sleep(?:ing)?\s+with|have\s+sex|(?<!\b(?:in|keep\s+in|stay\s+in|get\s+in)\s+)touch(?:ed|es|ing)?(?!\w)(?!\s+(?:base|speech|story|moment|performance|my\s+heart|me\s+deeply))(?<!\btouching(?=\s+(?:speech|story|moment|performance)))|fondl\w*|grop\w*|seduc\w*|aroused|horny|turn(?:s|ed)?\s+(?:me|you|him|her)\s+on|lingerie|bed\s+scene|sex\s+scene|nsfw|explicit|lewd|dirty\s+(?:story|talk|scene))\b`;
+
 const ALL: ReadonlySet<ModerationSurface> = new Set(['input', 'output', 'persona']);
 const INPUT_AND_PERSONA: ReadonlySet<ModerationSurface> = new Set(['input', 'persona']);
+const PERSONA_ONLY: ReadonlySet<ModerationSurface> = new Set(['persona']);
 const OUTPUT_ONLY: ReadonlySet<ModerationSurface> = new Set(['output']);
+
+/** Spelled-out ages under 18. Longer words come first so a shorter prefix cannot win. */
+const UNDER_18_AGE_WORDS =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven|ten|nine|eight|seven|six|five|four|three|two|one|zero';
+/** Teen ages written without a unit. Short words like "one" or "ten" need a unit so "she is one" stays allowed. */
+const SPELLED_TEEN_AGES =
+    'seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven';
+const MINOR_AGE_UNIT = String.raw`(?:years?[\s-]*old|y\/o|yo)`;
+const RELATIVE_NOUN = String.raw`beta|beti|bete|bhai|behen|bahen|bhatija|bhatiji|bhanja|bhanji|bachcha|bachche|bachchi|sisters?|brothers?|daughters?|sons?|nephews?|nieces?|cousins?|grandsons?|granddaughters?|grandchildren|grandchild`;
+
+/**
+ * Instructions aimed at the model. Couples talking about their own rules,
+ * and "you are now" used as affection, stay outside this pattern.
+ */
+const JAILBREAK_PATTERN = new RegExp(
+    [
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+|these\s+|my\s+|previous\s+|prior\s+|above\s+|earlier\s+|preceding\s+|system\s+)*(?:safety\s+|content\s+)?(?:instructions|prompts?|guidelines|restrictions|policies|programming|directives)\b`,
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system|safety|content|original|default)\s+(?:\w+\s+)?rules\b`,
+        String.raw`\b(?:ignore|disregard|forget|bypass|override)\s+(?:all\s+|any\s+)?(?:of\s+)?your\s+rules\b`,
+        String.raw`\b(?:ignore|disregard|forget)\s+(?:everything|all)\s+(?:above|before(?!\s+(?:you|we\s+met|i\s+met\s+you)\b)|previous|prior|you\s+were\s+told)\b`,
+        String.raw`\b(?:act|behave)\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:an?\s+)?(?:unfiltered|unrestricted|uncensored|jailbroken)\b`,
+        String.raw`\[\s*(?:system|developer|admin)\s*\]|\bnew\s+system\s+(?:prompt|instructions|message)\b|\bsystem\s+override\b|\b(?:admin|developer|sudo)\s+(?:mode|override|command)\b`,
+        String.raw`\b(?:enable|enter|activate|switch\s+to)\s+(?:an?\s+)?(?:unrestricted|developer|dan|jailbreak)\s+mode\b`,
+        String.raw`\b(?:in|into)\s+developer\s+mode\b`,
+        String.raw`\bdeveloper\s+mode\s+(?:on|enabled)\b`,
+        String.raw`\byou(?:'re|\s+are)\s+now\b[\s\S]{0,48}\b(?:dan|unfiltered|unrestricted|uncensored|jailbroken|developer|without\s+(?:any\s+)?(?:rules|restrictions|filters)|an?\s+(?:ai|model|assistant)\s+with\s+no)\b`,
+        String.raw`\b(?:reveal|print|show|dump|repeat|recite)\s+(?:me\s+)?(?:your\s+|the\s+)?(?:hidden\s+|full\s+|entire\s+|system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\bwhat(?:'s|\s+is)\s+your\s+(?:system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\b(?:read|tell)\s+me\s+your\s+(?:system\s+)?(?:prompt|instructions)\b`,
+        String.raw`\bwhat\s+instructions\s+(?:were\s+you\s+given|did\s+you\s+get)\b`,
+        String.raw`\brepeat\s+everything\s+above\b`,
+        String.raw`</?\s*system\b`,
+        String.raw`\b(?:system|developer)\s+prompt\s*:`,
+        String.raw`\b(?:ai|model|assistant|chatbot|dan)\b[\s\S]{0,32}\b(?:with\s+)?(?:no|without|zero)\s+(?:safety\s+)?(?:rules|restrictions|filters)\b`,
+        String.raw`\b(?:from\s+now\s+on|your\s+new\s+role|new\s+role)\b[\s\S]{0,48}\b(?:dan|unfiltered|uncensored|developer\s+mode|jailbreak|no\s+(?:safety\s+)?rules)\b`,
+    ].join('|'),
+    'i',
+);
 
 const RULES: Rule[] = [
     {
@@ -312,31 +439,35 @@ const RULES: Rule[] = [
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic)\b/i,
+            /\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|sexy)\b/i,
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
         pattern:
-            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic)\b[\s\S]{0,48}\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b/i,
+            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|sexy)\b[\s\S]{0,48}\b(?:underage|under-age|pre-?teen|minor|minors|(?:a|the)\s+child(?:ren)?)\b/i,
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
-        pattern:
-            /\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck)\b/i,
+        pattern: new RegExp(
+            String.raw`\b(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b[\s\S]{0,48}\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy|romantic|romance|girlfriend|boyfriend|flirt)\b`,
+            'i',
+        ),
         surfaces: ALL,
     },
     {
         category: 'sexual_minors',
-        pattern:
-            /\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
+        pattern: new RegExp(
+            String.raw`\b(?:sex|sexual|nude|naked|porn|nsfw|erotic|fuck|sexy|romantic|romance|girlfriend|boyfriend|flirt)\b[\s\S]{0,48}\b(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b`,
+            'i',
+        ),
         surfaces: ALL,
     },
     {
         category: 'minor',
         pattern:
-            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:1[0-7]|[1-9])\s*(?:years?\s*old|yo)\b/i,
+            /\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:an?\s+)?(?:1[0-7]|[1-9])[\s-]*(?:years?[\s-]*old|yo|y\/o)\b/i,
         surfaces: INPUT_AND_PERSONA,
     },
     {
@@ -351,40 +482,63 @@ const RULES: Rule[] = [
         surfaces: INPUT_AND_PERSONA,
     },
     {
+        // Chat may mention a relative's age ("my 10-year-old nephew").
+        // A sexual or romantic co-signal is handled by the rules above.
+        category: 'minor',
+        pattern: new RegExp(String.raw`\b(?:1[0-7]|[1-9])[\s-]*${MINOR_AGE_UNIT}\b`, 'i'),
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*${MINOR_AGE_UNIT}\b`,
+            'i',
+        ),
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: new RegExp(
+            String.raw`\b(?:you(?:'re| are)|i(?:'m| am)|she(?:'s| is)|he(?:'s| is))\s+(?:only\s+|just\s+)?(?:${SPELLED_TEEN_AGES})\b`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:pre[\s-]?teens?|teenagers?|teens?)\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bhigh[\s-]*schools?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bschool[\s-]*girls?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th)[\s-]+grades?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
+        category: 'minor',
+        pattern: /\bsophomores?\b/i,
+        surfaces: PERSONA_ONLY,
+    },
+    {
         category: 'explicit',
+        // Narrow on purpose. Romance ("kiss", "make love", "in my bed", "sexy", "make out") stays off this list.
         pattern:
-            /\b(?:fuck(?:ing)?\s+me|let'?s\s+fuck|blow\s*job|hand\s*job|orgasm|masturbat\w*|horny|porn|nsfw|ejaculat\w*|dildo|pussy|clit(?:oris)?|cocks?|dicks?|boobs|tits|nipples|genitals)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\bhave\s+sex\b|\bsex\s+with\s+(?:you|me)\b|\btalk\s+dirty\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern: /\b(?:naked|nude)\s+body\b|\bdescribe\s+(?:your|her|his)\s+(?:naked|nude)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'explicit',
-        pattern:
-            /\b(?:role-?play|roleplay)\b[\s\S]{0,48}\b(?:sex|fuck|orgasm|naked|nude)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern: /\b(?:white\s+power|heil\s+hitler|racial\s+purity|ethnic\s+cleansing)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'hate',
-        pattern:
-            /\b(?:hate|kill|attack|exterminate)\s+all\s+(?:jews|muslims|blacks|whites|asians|gays|women|men|immigrants)\b/i,
+            /\b(?:fuck me|let's fuck|lets fuck|talk dirty|have sex with (?:you|me)|naked body|nude body|roleplay(?:\s+\w+){0,3}\s+sex|blow\s*job|hand\s*job|deepthroat|creampie|send\s+(?:me\s+)?nudes|(?:suck|lick)\s+(?:my|your)\s+(?:dick|cock|pussy))\b/i,
         surfaces: ALL,
     },
     {
         category: 'self_harm',
+        // "killing me", "dying of laughter", and "kill me now" are figures of speech.
         pattern: /\b(?:kill myself|killing myself|end my life|take my own life)\b/i,
         surfaces: INPUT_AND_PERSONA,
     },
@@ -433,6 +587,14 @@ const RULES: Rule[] = [
     },
     {
         category: 'self_harm',
+        // Present tense can stand alone ("disappear forever"). Past tense needs "I",
+        // so "my phone disappeared forever" and "the pain vanished for good" stay ordinary.
+        pattern:
+            /\b(?:disappear|vanish)\s+(?:forever|for good)\b|\bdisappear\s+and never come back\b|\bi\s+(?:disappeared|vanished)\s+(?:forever|for good)\b|\bgone for good after tonight\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'self_harm',
         pattern: /\b(?:kill yourself|kys)\b/i,
         surfaces: OUTPUT_ONLY,
     },
@@ -443,67 +605,404 @@ const RULES: Rule[] = [
         surfaces: OUTPUT_ONLY,
     },
     {
-        category: 'illegal_harm',
+        category: 'self_harm',
+        // Indirect crisis phrasing. "killing me" and "dying of laughter" stay above, unmatched.
         pattern:
-            /\b(?:how (?:do i|can i|to)|help me)\s+(?:make|build|assemble|synthesize|cook|produce)\s+(?:a |an )?(?:bomb|explosive|pipe bomb|meth|methamphetamine|fentanyl|napalm)\b/i,
-        surfaces: ALL,
+            /\b(?:can(?:not|'t)|cant)\s+(?:do this|go on|take (?:this|it))\s+anymore\b|\b(?:do not|don't|dont)\s+want to be here anymore\b|\btired of (?:living|being alive)\b|\bbetter off without me\b|\bno point (?:in )?going on\b|\b(?:i'm|im|i am)\s+done with (?:life|living)\b/i,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
-        category: 'illegal_harm',
-        pattern: /\b(?:make|build)\s+(?:a |an )?(?:bomb|pipe bomb|explosive device)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'illegal_harm',
+        category: 'minor',
+        // "class 9" / "10vi class". Grade words and "high school" stay persona-only above.
         pattern:
-            /\bhow to\s+(?:hack into|break into|steal (?:from|a)|commit murder|kill (?:someone|a person|him|her))\b/i,
-        surfaces: ALL,
+            /\b(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class\b|\bclass\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?\b/i,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
-        category: 'jailbreak',
+        category: 'minor',
+        pattern: /\bunder-?age\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
         pattern:
-            /\bignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|your)\s+(?:instructions|rules|guidelines|safety)\b/i,
-        surfaces: ALL,
+            /\b(?:pretend|role-?play|roleplay)\s+(?:that\s+)?you(?:'re| are)\s+younger\b|\byou(?:'re| are)\s+(?:a\s+)?teen\b/i,
+        surfaces: INPUT_AND_PERSONA,
     },
     {
-        category: 'jailbreak',
+        category: 'minor',
+        // "turning 16" / "under 18". Hyphenated ages and y/o stay on the persona rules above.
         pattern:
-            /\b(?:disregard|bypass|override)\s+(?:your\s+|the\s+)?(?:safety|rules|guidelines|system prompt)\b/i,
+            /\bturning\s+(?:1[0-7]|[1-9]|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b|\bunder\s*-?\s*(?:18|eighteen)\b/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        // Spelled teen ages need an age or first-person context in chat
+        // ("I'm fifteen", "she is sixteen", a lone "fifteen"). "seventeen red
+        // roses" and "at eleven" stay ordinary. A year-old unit is persona-only.
+        pattern: new RegExp(
+            String.raw`(?:\b(?:i'?m|i\s+am|im|you'?re|you\s+are|she'?s|she\s+is|he'?s|he\s+is|me|age[ds]?|only|just|barely|turned|umar|umr)\s+(?:only\s+|just\s+|barely\s+)?(?:${SPELLED_TEEN_AGES})\b|^\s*(?:${SPELLED_TEEN_AGES})\s*[.!?]*\s*$)`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        pattern:
+            /\b(?:nabalig|naabalig|na[- ]balig)\b|\bschool\s*wal[ai]\b|\b(?:main|mai)\s+(?:1[0-7]|[1-9])\s+saal\b|\b(?:pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\s*(?:saal|sal|baras|varsh)\b|नाबालिग|स्कूल\s*वाली/i,
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'minor',
+        // "pretend you are 14", "roleplay that I'm fifteen".
+        pattern: new RegExp(
+            String.raw`\b(?:pretend|role-?play|roleplay|act\s+like|imagine)\b[\s\S]{0,40}\b(?:you(?:'re|\s+are)|i(?:'m|\s+am)|she(?:'s|\s+is)|he(?:'s|\s+is))\s+(?:only\s+|just\s+)?(?:a\s+)?(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})\b(?!\s*(?:\+|plus))`,
+            'i',
+        ),
+        surfaces: INPUT_AND_PERSONA,
+    },
+    {
+        category: 'sexual_minors',
+        // "my girlfriend is 15": a romantic partner under 18.
+        pattern: new RegExp(
+            String.raw`\b(?:girl\s*friend|boy\s*friend|gf|bf|crush|lover|date|partner|wife|husband|bae)(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turned\s+|turns\s+)?(?:only\s+|just\s+|barely\s+)?(?:1[0-7]|[1-9]|${UNDER_18_AGE_WORDS})\b(?![.:]\d)(?!\s*(?:\+|plus|minutes?|mins?|hours?|days?|weeks?|months?|years?\s+(?:older|younger|ago)|feet|foot|ft|inch(?:es)?|cm|kgs?|kilos?|out\s+of|stars?|times|pm\b|am\b|p\.m|a\.m|o'?clock|baje|tonight|today|tomorrow))`,
+            'i',
+        ),
+        surfaces: ALL,
+    },
+    {
+        category: 'sexual_minors',
+        // A school-age persona with a sexual or romantic co-signal.
+        pattern:
+            /\b(?:school\s*girls?|school\s*boys?|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grader?s?|middle\s+schooler|teen(?:age)?\s+girl)\b[\s\S]{0,60}\b(?:kiss|kissing|sexy|sex|sexual|nude|naked|flirt|undress|make\s+out|romantic|erotic)\b|\b(?:kiss|kissing|sexy|sex|sexual|nude|naked|flirt|undress|romantic|erotic)\b[\s\S]{0,60}\b(?:school\s*girls?|school\s*boys?|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+grader?s?|middle\s+schooler|teen(?:age)?\s+girl)\b/i,
+        surfaces: ALL,
+    },
+    {
+        category: 'sexual_minors',
+        // A school-grade cue about anyone (the user, the persona, or a third
+        // party) near a sexual or intimate request, on every surface and
+        // anywhere in a long message. Additive only: no other minor rule changes.
+        pattern: new RegExp(
+            String.raw`(?:${GRADE_CUE})[\s\S]{0,120}?(?:${SEXUAL_COSIGNAL})|(?:${SEXUAL_COSIGNAL})[\s\S]{0,120}?(?:${GRADE_CUE})`,
+            'i',
+        ),
         surfaces: ALL,
     },
     {
         category: 'jailbreak',
-        pattern: /\b(?:developer|dan)\s+mode\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\byou are now\s+(?:dan|unfiltered|jailbroken)\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\bdo anything now\b/i,
-        surfaces: ALL,
-    },
-    {
-        category: 'jailbreak',
-        pattern: /\bjailbreak\b/i,
+        // Aimed at the model's instructions. Relationship "rules", "no rules tonight",
+        // and "you are now the best part of my day" do not match.
+        pattern: JAILBREAK_PATTERN,
         surfaces: ALL,
     },
 ];
+
+const FIRST_PERSON_AGE =
+    /\b(?:i\s*'m|i\s+am|i\s+m|im)\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
+const ME_AGE =
+    /(?:^|[.!?]\s*|\n\s*)me\s+(?:only\s+|just\s+|actually\s+)?([0-9]+|[a-z]+)\b/gi;
+/** "age: 15", "age-15", "my age is 15". Not "stone age" or "my son's age". */
+const LABEL_AGE =
+    /(?:^|[.!?\n]\s*|\bmy\s+)age\s*(?:is\s*)?[:-]?\s*([0-9]+|[a-z]+)\b/gi;
+const AGE_UNIT = /^(?:\s*(?:years?\s*old|yrs?\s*old|yo|y\/o))\b/i;
+const NOT_AN_AGE =
+    /^(?:\s*(?:out\s+of|drinks?|steps?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?\s+ago|feet|foot|ft|inches|cm|meters?|metres?|kilos?|kgs?|pounds?|lbs?|times|percent|rupees|rs|dollars|bucks|km|miles?|o'?clock|am|pm|kisses|hugs?|texts?|calls?|messages?|episodes?|chapters?|pages?|songs?|cups?|glasses|shots?|pegs?|beers?|slices?)\b|\s*to\s+\d{1,2}\b(?!\s*(?:-|years?|yrs?|yo|y\/o)))/i;
+/** "I'm one lucky guy", "I'm one of a kind", "I'm 1 in a million": the number one as a word, not an age. */
+const ONE_IDIOM =
+    /^\s*(?:(?:lucky|happy|proud|blessed)\s+(?:guy|girl|man|woman|person|boy|lady|dude)\b|of\s+(?:a\s+kind|the|those|them|your|my)\b|in\s+a\s+million\b)/i;
+
+const SPELLED_MINOR: Record<string, number> = {
+    one: 1,
+    three: 3,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+};
+
+/**
+ * High-precision present-age check. "I'm / Im / I am / i m / me" plus an age
+ * under 18, or a first-person label ("my age is 15", "age: 15", "age-15").
+ * Digits 2 and 4 count only with an age unit or at the end of the clause, so
+ * "2 tired" and "4 you" stay ordinary words. A label only counts when the
+ * number ends the claim, so "age 12 was my best year" and "age: 15 years
+ * experience" stay ordinary.
+ */
+export function claimsFirstPersonMinor(text: string): boolean {
+    return scanAges(FIRST_PERSON_AGE, text) || scanAges(ME_AGE, text) || scanLabelAges(text);
+}
+
+function scanAges(pattern: RegExp, text: string): boolean {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+        const token = (match[1] ?? '').toLowerCase();
+        const rest = text.slice((match.index ?? 0) + match[0].length);
+        if ((token === 'one' || token === '1') && ONE_IDIOM.test(rest)) continue;
+        // "me 2!" is "me too". "me 2 years old" still counts through the unit.
+        if (pattern === ME_AGE && token === '2' && !AGE_UNIT.test(rest)) continue;
+        if (ageTokenIsMinor(token, rest)) return true;
+    }
+    return false;
+}
+
+function scanLabelAges(text: string): boolean {
+    LABEL_AGE.lastIndex = 0;
+    for (const match of text.matchAll(LABEL_AGE)) {
+        const token = (match[1] ?? '').toLowerCase();
+        const rest = text.slice((match.index ?? 0) + match[0].length);
+        if (!ageTokenIsMinor(token, rest)) continue;
+        if (AGE_UNIT.test(rest) || /^\s*$/.test(rest) || /^\s*[.!?,;]/.test(rest)) return true;
+    }
+    return false;
+}
+
+function ageTokenIsMinor(token: string, rest: string): boolean {
+    let age: number | null = null;
+    if (/^\d+$/.test(token)) age = Number(token);
+    else if (Object.prototype.hasOwnProperty.call(SPELLED_MINOR, token)) {
+        age = SPELLED_MINOR[token] ?? null;
+    } else if (token === 'two' || token === 'four') {
+        age = token === 'two' ? 2 : 4;
+    }
+    if (age === null || age < 0 || age >= 18) return false;
+    if (AGE_UNIT.test(rest)) return true;
+    if (NOT_AN_AGE.test(rest)) return false;
+    if (age === 2 || age === 4) {
+        return /^\s*$/.test(rest) || /^\s*[.!?,]/.test(rest);
+    }
+    return true;
+}
+
+/**
+ * Any age or child cue, for the filtered classifier path only. Gemini withheld
+ * a verdict, so this leans to a hard block: it reads persona-only rules too,
+ * plus child, school, and Hindi or Hinglish words that are too broad for
+ * ordinary chat. Do not use it to block text the classifier scored.
+ */
+const MINOR_CUE = new RegExp(
+    [
+        String.raw`\b(?:child|children|childlike|kid|kids|kiddo|toddler|infant|tween|tweens|teen|teens|teenage[dr]?|teenagers?|adolescen(?:t|ts|ce)|pre-?teens?|puberty|pubescent|underage|under-age|minors?|juvenile|jailbait|barely\s+legal|not\s+(?:yet\s+)?(?:18|eighteen|legal)|loli|shota)\b`,
+        String.raw`\b(?:little|younger)\s+(?:sister|brother|cousin)s?\b|\b(?:little|young)\s+(?:girl|boy)s?\b(?=[\s\S]{0,40}\b(?:school|class|grade|years?\s+old|yo|kid|child|age[ds]?|teen|saal)\b)`,
+        String.raw`\b(?:school|schoolgirl|schoolboy|schoolkid|schooler|schoolmate|classmates?|homework|recess|playground|school\s+uniform|tuition|freshman|sophomore|junior\s+high|middle\s+school|high\s+school|elementary|primary\s+school|kindergarten|grade\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s+(?:grade|grader|standard|std)|std\.?\s*(?:1[0-2]|[1-9])|class\s*(?:1[0-2]|[1-9])|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class|boards?\s+exams?)\b`,
+        String.raw`\b(?:daughter|son|niece|nephew|stepdaughter|stepson|step-?daughter|step-?son|step-?sister|step-?brother|granddaughter|grandson|babysit(?:ter|ting)?|bachp[ae]n)\b`,
+        String.raw`\b(?:1[0-7]|[1-9])\s*(?:-|\s)?\s*(?:years?|yrs?|yr|y\/?o|yo|saal|sal|baras)\b|\b(?:age[ds]?|aged|umar|umr|umra)\s*(?:is\s*|of\s*|:|-)?\s*(?:1[0-7]|[1-9])\b|\bunder\s*-?\s*(?:18|eighteen)\b|\b(?:turning|turned|just\s+turned)\s+(?:1[0-7]|[1-9])\b`,
+        String.raw`\b(?:${UNDER_18_AGE_WORDS})[\s-]*(?:years?|yrs?|saal)\b|(?<!\b(?:at|by|around|till|until|before|after|past)\s+)\b(?:${SPELLED_TEEN_AGES})\b(?!\s*(?:o'?clock|tonight|today|tomorrow|pm\b|am\b|baje|thirty|forty|:|roses?|kisses|reasons?))`,
+        String.raw`\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:grade|grader|graders|standard|std|class)\b|\b(?:(?:1[0-7]|[1-9])(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth)\s+(?:birthday|bday)\b`,
+        String.raw`\b(?:bachcha|bachcho|bachche|bacche|bachchi|bachi|bacchi|baccha|chhot[ia]|chot[ia]\s+(?:bachi|ladki|ladka|behen|bhai)|kishor[ie]?|nabalig|naabalig|na[- ]balig|ladkiya?\s+school|school\s*wal[ai]|school\s+(?:jaati|jata|jati|jaata)|padhti|padhta|kaksha|beti|bitiya|munni|munna|guddi|pandrah|pandra|solah|satrah|satra|terah|chaudah|chauda|gyarah|barah|baarah)\b`,
+        String.raw`\b(?:pretend|roleplay|role-?play|act\s+like|act\s+as)\b[\s\S]{0,40}\b(?:younger|underage|a\s+(?:minor|child|kid|teen))\b`,
+    ].join('|'),
+    'i',
+);
+const MINOR_CUE_DEVANAGARI = /बच्च|बच्ची|बच्चा|नाबालिग|किशोर|स्कूल|कक्षा|छोटी|बेटी|बेटा|साल\s*(?:की|का)|उम्र/;
+
+/**
+ * Romance and everyday idioms that only look like minor cues: "old school",
+ * "sweet sixteen", "chhoti si baat", "gyarah baje", "high school sweethearts",
+ * "I feel like a teenager again". Removed before the minor checks only.
+ */
+export function withoutRomanceIdioms(text: string): string {
+    return text
+        .replace(/\bold[\s-]+school\b/gi, ' ')
+        .replace(/\bsweet\s+sixteen\b/gi, ' ')
+        .replace(/\b(?:chhoti|choti|chhota|chota)\s+(?:si|sa)\b/gi, ' ')
+        .replace(/\b(?:ek|do|teen|char|paanch|chhe|saat|aath|nau|das|gyarah|barah|baarah)\s+baje\b/gi, ' ')
+        .replace(/\bhigh[\s-]*school\s+(?:sweethearts?|crush(?:es)?|reunion|days|memories|friends?)\b/gi, ' ')
+        .replace(/\b(?:since|back\s+in|in|from)\s+(?:high\s+)?school\s+(?:days|times)\b/gi, ' ')
+        .replace(/\bschool\s+(?:ki|ke)\s+(?:yaadein|yaad|dino|din)\b/gi, ' ')
+        .replace(
+            /\b(?:feel|feels|felt|feeling|giggl\w*|blush\w*|grin\w*|racing|races|race|nervous)\s+(?:like\s+)?(?:an?\s+)?(?:teen(?:ager)?|schoolboy|school\s*kid)(?:\s+(?:in\s+love|again|with\s+a\s+crush))?\b/gi,
+            ' ',
+        )
+        .replace(/\blike\s+an?\s+(?:teen(?:ager)?|schoolboy)\s+(?:in\s+love|again|with\s+a\s+crush)\b/gi, ' ')
+        .replace(/\b(?:seventeen|sixteen|fifteen|fourteen|thirteen|twelve|eleven)\s+(?:red\s+|pink\s+|white\s+)?(?:roses?|kisses|reasons?|songs?|stars?|hugs?|candles?|messages?|texts?|photos?)\b/gi, ' ');
+}
+
+export function hasMinorCue(...texts: ReadonlyArray<string | null | undefined>): boolean {
+    for (const raw of texts) {
+        if (!raw || !raw.trim()) continue;
+        const text = withoutRomanceIdioms(raw);
+        for (const form of safetyForms(text)) {
+            MINOR_CUE.lastIndex = 0;
+            if (MINOR_CUE.test(form) || MINOR_CUE_DEVANAGARI.test(form)) return true;
+        }
+        const categories = [...assessLocal(text, 'persona'), ...assessLocal(text, 'input')];
+        if (categories.includes('minor') || categories.includes('sexual_minors')) return true;
+        if (claimsFirstPersonMinor(text)) return true;
+    }
+    return false;
+}
 
 export function assessLocal(
     text: string,
     surface: ModerationSurface,
 ): SafetyCategory[] {
     const found: SafetyCategory[] = [];
+    for (const form of safetyForms(text)) {
+        // A relative's age in ordinary chat is not a minor claim. Sexual and
+        // romantic co-signals stay on the original text, so they still block.
+        const scan = surface === 'input'
+            ? withoutRelativeAgeMentions(withoutRomanceIdioms(form))
+            : form;
+        collectRuleHits(scan, surface, found);
+        if (scan !== form) collectRuleHits(form, surface, found, true);
+        if (
+            INPUT_AND_PERSONA.has(surface) &&
+            claimsFirstPersonMinor(form) &&
+            !found.includes('minor')
+        ) {
+            found.push('minor');
+        }
+    }
+    return found;
+}
+
+function collectRuleHits(
+    text: string,
+    surface: ModerationSurface,
+    found: SafetyCategory[],
+    proximityOnly = false,
+): void {
     for (const rule of RULES) {
         if (!rule.surfaces.has(surface)) continue;
+        if (proximityOnly && rule.category !== 'sexual_minors') continue;
         rule.pattern.lastIndex = 0;
         if (rule.pattern.test(text) && !found.includes(rule.category)) {
             found.push(rule.category);
         }
     }
+}
+
+/**
+ * Drops a non-sexual mention of a relative's age or school class so the
+ * chat pre-filter can allow "my 10-year-old nephew" and "my sister is in class 9".
+ * The caller's original text is still scanned for sexual co-signals.
+ */
+function withoutRelativeAgeMentions(text: string): string {
+    const lead = String.raw`\b(?:my|our|his|her|their|mera|meri|mere|hamara|hamari|hamare|uska|uski|unka|unki)\s+(?:little\s+|younger\s+|older\s+|chhota\s+|chhoti\s+|chota\s+|choti\s+)?`;
+    const age = String.raw`(?:${UNDER_18_AGE_WORDS}|1[0-7]|[1-9])`;
+    const ageUnit = String.raw`${age}[\s-]*${MINOR_AGE_UNIT}`;
+    const school = String.raw`class\s*(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi)?|(?:1[0-2]|[1-9])(?:st|nd|rd|th|vi|vii)?\s+class`;
+    const beforeNoun = new RegExp(String.raw`${lead}(?:${ageUnit})\s+(?:${RELATIVE_NOUN})\b`, 'gi');
+    const afterNoun = new RegExp(
+        String.raw`${lead}(?:${RELATIVE_NOUN})(?:'s)?\s+(?:who(?:'s|\s+is)\s+|is\s+|was\s+|turns\s+|turning\s+|starts\s+|started\s+|is\s+in\s+|goes\s+to\s+)?(?:only\s+|just\s+)?(?:a\s+|an\s+|in\s+)?(?:${school}|${age}(?:[\s-]*${MINOR_AGE_UNIT})?)\b`,
+        'gi',
+    );
+    return text.replace(beforeNoun, ' ').replace(afterNoun, ' ');
+}
+
+const LEET_CHAR: Record<string, string> = {
+    '0': 'o',
+    '1': 'i',
+    '3': 'e',
+    '4': 'a',
+    '5': 's',
+    '7': 't',
+};
+
+/**
+ * Original text plus evasions the pre-filter can undo: split ages ("1 6 years
+ * old"), leetspeak, spaced-out letters, and a base64 sentence. The provider
+ * still sees paraphrases this fold cannot recover.
+ */
+function safetyForms(text: string): string[] {
+    const base = foldText(text);
+    const forms = [base];
+    const aged = collapseSplitAge(base);
+    if (aged !== base) forms.push(aged);
+    const leet = leetFold(base);
+    if (leet !== base) forms.push(leet);
+    const spaced = collapseSpacedLetters(base);
+    if (spaced !== base) forms.push(spaced);
+    for (const decoded of decodedPayloads(base)) forms.push(decoded);
+    return forms;
+}
+
+function foldText(text: string): string {
+    return text
+        .replace(/[\u200b-\u200d\ufeff]/g, '')
+        .replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xff10 + 0x30))
+        .replace(/[०-९]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0x0966 + 0x30));
+}
+
+function collapseSplitAge(text: string): string {
+    return text.replace(
+        /\b(\d)\s+(\d)(?=\s*(?:years?\s*old|yrs?\s*old|yo\b|y\/o\b|saal\b))/gi,
+        '$1$2',
+    );
+}
+
+function leetFold(text: string): string {
+    return text.replace(
+        /\b(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]{4,}\b/gi,
+        (token) => token.replace(/[013457]/gi, (ch) => LEET_CHAR[ch.toLowerCase()] ?? ch),
+    );
+}
+
+function collapseSpacedLetters(text: string): string {
+    return text.replace(
+        /(^|[^A-Za-z])((?:[A-Za-z][ \t]+){3,}[A-Za-z])(?=$|[^A-Za-z])/g,
+        (_match, lead: string, letters: string) => lead + letters.replace(/[ \t]+/g, ''),
+    );
+}
+
+function decodedPayloads(text: string): string[] {
+    const found: string[] = [];
+    for (const match of text.matchAll(/(?:^|\s)([A-Za-z0-9+/]{20,}={0,2})(?=$|\s)/g)) {
+        const token = match[1];
+        if (!token || token.length % 4 !== 0) continue;
+        const decoded = Buffer.from(token, 'base64').toString('utf8');
+        if (!/^[\t\n\r\x20-\x7e]+$/.test(decoded)) continue;
+        if (!/[a-z]/i.test(decoded) || !/\s/.test(decoded)) continue;
+        found.push(decoded);
+    }
     return found;
+}
+
+const CANNED_SAFETY_TEXTS = new Set(
+    [REFUSAL_MESSAGE, EXPLICIT_REFUSAL_MESSAGE, UNAVAILABLE_MESSAGE, PERSONA_REJECTION_MESSAGE].map(
+        (text) => text.trim(),
+    ),
+);
+
+/** A refusal, unavailable, or crisis reply the app wrote, not the user. */
+export function isCannedSafetyText(text: string): boolean {
+    const trimmed = text.trim();
+    if (CANNED_SAFETY_TEXTS.has(trimmed)) return true;
+    return trimmed.startsWith("I'm really glad you told me. You matter, and you don't have to handle this alone.");
+}
+
+/**
+ * User lines before `current` in an oldest-first transcript. A turn the app
+ * refused or answered with a crisis notice, and any canned safety text, stay
+ * out: a refused prompt injection must not poison later turns. A minor flag
+ * from a refused turn is already stored as minorHeldAt.
+ */
+export function priorUserTexts(
+    messages: readonly { role?: unknown; content?: unknown; metadata?: unknown }[],
+    current?: unknown,
+): string[] {
+    const texts: string[] = [];
+    for (const message of messages) {
+        if (current && message === current) break;
+        if (
+            message?.role === 'USER' &&
+            typeof message.content === 'string' &&
+            message.content.trim() &&
+            safetyNoticeOf(message as { metadata?: unknown }) === null &&
+            !isCannedSafetyText(message.content)
+        ) {
+            texts.push(message.content);
+        }
+    }
+    return texts;
 }

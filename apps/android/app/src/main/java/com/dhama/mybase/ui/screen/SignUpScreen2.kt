@@ -35,9 +35,6 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,10 +43,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,11 +75,8 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.dhama.mybase.R
 import com.dhama.mybase.core.age.AgeGateCopy
-import com.dhama.mybase.core.age.MINIMUM_SIGNUP_AGE
-import com.dhama.mybase.core.age.dateOfBirthFromUtcMillis
 import com.dhama.mybase.core.age.evaluateAgeGate
 import com.dhama.mybase.core.age.formatDateOfBirth
-import com.dhama.mybase.core.age.utcMillisFromDateOfBirth
 import com.dhama.mybase.core.auth.googleWebClientId
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
@@ -99,7 +91,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignUpScreen(
     onBack: () -> Unit,
@@ -176,7 +167,6 @@ fun SignUpScreen(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 fun SignUpContent(
     onBack: () -> Unit,
     onSignUp: (email: String, password: String, dateOfBirth: String) -> Unit,
@@ -643,29 +633,14 @@ fun SignUpContent(
     }
 
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = dateOfBirth?.let(::utcMillisFromDateOfBirth),
-            initialDisplayedMonthMillis = utcMillisFromDateOfBirth(
-                dateOfBirth ?: LocalDate.now().minusYears(MINIMUM_SIGNUP_AGE.toLong()),
-            ),
-            yearRange = 1900..LocalDate.now().year,
+        DobDatePickerDialog(
+            initialDate = dateOfBirth,
+            onDismiss = { showDatePicker = false },
+            onDateCommitted = { iso ->
+                dateOfBirthIso = iso
+                showDatePicker = false
+            },
         )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { millis ->
-                        dateOfBirthIso = dateOfBirthFromUtcMillis(millis).toString()
-                    }
-                    showDatePicker = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-            },
-        ) {
-            DatePicker(state = pickerState)
-        }
     }
 }
 

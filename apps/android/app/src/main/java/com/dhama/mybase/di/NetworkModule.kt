@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.Preferences
 import com.dhama.mybase.BuildConfig
 import com.dhama.mybase.core.data.DataStoreSessionStore
 import com.dhama.mybase.core.data.MessageReportRepository
+import com.dhama.mybase.core.data.AgeServerSync
+import com.dhama.mybase.core.data.DeviceAgeGate
 import com.dhama.mybase.core.network.ApiClient
 import com.dhama.mybase.core.network.NetworkSignals
 import com.dhama.mybase.core.network.SessionStore
@@ -36,8 +38,14 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideApiClient(http: OkHttpClient, store: SessionStore): ApiClient {
-        return ApiClient(http, BuildConfig.API_BASE_URL, store)
+    fun provideApiClient(http: OkHttpClient, store: SessionStore, ageGate: DeviceAgeGate): ApiClient {
+        return ApiClient(http, BuildConfig.API_BASE_URL, store, ageGate = ageGate)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAgeServerSync(api: ApiClient, ageGate: DeviceAgeGate): AgeServerSync {
+        return AgeServerSync(api, ageGate)
     }
 
     @Provides

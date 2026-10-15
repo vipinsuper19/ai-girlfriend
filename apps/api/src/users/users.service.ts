@@ -1,9 +1,11 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
 
-import { parseAgeAttestation } from '../auth/age.js';
+import { attestedAt } from '../auth/age.js';
+import { FirebaseAuthDeletion } from '../auth/firebase-auth-deletion.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageCleanup } from '../storage/storage-cleanup.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -11,7 +13,7 @@ import { deleteAccountStorageFirst } from './account-deletion.js';
 import { deleteAccountRecords } from './delete-account.js';
 import type { ConfirmAgeDto } from './dto/confirm-age.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
-import { exportRows, flagColumn, userView } from './user-view.js';
+import { exportRows, flagColumn, publicAgeConfirmedAt, userView } from './user-view.js';
 
 @Injectable()
 export class UsersService {
@@ -19,6 +21,7 @@ export class UsersService {
         private readonly prisma: PrismaService,
         private readonly storage: StorageService,
         private readonly cleanup: StorageCleanup,
+        private readonly firebaseAuth: FirebaseAuthDeletion = new FirebaseAuthDeletion(null),
     ) { }
 
     async findMe(userId: string) {
@@ -66,21 +69,30 @@ export class UsersService {
         return userView(updatedUser);
     }
 
-    /** Checks the date of birth, then stores only the confirmation time. */
+    /**
+     * Stores the first 18+ attestation. A later true keeps that timestamp.
+     * The body is `{ ageConfirmed: true }`. No date of birth is read.
+     */
     async confirmAge(userId: string, dto: ConfirmAgeDto) {
-        const age = parseAgeAttestation(dto, new Date(), { required: true });
-        await this.requireUser(userId);
+        const stamp = attestedAt(dto.ageConfirmed, new Date());
+        if (!stamp) {
+            throw new BadRequestException('ageConfirmed must be true');
+        }
+
+        const user = await this.requireUser(userId);
+        const existing = publicAgeConfirmedAt(user.ageConfirmedAt);
+        if (existing) return { ageConfirmedAt: existing };
 
         const db = this.prisma.client as any;
         const updated = await db.orm.public.User.where({
             id: Number(userId),
-        }).update(age);
+        }).update({ ageConfirmedAt: stamp });
 
         if (!updated) {
             throw new NotFoundException('User not found');
         }
 
-        return age;
+        return { ageConfirmedAt: publicAgeConfirmedAt(updated.ageConfirmedAt) ?? stamp };
     }
 
     /**
@@ -118,10 +130,7 @@ export class UsersService {
 
         return {
             exportedAt: new Date().toISOString(),
-            user: {
-                ...userView(user),
-                ageConfirmedAt: user.ageConfirmedAt ?? null,
-            },
+            user: userView(user),
             companions: exportRows(companions),
             appearances: exportRows(await byCompanion('CompanionAppearance')),
             personalities: exportRows(await byCompanion('CompanionPersonality')),
@@ -172,6 +181,9 @@ export class UsersService {
 
         const companions = await db.orm.public.Companion.where({ userId: id }).all();
         const companionIds = companions.map((companion: { id: number }) => companion.id);
+        const accounts = db.orm.public.Account
+            ? await db.orm.public.Account.where({ userId: id }).all()
+            : [];
 
         // Earlier failed deletes are retried while this account still exists.
         // A cleanup-table error stops here so the user row is not removed first.
@@ -183,8 +195,16 @@ export class UsersService {
             deleteUser: () => deleteAccountRecords(db, id),
         });
 
+        // The Firebase uid was read above. The user row is already gone, so a
+        // failed Auth delete is queued and the HTTP deletion still succeeds.
+        const firebaseUserDeleted = await this.firebaseAuth.removeForDeletedAccount(
+            accounts,
+            user.email,
+        );
+
         return {
             message: 'Account deleted successfully',
+            firebaseUserDeleted,
         };
     }
 }

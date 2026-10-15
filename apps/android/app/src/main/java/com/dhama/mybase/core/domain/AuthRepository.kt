@@ -12,31 +12,13 @@ interface AuthRepository {
 
     fun getCurrentUser(): FirebaseUser?
 
-    suspend fun register(
-        email: String,
-        password: String,
-        dateOfBirth: String? = null,
-        ageConfirmedAt: String? = null,
-    ): Boolean
+    suspend fun register(email: String, password: String): Boolean
 
-    suspend fun login(
-        email: String,
-        password: String,
-        dateOfBirth: String? = null,
-        ageConfirmedAt: String? = null,
-    ): Boolean
-
-    suspend fun submitAge(dateOfBirth: String, ageConfirmedAt: String)
+    suspend fun login(email: String, password: String): Boolean
 
     suspend fun changePassword(currentPassword: String, newPassword: String)
 
-
-
-    suspend fun signInWithGoogle(
-        result: GetCredentialResponse,
-        dateOfBirth: String? = null,
-        ageConfirmedAt: String? = null,
-    ): Boolean
+    suspend fun signInWithGoogle(result: GetCredentialResponse): Boolean
 
     suspend fun sendOtp(phoneNumber: String, activity: Activity,
                         callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks)
@@ -44,7 +26,21 @@ interface AuthRepository {
 
     suspend fun logout()
 
-    suspend fun deleteRemoteAccount()
+    /**
+     * DELETE /users/me. Returns true when the body says the Admin SDK already deleted the Firebase user.
+     * Throws when the server delete fails. Does not touch Firebase Auth or local data.
+     */
+    suspend fun deleteRemoteAccount(): Boolean
+
+    /**
+     * Deletes the signed-in Firebase user. Reauthenticates once when Firebase requires a recent login.
+     * [emailPassword] and [googleIdToken] are used only for that reauthentication.
+     */
+    suspend fun deleteFirebaseAuthUser(
+        serverDeletedFirebaseUser: Boolean,
+        emailPassword: String?,
+        googleIdToken: String?,
+    )
 
     /**
      * Signs Firebase out, then clears the API session store.

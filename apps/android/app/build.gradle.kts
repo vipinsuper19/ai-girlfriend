@@ -393,6 +393,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.billing.ktx)
+    implementation(libs.androidx.browser)
 
 
 

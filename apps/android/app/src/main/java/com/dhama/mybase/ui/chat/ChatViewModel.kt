@@ -432,6 +432,7 @@ class ChatViewModel @Inject constructor(
 
     private suspend fun noteApiFailure(error: ApiStatusException) {
         when (remoteSendFailure(error.status, error.code)) {
+            RemoteSendFailure.AgeRequired -> Unit
             RemoteSendFailure.UsageLimit -> noteUsageLimit(error)
             RemoteSendFailure.RateLimited -> noteRateLimit(error)
             RemoteSendFailure.Missing -> {

@@ -43,6 +43,7 @@ test('development boots with the database, JWT secrets, and CORS', () => {
     assert.equal(value.NODE_ENV, 'development');
     assert.equal(value.STORAGE_DRIVER, 'local');
     assert.equal(value.PORT, 3001);
+    assert.equal(value.AGE_GATE_ENFORCED, false);
 });
 
 test('a short JWT secret is rejected in every environment', () => {
@@ -101,6 +102,43 @@ test('s3 storage requires its credentials outside production too', () => {
     assert.throws(
         () => validateEnv({ ...DEV, STORAGE_DRIVER: 's3' }),
         /S3_SECRET_ACCESS_KEY/,
+    );
+});
+
+const SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'firebase@example.iam.gserviceaccount.com',
+    private_key: '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n',
+    project_id: 'demo',
+});
+
+test('AGE_GATE_ENFORCED is a boolean and defaults off', () => {
+    assert.equal(validateEnv({ ...DEV, AGE_GATE_ENFORCED: 'true' }).AGE_GATE_ENFORCED, true);
+    assert.equal(validateEnv({ ...PRODUCTION, AGE_GATE_ENFORCED: 'false' }).AGE_GATE_ENFORCED, false);
+    assert.throws(
+        () => validateEnv({ ...DEV, AGE_GATE_ENFORCED: 'maybe' }),
+        /AGE_GATE_ENFORCED/,
+    );
+});
+
+test('an invalid Firebase service account is rejected and a missing one is not', () => {
+    assert.throws(
+        () => validateEnv({ ...DEV, FIREBASE_SERVICE_ACCOUNT_JSON: '{not-json' }),
+        /FIREBASE_SERVICE_ACCOUNT_JSON/,
+    );
+    assert.throws(
+        () => validateEnv({ ...DEV, FIREBASE_SERVICE_ACCOUNT_JSON: '{"client_email":"only@example.com"}' }),
+        /FIREBASE_SERVICE_ACCOUNT_JSON/,
+    );
+    const withProject = validateEnv({
+        ...PRODUCTION,
+        FIREBASE_PROJECT_ID: 'demo-project',
+    });
+    assert.equal(withProject.FIREBASE_PROJECT_ID, 'demo-project');
+    assert.equal(withProject.FIREBASE_SERVICE_ACCOUNT_JSON, undefined);
+    const encoded = Buffer.from(SERVICE_ACCOUNT).toString('base64');
+    assert.equal(
+        validateEnv({ ...DEV, FIREBASE_SERVICE_ACCOUNT_JSON: encoded }).FIREBASE_SERVICE_ACCOUNT_JSON,
+        encoded,
     );
 });
 

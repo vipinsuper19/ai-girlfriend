@@ -54,10 +54,7 @@ export class AuthController {
     google(
         @Body() dto: GoogleLoginDto,
     ) {
-        return this.authService.googleLogin(dto.idToken, {
-            dateOfBirth: dto.dateOfBirth,
-            ageConfirmedAt: dto.ageConfirmedAt,
-        });
+        return this.authService.googleLogin(dto.idToken, dto.ageConfirmed === true);
     }
 
     @Public()

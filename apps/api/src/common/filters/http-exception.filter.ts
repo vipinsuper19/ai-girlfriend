@@ -74,6 +74,24 @@ function sendErrorResponse(
     response.status(errorResponse.statusCode).json(errorResponse);
 }
 
+export function errorEnvelope(
+    statusCode: number,
+    message: string | string[],
+    path: string,
+    extra: Record<string, string | number> = {},
+    error?: string,
+): ErrorResponse {
+    return {
+        success: false,
+        statusCode,
+        message,
+        ...(error ? { error } : {}),
+        ...extra,
+        timestamp: new Date().toISOString(),
+        path,
+    };
+}
+
 function buildErrorResponse(
     exception: unknown,
     request: Pick<Request, 'originalUrl' | 'url'>,
@@ -100,13 +118,11 @@ function buildErrorResponse(
         }
     }
 
-    return {
-        success: false,
+    return errorEnvelope(
         statusCode,
         message,
-        ...(error ? { error } : {}),
-        ...extra,
-        timestamp: new Date().toISOString(),
-        path: request.originalUrl ?? request.url,
-    };
+        request.originalUrl ?? request.url,
+        extra,
+        error,
+    );
 }

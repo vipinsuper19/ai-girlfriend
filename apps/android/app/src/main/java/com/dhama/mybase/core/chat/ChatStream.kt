@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 sealed interface ChatStreamEvent {
     data class UserMessage(val content: String) : ChatStreamEvent
     data class Delta(val content: String) : ChatStreamEvent
+    data class Replace(val content: String) : ChatStreamEvent
     data class Done(val content: String, val serverMessageId: Int? = null) : ChatStreamEvent
     data class Error(
         val message: String,
@@ -102,6 +103,7 @@ private fun parseBlock(block: String): ChatStreamEvent? {
     return when (type) {
         "message" -> ChatStreamEvent.UserMessage(text)
         "delta" -> ChatStreamEvent.Delta(text)
+        "replace" -> ChatStreamEvent.Replace(text)
         "done" -> ChatStreamEvent.Done(
             text.ifBlank { payload?.message?.content.orEmpty() },
             payload?.message?.id,

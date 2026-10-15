@@ -1,7 +1,6 @@
 package com.dhama.mybase.ui.screen
 
 import android.content.res.Configuration
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,12 +25,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dhama.mybase.BuildConfig
+import com.dhama.mybase.core.legal.openLegalPage
+import com.dhama.mybase.core.legal.privacyPolicyUrl
+import com.dhama.mybase.core.legal.termsUrl
 import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 
@@ -148,7 +152,10 @@ fun WelcomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Each link is its own node so Maestro can tap it. The handlers still only log.
+            // Each link is its own node so Maestro can tap it.
+            val context = LocalContext.current
+            val termsPage = termsUrl(BuildConfig.API_BASE_URL)
+            val privacyPage = privacyPolicyUrl(BuildConfig.API_BASE_URL)
             val gray = MaterialTheme.typography.bodySmall.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 fontSize = 12.sp,
@@ -171,7 +178,7 @@ fun WelcomeScreen(
                     style = link,
                     modifier = Modifier
                         .testId("welcome_terms")
-                        .clickable { Log.d("WelcomeScreen", "Terms clicked") },
+                        .clickable { openLegalPage(context, termsPage) },
                 )
                 Text(
                     text = " and ",
@@ -182,7 +189,7 @@ fun WelcomeScreen(
                     style = link,
                     modifier = Modifier
                         .testId("welcome_privacy")
-                        .clickable { Log.d("WelcomeScreen", "Privacy clicked") },
+                        .clickable { openLegalPage(context, privacyPage) },
                 )
                 Text(
                     text = ".",

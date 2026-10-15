@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    accountProviderData,
     googleDisplayName,
     googleIdentity,
     googleSignInPlan,
@@ -24,6 +25,7 @@ test('a Firebase Google token uses the Google account id', () => {
         googleId: '1234567890',
         email: 'ana@example.com',
         name: 'Ana',
+        firebaseUid: 'firebase-uid',
     });
 });
 
@@ -37,6 +39,7 @@ test('a Firebase password or phone token is refused', () => {
 test('a plain Google token uses sub, and the email must be verified', () => {
     const plain = { iss: 'https://accounts.google.com', sub: '99', email: 'a@b.co', email_verified: true };
     assert.equal(googleIdentity(plain).identity?.googleId, '99');
+    assert.equal(googleIdentity(plain).identity?.firebaseUid, null);
     assert.equal(
         googleIdentity({ ...plain, email_verified: false }).problem,
         'Google email is not verified',
@@ -50,6 +53,23 @@ test('an existing email account is never taken over', () => {
 });
 
 test('display name falls back to the email name', () => {
-    assert.equal(googleDisplayName({ googleId: '1', email: 'ana@x.co', name: null }), 'ana');
-    assert.equal(googleDisplayName({ googleId: '1', email: 'a@x.co', name: null }), 'Friend');
+    assert.equal(
+        googleDisplayName({ googleId: '1', email: 'ana@x.co', name: null, firebaseUid: null }),
+        'ana',
+    );
+    assert.equal(
+        googleDisplayName({ googleId: '1', email: 'a@x.co', name: null, firebaseUid: null }),
+        'Friend',
+    );
+});
+
+test('provider data stores the Firebase uid and leaves password tokens alone', () => {
+    assert.deepEqual(
+        accountProviderData({ picture: 'x' }, { email: 'a@b.co', firebaseUid: 'uid-1' }),
+        { picture: 'x', email: 'a@b.co', firebaseUid: 'uid-1' },
+    );
+    assert.deepEqual(
+        accountProviderData(null, { email: 'a@b.co', firebaseUid: null }),
+        { email: 'a@b.co' },
+    );
 });

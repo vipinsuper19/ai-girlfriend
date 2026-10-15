@@ -82,8 +82,9 @@ test('account deletion removes files, then deletion requests, then the user row'
     const { client, calls } = account();
     const { order, users } = service(client, async () => ({ failures: [], incomplete: false }));
 
-    await users.deleteMe('3');
+    const result = await users.deleteMe('3');
 
+    assert.equal(result.firebaseUserDeleted, false);
     assert.deepEqual(order, ['retry', 'storage']);
     assert.deepEqual(calls, ['deletion-requests', 'user']);
 });

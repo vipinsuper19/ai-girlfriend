@@ -58,6 +58,19 @@ test('Play Store pages are HTML outside /api/v1 and the form stores a request', 
         const prefixed = await fetch(`${base}/${API_BASE_PATH}/privacy`);
         assert.equal(prefixed.status, 404);
 
+        const terms = await fetch(`${base}/terms`);
+        assert.equal(terms.status, 200);
+        const termsHtml = await terms.text();
+        assert.match(terms.headers.get('content-type') ?? '', /text\/html/);
+        assert.match(termsHtml, /AiGirl terms of use/);
+        assert.match(termsHtml, /TODO/);
+        assert.equal(termsHtml.includes('"success"'), false);
+        assert.match(termsHtml, /href="\/privacy"/);
+        assert.match(termsHtml, /href="\/account-deletion"/);
+
+        const prefixedTerms = await fetch(`${base}/${API_BASE_PATH}/terms`);
+        assert.equal(prefixedTerms.status, 404);
+
         const deletion = await fetch(`${base}/account-deletion`);
         assert.equal(deletion.status, 200);
         const deletionHtml = await deletion.text();
@@ -87,6 +100,19 @@ test('Play Store pages are HTML outside /api/v1 and the form stores a request', 
 
         const prefixedConfirm = await fetch(`${base}/${API_BASE_PATH}/account-deletion/confirm?token=nope`);
         assert.equal(prefixedConfirm.status, 404);
+
+        const empty = await fetch(`${base}/account-deletion`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: '',
+        });
+        assert.equal(empty.status, 400);
+        assert.match(empty.headers.get('content-type') ?? '', /text\/html/);
+        const emptyHtml = await empty.text();
+        assert.match(emptyHtml, /role="alert"/);
+        assert.match(emptyHtml, /Enter the account email/);
+        assert.match(emptyHtml, /method="post"/);
+        assert.equal(emptyHtml.includes('Internal server error'), false);
     } finally {
         await app.close();
         if (previousEmail === undefined) delete process.env['CONTACT_EMAIL'];

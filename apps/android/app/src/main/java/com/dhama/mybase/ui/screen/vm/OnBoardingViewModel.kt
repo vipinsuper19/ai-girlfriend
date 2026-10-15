@@ -76,8 +76,9 @@ class OnBoardingViewModel @Inject constructor(
             try {
                 _authState.value = UiState.Loading
                 val confirmedAt = Instant.now().toString()
-                if (authRepository.register(email, password, dateOfBirth, confirmedAt)) {
+                if (authRepository.register(email, password)) {
                     ageAttestation.save(dateOfBirth, confirmedAt)
+                    ageAttestation.syncAfterSave()
                     saveLoggedInStatus(true)
                     val result = "Account created successfully!"
                     _authState.value = UiState.Success(result)
@@ -115,9 +116,9 @@ class OnBoardingViewModel @Inject constructor(
             try {
                 _authState.value = UiState.Loading
                 val confirmedAt = Instant.now().toString()
-                if (authRepository.signInWithGoogle(credentialResponse, dateOfBirth, confirmedAt)) {
+                if (authRepository.signInWithGoogle(credentialResponse)) {
                     ageAttestation.save(dateOfBirth, confirmedAt)
-                    ageAttestation.pushIfEnabled(dateOfBirth, confirmedAt)
+                    ageAttestation.syncAfterSave()
                     saveLoggedInStatus(true)
                     val result = "User logged in successfully!"
                     _authState.value = UiState.Success(result)

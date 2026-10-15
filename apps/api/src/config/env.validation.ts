@@ -1,5 +1,7 @@
 import Joi from 'joi';
 
+import { parseServiceAccount } from '../common/google-service-account.js';
+
 /**
  * Credentials a production process must have. Set these in the Render
  * secret manager (dashboard env vars). Do not commit the values.
@@ -115,6 +117,7 @@ export const envValidationSchema = Joi.object({
     OPENAI_CHAT_MODEL: Joi.string().optional(),
 
     MODERATION_ENABLED: Joi.string().optional(),
+    AGE_GATE_ENFORCED: Joi.boolean().default(false),
     MODERATION_PROVIDER: Joi.string().valid('auto', 'openai', 'gemini', 'local').optional(),
     // `mock` is the emulator CI chat/embedding stand-in. Production rejects it below.
     LLM_PROVIDER: Joi.string().valid('gemini', 'mock').optional(),
@@ -153,7 +156,10 @@ export const envValidationSchema = Joi.object({
 
     GOOGLE_CLIENT_IDS: Joi.string().optional(),
     FIREBASE_PROJECT_ID: Joi.string().optional(),
-    FIREBASE_SERVICE_ACCOUNT_JSON: Joi.string().optional(),
+    FIREBASE_SERVICE_ACCOUNT_JSON: Joi.string().optional().custom((value, helpers) => {
+        if (parseServiceAccount(String(value))) return value;
+        return helpers.error('any.invalid');
+    }),
     GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: Joi.string().optional(),
     GOOGLE_PLAY_PACKAGE_NAME: Joi.string().optional(),
     GOOGLE_PLAY_PRODUCTS: Joi.string().optional(),
