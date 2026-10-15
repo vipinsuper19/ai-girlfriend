@@ -5,7 +5,7 @@
 # against the live Render API.
 # This pull request is based on cursor/android-maestro-flows-a17a (PR #34),
 # which owns the flows. The job runs apps/android/.maestro/run-all.sh.
-# It is non-blocking (continue-on-error) and is not a required check.
+# Every flow is blocking: any failed flow fails the job.
 # No Play upload steps and no new secrets. PLAY_UPLOAD_ENABLED is untouched.
 name: Android emulator
 
@@ -35,7 +35,6 @@ jobs:
     name: Maestro flows
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 90
     # upload-artifact writes to the Actions artifact store, not the repo.
     permissions:
@@ -228,7 +227,6 @@ jobs:
     name: Render API smoke
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 90
     permissions:
       contents: read
@@ -316,7 +314,6 @@ jobs:
           key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel_6-c4-r4096-xvfb
 
       - name: Warm up API
-        continue-on-error: true
         run: |
           set -u
           api_base="${API_BASE_URL%/}"
@@ -342,7 +339,6 @@ jobs:
           if [[ "$ok" != "1" ]]; then
             echo "::warning::API health did not return 200 at ${health} within 150s. Maestro will still run."
             cat /tmp/health-body || true
-            exit 1
           fi
 
       - name: Run Maestro flows
