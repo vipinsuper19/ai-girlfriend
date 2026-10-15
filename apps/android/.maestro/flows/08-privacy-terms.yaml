@@ -1,15 +1,12 @@
 appId: com.dhama.mybase
 name: Privacy and Terms
 tags:
-  - known-failure
   - legal
 env:
   SHOT: 08-privacy-terms
 ---
-# KNOWN FAILURE. Do not "fix" WelcomeScreen to make this pass.
-# Terms and Privacy Policy click handlers only call Log.d (WelcomeScreen.kt).
-# This flow expects each link to leave welcome and open its page. It fails while those handlers only log.
-# run-all.sh treats that failure as the expected result, and fails the run if this flow starts passing.
+# Terms and Privacy open the API host's /terms and /privacy pages in a Custom Tab
+# (main's LegalPages.kt). Chrome's first-run screens are skipped first.
 - runFlow:
     file: ../subflows/launch-fresh.yaml
 - tapOn:
@@ -19,7 +16,11 @@ env:
     notVisible:
       id: welcome_get_started
     timeout: 10000
-- assertVisible: ".*[Tt]erms of.*"
+- runFlow:
+    file: ../subflows/dismiss-chrome-fre.yaml
+- extendedWaitUntil:
+    visible: ".*[Tt]erms of use.*"
+    timeout: 60000
 - takeScreenshot: ${SHOT}-terms-page
 - back
 - launchApp:
@@ -35,5 +36,9 @@ env:
     notVisible:
       id: welcome_get_started
     timeout: 10000
-- assertVisible: "privacy policy"
+- runFlow:
+    file: ../subflows/dismiss-chrome-fre.yaml
+- extendedWaitUntil:
+    visible: ".*[Pp]rivacy policy.*"
+    timeout: 60000
 - takeScreenshot: ${SHOT}-privacy-page

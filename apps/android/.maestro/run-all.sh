@@ -84,15 +84,7 @@ run_named "05 offline/retry" "${DIR}/run-offline.sh"
 run_shot "06 composer cap" 06-composer-limit "${DIR}/run-composer-cap.sh"
 run_shot "07 report message" 07-report-message maestro_test "${DIR}/flows/07-report-message.yaml"
 
-echo "======== 08 privacy and terms (known failure) ========"
-if SHOT=08-privacy-terms MAESTRO_REPORT=08-privacy-terms maestro_test "${DIR}/flows/08-privacy-terms.yaml"; then
-  echo "FAIL 08-privacy-terms unexpectedly passed."
-  echo "WelcomeScreen Terms and Privacy only log. If they now open pages, drop the known-failure mark in run-all.sh and FLOWS.md."
-  failures+=("08-privacy-terms unexpectedly passed")
-else
-  echo "KNOWN FAILURE 08-privacy-terms (expected). Terms and Privacy only call Log.d and do not open pages."
-fi
-
+run_shot "08 privacy and terms" 08-privacy-terms maestro_test "${DIR}/flows/08-privacy-terms.yaml"
 run_shot "09 delete account" 09-delete-account maestro_test "${DIR}/flows/09-delete-account.yaml"
 
 if [[ "${#failures[@]}" -gt 0 ]]; then
@@ -101,5 +93,5 @@ if [[ "${#failures[@]}" -gt 0 ]]; then
   exit 1
 fi
 
-echo "All flows passed. 08-privacy-terms failed as expected."
+echo "All flows passed."
 echo "Artifacts: ${MAESTRO_OUT}"
