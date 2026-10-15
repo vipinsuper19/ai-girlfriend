@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # CI entry for the emulator job.
 # run-all.sh writes apps/android/.maestro/out/ and handles flow 08.
-# A non-zero exit is a real failure, except flows 04 and 09, which are allowed
-# to fail (chat reply quota, and Firebase user deletion). Every other flow must pass.
+# Every one of the 9 flows must pass. Any failure fails the job.
 set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,8 +9,7 @@ export PATH="${PATH}:${HOME}/.maestro/bin"
 
 artifacts="${GITHUB_WORKSPACE:-/tmp}/emulator-artifacts"
 mkdir -p "${artifacts}"
-# run-all.sh writes this itself, including PASS/FAIL lines. Flow 08 does not
-# make the script exit non-zero. Any other failure does.
+# run-all.sh writes this itself, including PASS/FAIL lines.
 log="${DIR}/out/run-all.log"
 
 # Debug builds type yyyy-MM-dd, so the flows do not use the locale-sensitive picker.
@@ -91,12 +89,13 @@ required = [
     "01 age gate",
     "02 sign up, log out, log in",
     "03 companion wizard",
+    "04 chat stream",
     "05 offline/retry",
     "06 composer cap",
     "07 report message",
     "08 privacy and terms",
+    "09 delete account",
 ]
-allowed = ["04 chat stream", "09 delete account"]
 rows = []
 blockers = []
 
@@ -107,32 +106,13 @@ def cell(name):
         return "FAIL"
     return "MISSING"
 
-for name in ["01 age gate", "02 sign up, log out, log in", "03 companion wizard"]:
+for name in required:
     status = cell(name)
     rows.append((name, status, ""))
     if status != "PASS":
         blockers.append(name)
-rows.append(("04 chat stream", cell("04 chat stream"), "allowed"))
-if cell("04 chat stream") == "MISSING":
-    blockers.append("04 chat stream")
-for name in ["05 offline/retry", "06 composer cap", "07 report message"]:
-    status = cell(name)
-    rows.append((name, status, ""))
-    if status != "PASS":
-        blockers.append(name)
-status = cell("08 privacy and terms")
-rows.append(("08 privacy and terms", status, ""))
-if status != "PASS":
-    blockers.append("08 privacy and terms")
-rows.append(("09 delete account", cell("09 delete account"), "allowed"))
-if cell("09 delete account") == "MISSING":
-    blockers.append("09 delete account")
-
-allowed_set = set(allowed)
-extra = [name for name in recorded if name not in allowed_set]
-if extra:
-    blockers.extend(extra)
-if not seen and any(name in failed for name in required + allowed):
+blockers.extend(name for name in recorded if name not in required)
+if not seen and any(name in failed for name in required):
     blockers.append("run-all did not print Failed flows")
 
 text = ["# Maestro flow results", "", "| Flow | Result | Note |", "| --- | --- | --- |"]
@@ -143,7 +123,7 @@ if blockers:
     text.append("Blocking failures:")
     text.extend(f"- {item}" for item in dict.fromkeys(blockers))
 else:
-    text.append("No blocking failures. Flows 04 and 09 may fail.")
+    text.append("All 9 flows passed.")
 text.append("")
 out.write_text("\n".join(text) + "\n")
 print("\n".join(text))
@@ -190,11 +170,8 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   cat "${summary}" >> "${GITHUB_STEP_SUMMARY}"
 fi
 
-if [[ "${classify}" -ne 0 || "${shots_status}" -ne 0 ]]; then
+if [[ "${classify}" -ne 0 || "${shots_status}" -ne 0 || "${run_status}" -ne 0 ]]; then
+  echo "Maestro failed: classify=${classify} screenshots=${shots_status} run-all=${run_status}." >&2
   exit 1
-fi
-if [[ "${run_status}" -ne 0 ]]; then
-  # run-all exits 1 when 04, 09, or both fail. Classification already allowed those.
-  echo "run-all.sh exited ${run_status}; remaining failures are allowed."
 fi
 exit 0
