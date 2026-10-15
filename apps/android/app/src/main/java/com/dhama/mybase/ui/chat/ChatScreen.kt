@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -98,6 +99,7 @@ import com.dhama.mybase.core.voice.VoiceRecorder
 import com.dhama.mybase.core.voice.VoiceRelease
 import com.dhama.mybase.core.voice.voiceReleaseAction
 import com.dhama.mybase.ui.preview.sampleMessages
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.theme.companionColors
 import java.io.File
@@ -487,7 +489,10 @@ fun ChatScreen(
             title = { Text(AiDisclosure.TITLE) },
             text = { Text(AiDisclosure.BODY) },
             confirmButton = {
-                TextButton(onClick = { viewModel.acknowledgeAiDisclosure() }) {
+                TextButton(
+                    onClick = { viewModel.acknowledgeAiDisclosure() },
+                    modifier = Modifier.testId("chat_ai_ack"),
+                ) {
                     Text(AiDisclosure.ACKNOWLEDGE)
                 }
             },
@@ -539,7 +544,9 @@ fun ChatScreen(
                                 viewModel.openReport(message)
                                 selected = null
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testId("chat_report"),
                         ) {
                             Text(
                                 "Report message",
@@ -620,12 +627,18 @@ private fun ReportMessageDialog(
             ) {
                 when {
                     state.blocked != null -> Text(state.blocked)
-                    state.sent -> Text("Thanks. We'll review this reply.")
+                    state.sent -> Text(
+                        "Thanks. We'll review this reply.",
+                        modifier = Modifier.testId("report_thanks"),
+                    )
                     else -> {
                         Text("What should we look at?")
                         ReportReason.entries.forEach { reason ->
                             Row(
-                                Modifier.fillMaxWidth(),
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !state.submitting) { onSelect(reason) }
+                                    .testId("report_reason_${reason.code}"),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 RadioButton(
@@ -666,6 +679,7 @@ private fun ReportMessageDialog(
                 TextButton(
                     onClick = onSubmit,
                     enabled = state.selected != null && !state.submitting,
+                    modifier = Modifier.testId("report_send"),
                 ) {
                     Text(if (state.submitting) "Sending…" else "Send report")
                 }
@@ -765,6 +779,7 @@ private fun MessageRow(
                                 .clip(shape)
                                 .background(background)
                                 .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                                .then(messageTestId(message)?.let { Modifier.testId(it) } ?: Modifier)
                                 .semantics {
                                     contentDescription = spoken
                                     if (streaming) liveRegion = LiveRegionMode.Polite
@@ -775,7 +790,12 @@ private fun MessageRow(
                 }
             }
             if (failed && (FeatureFlags.build.voice || message.kind != ChatMessageEntity.KIND_AUDIO)) {
-                TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                TextButton(
+                    onClick = onRetry,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testId("chat_retry"),
+                ) {
                     Text(retryCaption(message.delivery), color = MaterialTheme.colorScheme.error)
                 }
             } else if (
@@ -863,7 +883,8 @@ private fun Composer(
                     isError = overLimit || value.length == CHAT_MESSAGE_MAX_CHARS,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 52.dp),
+                        .heightIn(min = 52.dp)
+                        .testId("chat_composer"),
                     placeholder = { Text("Message") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
@@ -880,7 +901,9 @@ private fun Composer(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                        modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                        modifier = Modifier
+                            .padding(start = 16.dp, top = 2.dp)
+                            .testId("chat_draft_limit"),
                     )
                 }
             }
@@ -895,7 +918,7 @@ private fun Composer(
             )
         }
         when {
-            streaming -> IconButton(onClick = onStop) {
+            streaming -> IconButton(onClick = onStop, modifier = Modifier.testId("chat_stop")) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop")
             }
             FeatureFlags.build.voice && locked -> Row {
@@ -905,6 +928,7 @@ private fun Composer(
             else -> IconButton(
                 onClick = onSend,
                 enabled = enabled && value.isNotBlank() && !chatDraftOverLimit(value),
+                modifier = Modifier.testId("chat_send"),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
@@ -996,6 +1020,21 @@ private fun ChatScreenPreview() {
             )
         }
     }
+}
+
+/**
+ * Resource id for a non-empty assistant reply that is streaming or delivered.
+ * The local greeting and a failed send stay untagged so a flow can wait for a real reply.
+ */
+private fun messageTestId(message: ChatMessageEntity): String? {
+    if (message.role == ChatRepositoryImpl.ROLE_USER && message.text.isNotBlank()) {
+        return "chat_user_message"
+    }
+    if (message.role != ChatRepositoryImpl.ROLE_ASSISTANT) return null
+    if (message.id == ChatRepositoryImpl.GREETING_ID || message.text.isBlank()) return null
+    val delivered = message.delivery == ChatRepositoryImpl.DELIVERY_STREAMING ||
+        message.delivery == ChatRepositoryImpl.DELIVERY_SENT
+    return if (delivered) "chat_assistant_reply" else null
 }
 
 private fun needsStamp(previous: ChatMessageEntity?, current: ChatMessageEntity): Boolean {

@@ -1,0 +1,22 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+- tapOn:
+    id: tab_you
+- extendedWaitUntil:
+    visible: "Display name"
+    timeout: 15000
+- takeScreenshot: ${SHOT}-you
+- scrollUntilVisible:
+    element:
+      id: settings_logout
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: settings_logout
+- extendedWaitUntil:
+    visible:
+      id: welcome_get_started
+    timeout: 20000
+- takeScreenshot: ${SHOT}-logged-out

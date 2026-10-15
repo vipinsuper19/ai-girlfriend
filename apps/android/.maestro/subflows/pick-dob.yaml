@@ -1,0 +1,24 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Debug builds show ${DOB_FIELD_ID}_iso. Type yyyy-MM-dd there.
+# The Material picker is not used: its text mode follows the device locale, and
+# the emulator ignores -prop persist.sys.locale.
+# DOB_ISO is yyyy-MM-dd. DOB_LABEL is the US English value on ${DOB_FIELD_ID}.
+- scrollUntilVisible:
+    element:
+      id: "${DOB_FIELD_ID}_iso"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "${DOB_FIELD_ID}_iso"
+- eraseText: 12
+- inputText: ${DOB_ISO}
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: ${DOB_FIELD_ID}
+      text: ${DOB_LABEL}
+    timeout: 10000
+- takeScreenshot: ${SHOT}-dob-${DOB_FIELD_ID}-${DOB_ISO}

@@ -9,11 +9,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.rememberNavController
 import com.dhama.mybase.core.navigation.AppNavHost
@@ -44,7 +49,13 @@ class MainActivity : ComponentActivity() {
                 onDispose { }
             }
             MyBaseTheme(darkTheme = dark) {
-                AppStart()
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .semantics { testTagsAsResourceId = true },
+                ) {
+                    AppStart()
+                }
             }
         }
     }

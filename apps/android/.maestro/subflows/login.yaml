@@ -1,0 +1,21 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+- tapOn:
+    id: welcome_login
+- extendedWaitUntil:
+    visible:
+      id: login_email
+    timeout: 15000
+- tapOn:
+    id: login_email
+- inputText: ${output.email}
+- hideKeyboard
+- tapOn:
+    id: login_password
+- inputText: ${output.password}
+- hideKeyboard
+- takeScreenshot: ${SHOT}-login-form
+- tapOn:
+    id: login_submit

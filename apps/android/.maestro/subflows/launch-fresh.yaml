@@ -1,0 +1,12 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Splash holds the screen for about two seconds, then the welcome screen.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: welcome_get_started
+    timeout: 20000
+- takeScreenshot: ${SHOT}-welcome

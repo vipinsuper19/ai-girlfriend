@@ -1,0 +1,13 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+- runFlow:
+    file: credentials.yaml
+- runFlow:
+    file: launch-fresh.yaml
+- runFlow:
+    file: signup-adult.yaml
+- runFlow:
+    file: wizard-create.yaml
+- takeScreenshot: ${SHOT}-reach-home

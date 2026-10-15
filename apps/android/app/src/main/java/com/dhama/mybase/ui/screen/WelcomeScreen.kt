@@ -3,8 +3,11 @@ package com.dhama.mybase.ui.screen
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,15 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,8 +36,10 @@ import com.dhama.mybase.BuildConfig
 import com.dhama.mybase.core.legal.openLegalPage
 import com.dhama.mybase.core.legal.privacyPolicyUrl
 import com.dhama.mybase.core.legal.termsUrl
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WelcomeScreen(
     modifier: Modifier = Modifier,
@@ -113,7 +112,8 @@ fun WelcomeScreen(
                 onClick = onGetStarted,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp),
+                    .heightIn(min = 56.dp)
+                    .testId("welcome_get_started"),
                 shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -142,66 +142,60 @@ fun WelcomeScreen(
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
                     ),
-                    modifier = Modifier.clickable {
-                        onLogin?.invoke()
-                    }
+                    modifier = Modifier
+                        .testId("welcome_login")
+                        .clickable {
+                            onLogin?.invoke()
+                        }
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Each link is its own node so Maestro can tap it.
             val context = LocalContext.current
             val termsPage = termsUrl(BuildConfig.API_BASE_URL)
             val privacyPage = privacyPolicyUrl(BuildConfig.API_BASE_URL)
-            val footnoteText = buildAnnotatedString {
-                val grayStyle = SpanStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontSize = 12.sp
-                )
-                val linkStyle = SpanStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
-                    textDecoration = TextDecoration.Underline
-                )
-
-                withStyle(grayStyle) {
-                    append("By continuing you agree to our ")
-                }
-
-                val termsLink = LinkAnnotation.Clickable(
-                    tag = "Terms",
-                    styles = TextLinkStyles(style = linkStyle)
-                ) {
-                    openLegalPage(context, termsPage)
-                }
-                withLink(termsLink) {
-                    append("Terms")
-                }
-
-                withStyle(grayStyle) {
-                    append(" and ")
-                }
-
-                val privacyLink = LinkAnnotation.Clickable(
-                    tag = "Privacy",
-                    styles = TextLinkStyles(style = linkStyle)
-                ) {
-                    openLegalPage(context, privacyPage)
-                }
-                withLink(privacyLink) {
-                    append("Privacy Policy")
-                }
-
-                withStyle(grayStyle) {
-                    append(".")
-                }
-            }
-
-            Text(
-                text = footnoteText,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
+            val gray = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                fontSize = 12.sp,
             )
+            val link = gray.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                textDecoration = TextDecoration.Underline,
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "By continuing you agree to our ",
+                    style = gray,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Terms",
+                    style = link,
+                    modifier = Modifier
+                        .testId("welcome_terms")
+                        .clickable { openLegalPage(context, termsPage) },
+                )
+                Text(
+                    text = " and ",
+                    style = gray,
+                )
+                Text(
+                    text = "Privacy Policy",
+                    style = link,
+                    modifier = Modifier
+                        .testId("welcome_privacy")
+                        .clickable { openLegalPage(context, privacyPage) },
+                )
+                Text(
+                    text = ".",
+                    style = gray,
+                )
+            }
         }
     }
 }

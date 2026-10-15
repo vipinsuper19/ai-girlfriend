@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dhama.mybase.core.FeatureFlags
@@ -147,7 +148,9 @@ private fun IntroStep(
         Text(
             "Let's create\nher.",
             style = MaterialTheme.typography.displayMedium,
-            modifier = Modifier.semantics { heading() },
+            modifier = Modifier
+                .testId("wizard_intro")
+                .semantics { heading() },
         )
         Spacer(Modifier.height(20.dp))
         Bullet("Her personality", "Warmth, humour, how forward she is — you set the dial.")
@@ -177,7 +180,7 @@ private fun IntroStep(
                 modifier = Modifier.padding(bottom = 8.dp),
             )
         }
-        PrimaryAction("Start", onStart, loading = restoring)
+        PrimaryAction("Start", onStart, loading = restoring, tag = "wizard_start")
         Text(
             "Takes about a minute. You can change everything later.",
             style = MaterialTheme.typography.bodySmall,
@@ -230,7 +233,7 @@ private fun StepHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (showSkip) {
-                TextButton(onClick = onSkip) { Text("Skip") }
+                TextButton(onClick = onSkip, modifier = Modifier.testId("wizard_skip")) { Text("Skip") }
             } else {
                 Spacer(Modifier.width(48.dp))
             }
@@ -290,7 +293,7 @@ private fun AppearanceStep(
                 Text("Skin tone, build, height, clothing")
             }
         }
-        PrimaryAction("Continue", onContinue)
+        PrimaryAction("Continue", onContinue, tag = "wizard_continue")
     }
     if (more) {
         ModalBottomSheet(onDismissRequest = { more = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -377,7 +380,7 @@ private fun PersonalityStep(
             LevelSlider("Flirtiness", draft.flirtLevel) { value -> onChange { it.copy(flirtLevel = value) } }
             LevelSlider("Romance", draft.romanceLevel) { value -> onChange { it.copy(romanceLevel = value) } }
         }
-        PrimaryAction("Continue", onContinue)
+        PrimaryAction("Continue", onContinue, tag = "wizard_continue")
     }
 }
 
@@ -430,7 +433,7 @@ private fun VoiceStep(
                 }
             }
         }
-        PrimaryAction("Continue", onContinue)
+        PrimaryAction("Continue", onContinue, tag = "wizard_continue")
     }
 }
 
@@ -479,7 +482,9 @@ private fun FinalizeStep(
                 singleLine = true,
                 isError = nameError != null,
                 supportingText = nameError?.let { { Text(it) } },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testId("wizard_name"),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -490,6 +495,7 @@ private fun FinalizeStep(
             label = if (creating) "Creating…" else "Meet $display",
             onClick = onCreate,
             loading = creating,
+            tag = "wizard_create",
         )
     }
 }
@@ -563,13 +569,19 @@ private fun Monogram(letter: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PrimaryAction(label: String, onClick: () -> Unit, loading: Boolean = false) {
+private fun PrimaryAction(
+    label: String,
+    onClick: () -> Unit,
+    loading: Boolean = false,
+    tag: String? = null,
+) {
     Button(
         onClick = onClick,
         enabled = !loading,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp),
+            .heightIn(min = 56.dp)
+            .then(if (tag != null) Modifier.testId(tag) else Modifier),
         shape = RoundedCornerShape(28.dp),
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
     ) {

@@ -1,0 +1,73 @@
+appId: com.dhama.mybase
+name: Age gate
+tags:
+  - age-gate
+env:
+  SHOT: 01-age-gate
+---
+# Under 18 is rejected on the sign-up form. An adult date is allowed through to the wizard.
+# January 15, 2015 is under 18 until 2033. January 15, 1990 is an adult.
+- runFlow:
+    file: ../subflows/credentials.yaml
+- runFlow:
+    file: ../subflows/launch-fresh.yaml
+- tapOn:
+    id: welcome_get_started
+- extendedWaitUntil:
+    visible: "Create your account"
+    timeout: 15000
+- takeScreenshot: ${SHOT}-signup-open
+- runFlow:
+    file: ../subflows/fill-signup-fields.yaml
+- runFlow:
+    file: ../subflows/pick-dob.yaml
+    env:
+      DOB_FIELD_ID: signup_dob
+      DOB_ISO: "2015-01-15"
+      DOB_LABEL: "January 15, 2015"
+- scrollUntilVisible:
+    element:
+      id: signup_adult
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_adult
+# Do not hideKeyboard here. The checkbox tap already dismisses the IME, and
+# with animator scale 0 a second hideKeyboard sends Back and leaves this screen.
+- scrollUntilVisible:
+    element:
+      id: signup_submit
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_submit
+- extendedWaitUntil:
+    visible:
+      id: signup_age_error
+      text: "You must be 18 or older to create an account."
+    timeout: 10000
+- assertVisible:
+    id: signup_submit
+- assertNotVisible:
+    id: wizard_intro
+- takeScreenshot: ${SHOT}-under-18-rejected
+- runFlow:
+    file: ../subflows/pick-dob.yaml
+    env:
+      DOB_FIELD_ID: signup_dob
+      DOB_ISO: "1990-01-15"
+      DOB_LABEL: "January 15, 1990"
+# pick-dob.yaml already hides the keyboard. Another hideKeyboard sends Back.
+- scrollUntilVisible:
+    element:
+      id: signup_submit
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: signup_submit
+- extendedWaitUntil:
+    visible:
+      id: wizard_intro
+    timeout: 120000
+- assertNotVisible: "You must be 18 or older to create an account."
+- takeScreenshot: ${SHOT}-adult-allowed

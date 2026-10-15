@@ -81,6 +81,9 @@ import com.dhama.mybase.core.auth.googleWebClientId
 import com.dhama.mybase.core.model.UiState
 import com.dhama.mybase.ui.component.MyButton
 import com.dhama.mybase.ui.screen.vm.OnBoardingViewModel
+import com.dhama.mybase.ui.test.DebugDobField
+import com.dhama.mybase.ui.test.debugDobValue
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.core.FeatureFlags
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -241,6 +244,7 @@ fun SignUpContent(
                     Icons.AutoMirrored.Filled.ArrowBack, // Replace with your logo
                     contentDescription = "Back",
                     modifier = Modifier
+                        .testId("signup_back")
                         .clickable { onBack() }
                 )
             }
@@ -303,7 +307,9 @@ fun SignUpContent(
                     label = { Text("Email") },
                     leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Email Icon") },
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testId("signup_email"),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
                         imeAction = ImeAction.Next
@@ -345,7 +351,9 @@ fun SignUpContent(
                         )
                     },
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testId("signup_password"),
                     singleLine = true,
                     isError = passwordError,
                     supportingText = {
@@ -405,7 +413,9 @@ fun SignUpContent(
                         )
                     },
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testId("signup_confirm"),
                     singleLine = true,
                     isError = confirmError,
                     supportingText = {
@@ -470,6 +480,7 @@ fun SignUpContent(
                                     text = dobMessage,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.testId("signup_age_error"),
                                 )
                             }
                         },
@@ -483,16 +494,24 @@ fun SignUpContent(
                     Box(
                         modifier = Modifier
                             .matchParentSize()
+                            .testId("signup_dob")
+                            .debugDobValue(dateOfBirth?.let(::formatDateOfBirth).orEmpty())
                             .clickable { showDatePicker = true }
                             .semantics { contentDescription = "Date of birth" },
                     )
                 }
+
+                DebugDobField(
+                    id = "signup_dob_iso",
+                    onDateOfBirthIso = { dateOfBirthIso = it },
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testId("signup_adult")
                         .toggleable(
                             value = confirmedAdult,
                             role = Role.Checkbox,
@@ -530,7 +549,8 @@ fun SignUpContent(
             MyButton(
                 loading = authState is UiState.Loading,
                 text = "Sign up",
-                textLoading = "Signing up..."
+                textLoading = "Signing up...",
+                modifier = Modifier.testId("signup_submit"),
             ) {
                 if (showPhoneForm) {
                     if (isValidMobile(mobile)) onMobileSignUp(mobile)

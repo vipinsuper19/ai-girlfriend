@@ -107,6 +107,7 @@ import com.dhama.mybase.core.legal.openLegalPage
 import com.dhama.mybase.core.legal.privacyPolicyUrl
 import com.dhama.mybase.core.legal.termsUrl
 import com.dhama.mybase.ui.preview.sampleCompanion
+import com.dhama.mybase.ui.test.testId
 import com.dhama.mybase.ui.preview.sampleMemories
 import com.dhama.mybase.ui.theme.MyBaseTheme
 import com.dhama.mybase.ui.usage.PaywallCard
@@ -372,6 +373,7 @@ private fun YouSettingsContent(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
+                .testId("settings_delete_account")
                 .clickable(enabled = !accountDeleting) {
                     onDismissDeleteError()
                     confirmDelete = true
@@ -393,6 +395,7 @@ private fun YouSettingsContent(
             onClick = onLogout,
             modifier = Modifier
                 .heightIn(min = 48.dp)
+                .testId("settings_logout")
                 .semantics { role = Role.Button },
         ) { Text("Log out", color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(24.dp))
@@ -899,7 +902,9 @@ private fun DeleteAccountDialog(
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testId("settings_delete_field"),
                     enabled = !deleting,
                     label = { Text("Type DELETE") },
                     singleLine = true,
@@ -909,7 +914,9 @@ private fun DeleteAccountDialog(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testId("settings_delete_password"),
                         enabled = !deleting,
                         label = { Text("Password") },
                         singleLine = true,
@@ -936,6 +943,7 @@ private fun DeleteAccountDialog(
             TextButton(
                 onClick = { onConfirm(password.takeIf { askPassword && it.isNotEmpty() }) },
                 enabled = typed == "DELETE" && !deleting && (!askPassword || password.isNotEmpty()),
+                modifier = Modifier.testId("settings_delete_confirm"),
             ) {
                 Text(if (deleting) "Deleting…" else "Delete account", color = MaterialTheme.colorScheme.error)
             }

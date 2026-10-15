@@ -1,0 +1,62 @@
+appId: com.dhama.mybase
+name: Delete account
+tags:
+  - account
+env:
+  SHOT: 09-delete-account
+---
+# Deletes the account from You, returns to welcome, then the same email and password must not sign in.
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- tapOn:
+    id: tab_you
+- extendedWaitUntil:
+    visible: "Display name"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: settings_delete_account
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${SHOT}-delete-entry
+- tapOn:
+    id: settings_delete_account
+- extendedWaitUntil:
+    visible:
+      id: settings_delete_field
+    timeout: 10000
+- takeScreenshot: ${SHOT}-delete-dialog
+- tapOn:
+    id: settings_delete_field
+- inputText: "DELETE"
+- hideKeyboard
+# main (#35/#41) asks for the password only when the session signed in through Firebase email.
+- runFlow:
+    when:
+      visible:
+        id: settings_delete_password
+    commands:
+      - tapOn:
+          id: settings_delete_password
+      - inputText: ${output.password}
+      - hideKeyboard
+- takeScreenshot: ${SHOT}-delete-typed
+- tapOn:
+    id: settings_delete_confirm
+- extendedWaitUntil:
+    visible:
+      id: welcome_get_started
+    timeout: 60000
+- takeScreenshot: ${SHOT}-account-deleted
+- runFlow:
+    file: ../subflows/login.yaml
+- extendedWaitUntil:
+    visible:
+      id: login_error
+    timeout: 60000
+- assertVisible: "Login to your account"
+- assertNotVisible:
+    id: home_talk
+- assertNotVisible:
+    id: wizard_intro
+- takeScreenshot: ${SHOT}-login-rejected

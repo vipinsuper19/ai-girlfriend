@@ -1,0 +1,16 @@
+appId: com.dhama.mybase
+name: Offline setup
+tags:
+  - offline-part
+env:
+  SHOT: 05-offline-retry
+---
+# Run only from run-offline.sh, while the network is still up.
+# Leaves the app on the chat composer without sending.
+- runFlow:
+    file: ../subflows/reach-home.yaml
+- runFlow:
+    file: ../subflows/open-chat.yaml
+- assertVisible:
+    id: chat_send
+- takeScreenshot: ${SHOT}-chat-send-ready

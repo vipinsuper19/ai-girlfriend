@@ -1,0 +1,23 @@
+appId: com.dhama.mybase
+tags:
+  - helper
+---
+# Logout clears the on-device age attestation, so the next sign-in stops here.
+- extendedWaitUntil:
+    visible:
+      id: age_title
+    timeout: 30000
+- takeScreenshot: ${SHOT}-confirm-age
+- runFlow:
+    file: pick-dob.yaml
+    env:
+      DOB_FIELD_ID: age_dob
+      DOB_ISO: "1990-01-15"
+      DOB_LABEL: "January 15, 1990"
+- tapOn:
+    id: age_adult
+# Do not hideKeyboard here. The checkbox tap already dismisses the IME, and
+# with animator scale 0 a second hideKeyboard sends Back and leaves this screen.
+- takeScreenshot: ${SHOT}-confirm-age-ready
+- tapOn:
+    id: age_continue

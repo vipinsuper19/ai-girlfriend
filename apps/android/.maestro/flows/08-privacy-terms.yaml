@@ -1,0 +1,44 @@
+appId: com.dhama.mybase
+name: Privacy and Terms
+tags:
+  - legal
+env:
+  SHOT: 08-privacy-terms
+---
+# Terms and Privacy open the API host's /terms and /privacy pages in a Custom Tab
+# (main's LegalPages.kt). Chrome's first-run screens are skipped first.
+- runFlow:
+    file: ../subflows/launch-fresh.yaml
+- tapOn:
+    id: welcome_terms
+- takeScreenshot: ${SHOT}-terms-tapped
+- extendedWaitUntil:
+    notVisible:
+      id: welcome_get_started
+    timeout: 10000
+- runFlow:
+    file: ../subflows/dismiss-chrome-fre.yaml
+- extendedWaitUntil:
+    visible: ".*[Tt]erms of use.*"
+    timeout: 60000
+- takeScreenshot: ${SHOT}-terms-page
+- back
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: welcome_privacy
+    timeout: 10000
+- tapOn:
+    id: welcome_privacy
+- takeScreenshot: ${SHOT}-privacy-tapped
+- extendedWaitUntil:
+    notVisible:
+      id: welcome_get_started
+    timeout: 10000
+- runFlow:
+    file: ../subflows/dismiss-chrome-fre.yaml
+- extendedWaitUntil:
+    visible: ".*[Pp]rivacy policy.*"
+    timeout: 60000
+- takeScreenshot: ${SHOT}-privacy-page
